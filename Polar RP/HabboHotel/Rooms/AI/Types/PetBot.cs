@@ -1,4 +1,4 @@
-﻿using Polar.Core;
+using Polar.Core;
 using Polar.HabboHotel.GameClients;
 using Polar.HabboHotel.Pathfinding;
 using Polar.HabboHotel.Rooms;
@@ -55,13 +55,16 @@ namespace Polar.HabboHotel.Rooms.AI.Types
             if (User.GetClient() != null && User.GetClient().GetHabbo() != null)
             {
                 RoomUser Pet = GetRoomUser();
-                if (Pet != null)
+                if (Pet != null && Pet.PetData != null)
                 {
                     if (User.GetClient().GetHabbo().Username == Pet.PetData.OwnerName)
                     {
                         string[] Speech = PolarEnvironment.GetGame().GetChatManager().GetPetLocale().GetValue("welcome.speech.pet" + Pet.PetData.Type);
-                        string rSpeech = Speech[RandomNumber.GenerateRandom(0, Speech.Length - 1)];
-                        Pet.Chat(rSpeech, false);
+                        if (Speech != null && Speech.Length > 0)
+                        {
+                            string rSpeech = Speech[RandomNumber.GenerateRandom(0, Speech.Length - 1)];
+                            Pet.Chat(rSpeech, false);
+                        }
                     }
                 }
             }
@@ -78,7 +81,7 @@ namespace Polar.HabboHotel.Rooms.AI.Types
         public override void OnTimerTick()
         {
             RoomUser Pet = GetRoomUser();
-            if (Pet == null)
+            if (Pet == null || Pet.PetData == null)
                 return;
 
             #region Speech
@@ -88,14 +91,14 @@ namespace Polar.HabboHotel.Rooms.AI.Types
                 if (Pet.PetData.DbState != PetDatabaseUpdateState.NeedsInsert)
                     Pet.PetData.DbState = PetDatabaseUpdateState.NeedsUpdate;
 
-                if (Pet != null)
-                {
-                    RemovePetStatus();
+                RemovePetStatus();
 
-                    string[] Speech = PolarEnvironment.GetGame().GetChatManager().GetPetLocale().GetValue("speech.pet" + Pet.PetData.Type);
+                string[] Speech = PolarEnvironment.GetGame().GetChatManager().GetPetLocale().GetValue("speech.pet" + Pet.PetData.Type);
+                if (Speech != null && Speech.Length > 0)
+                {
                     string rSpeech = Speech[RandomNumber.GenerateRandom(0, Speech.Length - 1)];
 
-                    if (Pet.GetBotRoleplay().AIType != RoleplayBotAIType.PET)
+                    if (Pet.GetBotRoleplay() == null || Pet.GetBotRoleplay().AIType != RoleplayBotAIType.PET)
                     {
                         if (rSpeech.Length != 3)
                             Pet.Chat(rSpeech, false);
@@ -119,13 +122,16 @@ namespace Polar.HabboHotel.Rooms.AI.Types
                 try
                 {
                     RemovePetStatus();
-                    ActionTimer = RandomNumber.GenerateRandom(15, 40 + GetRoomUser().PetData.VirtualId);
-                    if (!GetRoomUser().RidingHorse)
+                    ActionTimer = RandomNumber.GenerateRandom(15, 40 + Pet.PetData.VirtualId);
+                    if (!Pet.RidingHorse)
                     {
                         RemovePetStatus();
-                        Point nextCoord = GetRoom().GetGameMap().GetRandomWalkableSquare();
-                        if (GetRoomUser().CanWalk)
-                            GetRoomUser().MoveTo(nextCoord.X, nextCoord.Y);
+                        if (GetRoom() != null && GetRoom().GetGameMap() != null)
+                        {
+                            Point nextCoord = GetRoom().GetGameMap().GetRandomWalkableSquare();
+                            if (Pet.CanWalk)
+                                Pet.MoveTo(nextCoord.X, nextCoord.Y);
+                        }
                     }
                 }
                 catch (Exception e)
@@ -160,15 +166,11 @@ namespace Polar.HabboHotel.Rooms.AI.Types
 
         public override void OnUserSay(RoomUser User, string Message)
         {
-            // FIX: null checks al inicio para evitar NullReferenceException
             if (User == null)
                 return;
 
             RoomUser Pet = GetRoomUser();
-            if (Pet == null)
-                return;
-
-            if (Pet.PetData == null)
+            if (Pet == null || Pet.PetData == null)
                 return;
 
             if (Pet.PetData.DbState != PetDatabaseUpdateState.NeedsInsert)
@@ -698,7 +700,6 @@ namespace Polar.HabboHotel.Rooms.AI.Types
 
                     if (Pet.PetData.Energy < 10)
                     {
-                        // FIX: UserRiding puede ser null si HorseID no corresponde a ningún usuario activo
                         RoomUser UserRiding = GetRoom().GetRoomUserManager().GetRoomUserByVirtualId(Pet.HorseID);
 
                         if (UserRiding != null && UserRiding.RidingHorse)

@@ -372,6 +372,7 @@ namespace Polar.HabboHotel.Rooms.Chat.Commands
             this.Register("cambiarclase", new ChangeClassCommand());
             this.Register("flechas", new ArrowCommand());
             this.Register("walk", new ArrowCommand());
+            this.Register("prefix", new PrefixCommand());
 
             // Timers & Cooldowns
             this.Register("timeleft", new TimeLeftCommand());
