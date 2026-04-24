@@ -1,0 +1,46 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>Polar</RootNamespace>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <StartupObject>Polar.Program</StartupObject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Remove="HabboRoleplay\RoleplayUsers\Statistics\**" />
+    <EmbeddedResource Remove="HabboRoleplay\RoleplayUsers\Statistics\**" />
+    <None Remove="HabboRoleplay\RoleplayUsers\Statistics\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="polar.ico" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="Utilities\Collections\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="discord-webhook-client" Version="3.1.0" />
+    <PackageReference Include="DotNetty.Buffers" Version="0.7.6" />
+    <PackageReference Include="Fleck" Version="1.2.0" />
+    <PackageReference Include="log4net" Version="3.0.4" />
+    <PackageReference Include="morelinq" Version="4.4.0" />
+    <PackageReference Include="MySqlConnector" Version="2.4.0" />
+    <PackageReference Include="Nancy" Version="2.0.0" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="discord-webhook-client">
+      <HintPath>..\..\..\..\Desktop\Debug\discord-webhook-client.dll</HintPath>
+    </Reference>
+    <Reference Include="HabboRC4">
+      <HintPath>..\..\..\..\Desktop\Debug\HabboRC4.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+
+</Project>

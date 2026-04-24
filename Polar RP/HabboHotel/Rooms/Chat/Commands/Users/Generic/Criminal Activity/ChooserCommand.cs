@@ -1,0 +1,36 @@
+﻿using System;
+using System.Linq;
+using System.Text;
+using System.Drawing;
+using Polar.Utilities;
+using System.Collections.Generic;
+
+using Polar.HabboHotel.Rooms;
+using Polar.HabboHotel.GameClients;
+using Polar.Communication.Packets.Outgoing.Misc;
+
+namespace Polar.HabboHotel.Rooms.Chat.Commands.Users.Generic.Criminal
+{
+    class ChooserCommand : IChatCommand
+    {
+        public string PermissionRequired
+        {
+            get { return "command_criminal_activity_laws"; }
+        }
+
+        public string Parameters
+        {
+            get { return ""; }
+        }
+
+        public string Description
+        {
+            get { return "Proporciona un tutorial hacer de "+ PolarEnvironment.GetConfig().data["hotel.name"]+"."; }
+        }
+
+        public async Task Execute(GameClient Session, Rooms.Room Room, string[] Params)
+        {
+            Session.SendWhisper("Lo sentimos pero se ha deshabilitado el chooser (ES ANTIROL)", 1);
+        }
+    }
+}

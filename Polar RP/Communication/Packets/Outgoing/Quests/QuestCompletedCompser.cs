@@ -1,0 +1,21 @@
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+
+namespace Polar.Communication.Packets.Outgoing.Quests
+{
+    internal class QuestCompletedCompser : ServerPacket
+    {
+        public QuestCompletedCompser()
+            : base(ServerPacketHeader.QuestCompletedMessageComposer)
+        {
+            Compose(this);
+        }
+
+        public void Compose(ServerPacket packet)
+        {
+        }
+    }
+}

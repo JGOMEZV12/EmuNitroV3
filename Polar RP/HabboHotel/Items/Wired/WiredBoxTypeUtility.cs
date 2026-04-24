@@ -1,0 +1,752 @@
+﻿using System;
+using System.Linq;
+using System.Text;
+using System.Collections.Generic;
+
+namespace Polar.HabboHotel.Items.Wired
+{
+    static class WiredBoxTypeUtility
+    {
+        public static WiredBoxType FromWiredId(int Id)
+        {
+            switch (Id)
+            {
+                default:
+                    return WiredBoxType.None;
+                case 1:
+                    return WiredBoxType.TriggerUserSays;
+                case 2:
+                    return WiredBoxType.TriggerStateChanges;
+                case 3:
+                    return WiredBoxType.TriggerRepeat;
+                case 4:
+                    return WiredBoxType.TriggerRoomEnter;
+                case 8:
+                    return WiredBoxType.TriggerWalkOnFurni;
+                case 9:
+                    return WiredBoxType.TriggerWalkOffFurni;
+                case 5:
+                    return WiredBoxType.EffectShowMessage;
+                case 6:
+                    return WiredBoxType.EffectTeleportToFurni;
+                case 7:
+                    return WiredBoxType.EffectToggleFurniState;
+                case 10:
+                    return WiredBoxType.EffectKickUser;
+                case 11:
+                    return WiredBoxType.ConditionFurniHasUsers;
+                case 12:
+                    return WiredBoxType.ConditionFurniHasFurni;
+                case 13:
+                    return WiredBoxType.ConditionTriggererOnFurni;
+                case 14:
+                    return WiredBoxType.EffectMatchPosition;
+                case 21:
+                    return WiredBoxType.ConditionIsGroupMember;
+                case 22:
+                    return WiredBoxType.ConditionIsNotGroupMember;
+                case 23:
+                    return WiredBoxType.ConditionTriggererNotOnFurni;
+                case 24:
+                    return WiredBoxType.ConditionFurniHasNoUsers;
+                case 25:
+                    return WiredBoxType.ConditionIsWearingBadge;
+                case 26:
+                    return WiredBoxType.ConditionIsWearingFX;
+                case 27:
+                    return WiredBoxType.ConditionIsNotWearingBadge;
+                case 28:
+                    return WiredBoxType.ConditionIsNotWearingFX;
+                case 29:
+                    return WiredBoxType.ConditionMatchStateAndPosition;
+                case 30:
+                    return WiredBoxType.ConditionUserCountInRoom;
+                case 31:
+                    return WiredBoxType.ConditionUserCountDoesntInRoom;
+                case 32:
+                    return WiredBoxType.EffectMoveAndRotate;
+                case 33:
+                    return WiredBoxType.ConditionDontMatchStateAndPosition;
+                case 34:
+                    return WiredBoxType.ConditionFurniTypeMatches;
+                case 35:
+                    return WiredBoxType.ConditionFurniTypeDoesntMatch;
+                case 36:
+                    return WiredBoxType.ConditionFurniHasNoFurni;
+                case 37:
+                    return WiredBoxType.EffectMoveFurniToNearestUser;
+                case 38:
+                    return WiredBoxType.EffectMoveFurniFromNearestUser;
+                case 39:
+                    return WiredBoxType.EffectMuteTriggerer;
+                case 40:
+                    return WiredBoxType.EffectGiveReward;
+                case 41:
+                    return WiredBoxType.AddonRandomEffect;
+                case 42:
+                    return WiredBoxType.TriggerGameStarts;
+                case 43:
+                    return WiredBoxType.TriggerGameEnds;
+                case 44:
+                    return WiredBoxType.TriggerUserFurniCollision;
+                case 45:
+                    return WiredBoxType.EffectMoveFurniToNearestUser;
+                case 46:
+                    return WiredBoxType.EffectExecuteWiredStacks;
+                case 47:
+                    return WiredBoxType.EffectTeleportBotToFurniBox;
+                case 48:
+                    return WiredBoxType.EffectBotChangesClothesBox;
+                case 49:
+                    return WiredBoxType.EffectBotMovesToFurniBox;
+                case 50:
+                    return WiredBoxType.EffectBotCommunicatesToAllBox;
+                case 51:
+                    return WiredBoxType.EffectBotCommunicatesToUserBox;
+                case 52:
+                    return WiredBoxType.EffectBotFollowsUserBox;
+                case 53:
+                    return WiredBoxType.EffectBotGivesHanditemBox;
+                case 54:
+                    return WiredBoxType.ConditionActorHasHandItemBox;
+                case 55:
+                    return WiredBoxType.ConditionActorIsInTeamBox;
+                case 56:
+                    return WiredBoxType.EffectAddActorToTeam;
+                case 57:
+                    return WiredBoxType.EffectRemoveActorFromTeam;
+                case 58:
+                    return WiredBoxType.TriggerUserSaysCommand;
+                case 59:
+                    return WiredBoxType.EffectSetRollerSpeed;
+                case 60:
+                    return WiredBoxType.EffectRegenerateMaps;
+                case 61:
+                    return WiredBoxType.EffectGiveUserBadge;
+                case 62:
+                    return WiredBoxType.EffectAddScore;
+                case 63:
+                    return WiredBoxType.EffectGiveCurrency;
+                case 64:
+                    return WiredBoxType.ConditionHasJob;
+                case 65:
+                    return WiredBoxType.ConditionIsNight;
+                case 66:
+                    return WiredBoxType.ConditionIsDay;
+                case 67:
+                    return WiredBoxType.EffectExecuteCommand;
+                case 68:
+                    return WiredBoxType.EffectGiveExperience;
+                case 69:
+                    return WiredBoxType.ConditionIsJailed;
+                case 70:
+                    return WiredBoxType.ConditionIsDead;
+                case 71:
+                    return WiredBoxType.EffectApplyEffect;
+                case 72:
+                    return WiredBoxType.ConditionIsDriving;
+                case 73:
+                    return WiredBoxType.EffectDamageUser;
+                case 74:
+                    return WiredBoxType.EffectHealUser;
+                case 75:
+                    return WiredBoxType.ConditionHasVip;
+                case 76:
+                    return WiredBoxType.EffectSetMotto;
+                case 77:
+                    return WiredBoxType.EffectFreezeUser;
+                case 78:
+                    return WiredBoxType.EffectUnfreezeUser;
+                case 79:
+                    return WiredBoxType.ConditionIsSitting;
+                case 80:
+                    return WiredBoxType.EffectGiveHuntPoints;
+                case 81:
+                    return WiredBoxType.EffectGiveEnergy;
+                case 82:
+                    return WiredBoxType.EffectGiveArmor;
+                case 83:
+                    return WiredBoxType.ConditionHasWeapon;
+                case 84:
+                    return WiredBoxType.EffectGiveRPItem;
+                case 85:
+                    return WiredBoxType.ConditionHasRPItem;
+                case 86:
+                    return WiredBoxType.EffectSetRotation;
+                case 87:
+                    return WiredBoxType.ConditionIsIdle;
+                case 88:
+                    return WiredBoxType.ConditionIsDancing;
+            }
+        }
+
+        public static WiredBoxType FromInteractionType(string type)
+        {
+            switch (type.ToLower())
+            {
+                // Triggers
+                case "wf_trg_enter_room": return WiredBoxType.TriggerRoomEnter;
+                case "wf_trg_leave_room":
+                case "wf_trg_exit_room":
+                    return WiredBoxType.TriggerRoomEnter;
+                case "wf_trg_says_something":
+                case "wf_trg_says_something_contains":
+                case "wf_trg_says_something_equal":
+                case "wf_trg_says_smth_show":
+                case "wf_trg_says_not_something":
+                case "wf_trg_not_says_thing":
+                    return WiredBoxType.TriggerUserSays;
+                case "wf_trg_periodically":
+                case "wf_trg_period_long":
+                case "wf_trg_repeat_short":
+                case "wf_trg_idk":
+                case "wf_trg_idk_seg":
+                case "wf_trg_anti_afk":
+                case "wf_trg_afkkkdormeur":
+                case "wf_trg_at_given_time":
+                case "wf_trg_at_time_long":
+                case "wf_trg_clock_counter":
+                    return WiredBoxType.TriggerRepeat;
+                case "wf_trg_state_changed":
+                case "wf_trg_double_click_furni":
+                case "wf_trg_stuff_state":
+                    return WiredBoxType.TriggerStateChanges;
+                case "wf_trg_walks_on_furni": return WiredBoxType.TriggerWalkOnFurni;
+                case "wf_trg_walks_off_furni": return WiredBoxType.TriggerWalkOffFurni;
+                case "wf_trg_game_starts": return WiredBoxType.TriggerGameStarts;
+                case "wf_trg_game_ends": return WiredBoxType.TriggerGameEnds;
+                case "wf_trg_collision":
+                case "wf_trg_colision_user_other":
+                case "wf_trg_colision_other_user":
+                case "wf_trg_colision_team_user_other":
+                case "wf_trg_colision_team_other_user":
+                    return WiredBoxType.TriggerUserFurniCollision;
+                case "wf_trg_chat_cmd_user":
+                case "wf_trg_chat_cmd_other":
+                    return WiredBoxType.TriggerUserSaysCommand;
+
+                // Effects — messaging
+                case "wf_act_show_message":
+                case "wf_act_show_message_room":
+                case "wf_act_deux_message":
+                case "wf_act_alertbuble":
+                    return WiredBoxType.EffectShowMessage;
+
+                // Effects — teleport
+                case "wf_act_teleport_to":
+                case "wf_act_teleport_to_furni_habbo":
+                case "wf_act_tp_furni_to_habbo":
+                case "wf_act_toroom":
+                case "wf_act_teportoroom":
+                case "wf_act_toroom_staff":
+                case "wf_act_teleport_yellow":
+                case "wf_act_teleport_red":
+                case "wf_act_teleport_blue":
+                case "wf_act_teleport_green":
+                    return WiredBoxType.EffectTeleportToFurni;
+
+                // Effects — furni-to-furni / furni-to-user (map to teleport as closest available)
+                case "wf_act_furni_to_furni":
+                case "wf_act_furni_to_user":
+                    return WiredBoxType.EffectTeleportToFurni;
+
+                // Effects — toggle
+                case "wf_act_toggle_state":
+                case "wf_act_toggle_state_down":
+                case "wf_act_toggle_to_rnd":
+                case "wf_act_toggle_nega":
+                case "wf_act_toggle_negat":
+                case "wf_act_close_dice":
+                case "wf_act_closes_dices":
+                case "wf_act_toggle_moodlight":
+                    return WiredBoxType.EffectToggleFurniState;
+                case "wf_act_toggle_state_random":
+                case "wf_act_toggle_random":
+                    return WiredBoxType.EffectToggleFurniState; // ToggleFurniBox handles both
+
+                case "wf_act_kick_user": return WiredBoxType.EffectKickUser;
+
+                // Effects — match position
+                case "wf_act_match_to_sshot":
+                case "wf_act_match_to_sshot_xyz":
+                case "wf_act_plus_match_furni_state":
+                    return WiredBoxType.EffectMatchPosition;
+
+                // Effects — move/rotate furni
+                case "wf_act_move_rotate":
+                case "wf_act_move_rotate_instant":
+                case "wf_act_effect_mpu":
+                    return WiredBoxType.EffectMoveAndRotate;
+
+                // Effects — move furni to direction (MoveFurniToBox)
+                case "wf_act_move_to_dir":
+                case "wf_act_move_furni_xyz":
+                case "wf_act_move_furni_xyz_slide":
+                    return WiredBoxType.EffectMoveAndRotate; // remap until dedicated type added
+
+                // Effects — chase / flee
+                case "wf_act_chase":
+                case "wf_act_super_chase":
+                case "wf_act_furni_super_chase":
+                    return WiredBoxType.EffectMoveFurniToNearestUser;
+                case "wf_act_flee":
+                    return WiredBoxType.EffectMoveFurniFromNearestUser;
+
+                // Effects — mute
+                case "wf_act_mute_triggerer":
+                    return WiredBoxType.EffectMuteTriggerer;
+
+                // Effects — rewards / score
+                case "wf_act_give_reward":
+                    return WiredBoxType.EffectGiveReward;
+                case "wf_act_give_score":
+                case "wf_act_give_score_tm":
+                case "wf_act_points":
+                case "wf_act_set_points":
+                case "wf_act_give_score_pp":
+                case "wf_act_custom_addhighscore":
+                case "wf_act_counter_points":
+                case "wf_act_add_tag":
+                    return WiredBoxType.EffectAddScore;
+
+                // Effects — execute stacks
+                case "wf_act_call_stacks":
+                case "wf_act_call_stk_wc":
+                case "wf_act_exe_condicion":
+                case "wf_act_exe_flawless":
+                case "wf_act_exe_super":
+                case "wf_act_control":
+                case "wf_act_control_id":
+                case "wf_act_neg_call_stacks":
+                    return WiredBoxType.EffectExecuteWiredStacks;
+
+                // Effects — teams
+                case "wf_act_dont_chase_top":
+                case "wf_act_collisioncase":
+                    return WiredBoxType.EffectCollisionCase;
+                case "wf_act_join_team": 
+                    return WiredBoxType.EffectAddActorToTeam;
+                case "wf_act_leave_team": return WiredBoxType.EffectRemoveActorFromTeam;
+
+                // Effects — roller
+                case "wf_act_roller":
+                case "wf_act_roller_speed":
+                case "wf_act_set_roller_spd":
+                    return WiredBoxType.EffectSetRollerSpeed;
+
+                case "wf_act_regenerate_map": return WiredBoxType.EffectRegenerateMaps;
+
+                // Effects — badges
+                case "wf_act_give_userbadge":
+                case "wf_act_give_badge":
+                    return WiredBoxType.EffectGiveUserBadge;
+
+                // Effects — commands
+                case "wf_act_execute_command": return WiredBoxType.EffectExecuteCommand;
+                case "wf_act_progress_achievement": return WiredBoxType.EffectGiveExperience;
+
+                // Effects — move/rotate user (MoveRotateUserBox)
+                case "wf_act_rotationhabbo":
+                case "wf_act_rotate_user":
+                case "wf_act_tour_ne_ava":
+                case "wf_act_move_rotate_user":
+                    return WiredBoxType.EffectSetRotation;
+
+                // Effects — currency
+                case "wf_act_give_currency": return WiredBoxType.EffectGiveCurrency;
+
+                // Conditions
+                case "wf_cnd_furnis_hv_avtrs": return WiredBoxType.ConditionFurniHasUsers;
+                case "wf_cnd_has_furni_on": return WiredBoxType.ConditionFurniHasFurni;
+                case "wf_cnd_trggrer_on_frn": return WiredBoxType.ConditionTriggererOnFurni;
+                case "wf_cnd_actor_in_group": return WiredBoxType.ConditionIsGroupMember;
+                case "wf_cnd_not_in_group": return WiredBoxType.ConditionIsNotGroupMember;
+                case "wf_cnd_not_trggrer_on": return WiredBoxType.ConditionTriggererNotOnFurni;
+                case "wf_cnd_not_hv_avtrs": return WiredBoxType.ConditionFurniHasNoUsers;
+                case "wf_cnd_habbo_owns_badge":
+                case "wf_cnd_wearing_badge":
+                case "wf_cnd_wearing_badg":
+                case "wf_cnd_has_badge_or_mission":
+                    return WiredBoxType.ConditionIsWearingBadge;
+                case "wf_cnd_wearing_effect": return WiredBoxType.ConditionIsWearingFX;
+                case "wf_cnd_not_wearing_b":
+                case "wf_cnd_not_habbo_owns_badge":
+                case "wf_cnd_not_wringbdg":
+                    return WiredBoxType.ConditionIsNotWearingBadge;
+                case "wf_cnd_not_wearing_fx": return WiredBoxType.ConditionIsNotWearingFX;
+                case "wf_cnd_match_snapshot":
+                case "wf_cnd_match_snapshot_xyz":
+                    return WiredBoxType.ConditionMatchStateAndPosition;
+                case "wf_cnd_not_match_snap":
+                case "wf_cnd_not_match_snap_xyz":
+                case "wf_cnd_match_snap_no_xyz":
+                    return WiredBoxType.ConditionDontMatchStateAndPosition;
+                case "wf_cnd_user_count_in": return WiredBoxType.ConditionUserCountInRoom;
+                case "wf_cnd_not_user_count": return WiredBoxType.ConditionUserCountDoesntInRoom;
+                case "wf_cnd_stuff_is": return WiredBoxType.ConditionFurniTypeMatches;
+                case "wf_cnd_not_stuff_is": return WiredBoxType.ConditionFurniTypeDoesntMatch;
+                case "wf_cnd_not_furni_on": return WiredBoxType.ConditionFurniHasNoFurni;
+                case "wf_cnd_has_handitem":
+                case "wf_cnd_handitem":
+                    return WiredBoxType.ConditionActorHasHandItemBox;
+                case "wf_cnd_not_handitem":
+                case "wf_cnd_not_has_handitem":
+                    return WiredBoxType.ConditionNotActorHasHandItemBox;
+                case "wf_cnd_actor_in_team":
+                case "wf_cnd_super_wiredequipo":
+                    return WiredBoxType.ConditionActorIsInTeamBox;
+
+                // RP Conditions
+                case "wf_cnd_has_job": return WiredBoxType.ConditionHasJob;
+                case "wf_cnd_is_night": return WiredBoxType.ConditionIsNight;
+                case "wf_cnd_is_day": return WiredBoxType.ConditionIsDay;
+                case "wf_cnd_is_dead": return WiredBoxType.ConditionIsDead;
+                case "wf_cnd_is_jailed": return WiredBoxType.ConditionIsJailed;
+                case "wf_cnd_has_rank":
+                case "wf_cnd_user_hasrights":
+                case "wf_cnd_habbo_has_rank":
+                    return WiredBoxType.ConditionHasVip;
+                case "wf_cnd_is_sitting": return WiredBoxType.ConditionIsSitting;
+                case "wf_cnd_has_weapon": return WiredBoxType.ConditionHasWeapon;
+                case "wf_cnd_has_rp_item": return WiredBoxType.ConditionHasRPItem;
+                case "wf_cnd_is_afk": return WiredBoxType.ConditionIsIdle;
+                case "wf_cnd_is_dancingbb": return WiredBoxType.ConditionIsDancing;
+                case "wf_cnd_is_driving": return WiredBoxType.ConditionIsDriving;
+
+                // RP Effects
+                case "wf_act_enable_cstm": return WiredBoxType.EffectApplyEffect;
+                case "wf_act_damage_user": return WiredBoxType.EffectDamageUser;
+                case "wf_act_heal_user": return WiredBoxType.EffectHealUser;
+                case "wf_act_sign_cstm": return WiredBoxType.EffectSetMotto;
+                case "wf_act_freeze_cstm":
+                case "wf_act_freeze":
+                case "wf_act_freeze_delay":
+                case "wf_cstm_freeze":
+                    return WiredBoxType.EffectFreezeUser;
+                case "wf_act_unfreeze_cstm":
+                case "wf_act_unfreez":
+                case "wf_act_unfreeze_delay":
+                case "wf_cstm_ufreez":
+                    return WiredBoxType.EffectUnfreezeUser;
+                case "wf_act_give_hunt_points": return WiredBoxType.EffectGiveHuntPoints;
+                case "wf_act_give_energy": return WiredBoxType.EffectGiveEnergy;
+                case "wf_act_give_armor": return WiredBoxType.EffectGiveArmor;
+                case "wf_act_give_rp_item": return WiredBoxType.EffectGiveRPItem;
+
+                // Add-ons
+                case "wf_xtra_random": return WiredBoxType.AddonRandom;
+                case "wf_xtra_unseen": return WiredBoxType.AddonUnseen;
+                case "wf_xtra_animation_time": return WiredBoxType.AddonAnimationTime;
+                case "wf_xtra_execute_in_order": return WiredBoxType.AddonExecuteInOrder;
+                case "wf_xtra_execution_limit": return WiredBoxType.AddonExecutionLimit;
+                case "wf_xtra_filter_furni": return WiredBoxType.AddonFilterFurni;
+                case "wf_xtra_filter_user": return WiredBoxType.AddonFilterUser;
+                case "wf_xtra_mov_carry_users": return WiredBoxType.AddonMoveCarryUsers;
+                case "wf_xtra_mov_no_animation": return WiredBoxType.AddonMoveNoAnimation;
+                case "wf_xtra_mov_physics": return WiredBoxType.AddonMovePhysics;
+                case "wf_xtra_or_eval": return WiredBoxType.AddonOrEval;
+                case "wf_xtra_text_output_furni_name": return WiredBoxType.AddonTextOutputFurniName;
+                case "wf_xtra_text_output_username": return WiredBoxType.AddonTextOutputUsername;
+                case "wf_xtra_unseenrandom":
+                case "wf_xtra_unseen_random":
+                case "wf_xtra_pt_unseenrandom":
+                case "wf_xtra_comment":
+                case "wf_xtra_diagonalcollision":
+                case "wf_xtra_fleche":
+                case "wf_xtra_moveitemwithusers":
+                case "wf_xtra_sequence":
+                case "wf_xtra_usability":
+                case "wf_xtra_usabilitycond":
+                case "wf_xtra_useraround":
+                case "wf_xtra_userbehind":
+                case "wf_xtra_userinfront":
+                case "wf_xtra_xixixi":
+                case "wf_xtra_all_eval":
+                case "wf_xtra_all_eval_not":
+                case "wf_xtra_and_eval":
+                case "wf_xtra_and_eval_not":
+                case "wf_xtra_not_animate_furni":
+                case "wf_xtra_not_animate_user":
+                case "wf_xtra_not_effect_teleport":
+                case "wf_xtra_noteffecttp":
+                case "wf_xtra_notfreezetp":
+                case "wf_xtra_notteam":
+                case "wf_xtra_one_condition":
+                    return WiredBoxType.AddonRandomEffect;
+
+                case "wf_highscore": return WiredBoxType.SpecialHighscore;
+
+                // Bot Effects
+                case "wf_act_bot_teleport": return WiredBoxType.EffectTeleportBotToFurniBox;
+                case "wf_act_bot_clothes": return WiredBoxType.EffectBotChangesClothesBox;
+                case "wf_act_bot_move": return WiredBoxType.EffectBotMovesToFurniBox;
+                case "wf_act_bot_talk": return WiredBoxType.EffectBotCommunicatesToAllBox;
+                case "wf_act_bot_talk_to_avatar": return WiredBoxType.EffectBotCommunicatesToUserBox;
+                case "wf_act_bot_follow_avatar": return WiredBoxType.EffectBotFollowsUserBox;
+                case "wf_act_bot_give_handitem": return WiredBoxType.EffectBotGivesHanditemBox;
+
+                default: return WiredBoxType.None;
+            }
+        }
+
+        public static int GetWiredId(WiredBoxType Type)
+        {
+            switch (Type)
+            {
+                // ── TRIGGERS (WiredTriggerLayout) ──────────────────────────────
+                case WiredBoxType.TriggerUserSays:
+                case WiredBoxType.TriggerUserSaysCommand:
+                    return 0;  // AVATAR_SAYS_SOMETHING = 0
+                case WiredBoxType.TriggerWalkOnFurni:
+                    return 1;  // AVATAR_WALKS_ON_FURNI = 1
+                case WiredBoxType.TriggerWalkOffFurni:
+                    return 2;  // AVATAR_WALKS_OFF_FURNI = 2
+                case WiredBoxType.TriggerStateChanges:
+                    return 4;  // TOGGLE_FURNI = 4
+                case WiredBoxType.TriggerRepeat:
+                    return 6;  // EXECUTE_PERIODICALLY = 6
+                case WiredBoxType.TriggerRoomEnter:
+                    return 7;  // AVATAR_ENTERS_ROOM = 7
+                case WiredBoxType.TriggerGameStarts:
+                    return 8;  // GAME_STARTS = 8
+                case WiredBoxType.TriggerGameEnds:
+                    return 9;  // GAME_ENDS = 9
+                case WiredBoxType.TriggerUserFurniCollision:
+                    return 11; // COLLISION = 11
+
+                // ── EFFECTS (WiredActionLayoutCode) ───────────────────────────
+                case WiredBoxType.EffectToggleFurniState:
+                    return 0;  // TOGGLE_FURNI_STATE = 0
+                case WiredBoxType.EffectMatchPosition:
+                    return 3;  // SET_FURNI_STATE = 3
+                case WiredBoxType.EffectMoveAndRotate:
+                    return 4;  // MOVE_FURNI = 4
+                case WiredBoxType.EffectAddScore:
+                    return 6;  // GIVE_SCORE = 6
+                case WiredBoxType.EffectShowMessage:
+                case WiredBoxType.EffectGiveUserBadge:
+                case WiredBoxType.EffectRegenerateMaps:
+                case WiredBoxType.EffectSetRollerSpeed:
+                    return 7;  // CHAT = 7
+                case WiredBoxType.EffectTeleportToFurni:
+                    return 8;  // TELEPORT = 8
+                case WiredBoxType.EffectAddActorToTeam:
+                    return 9;  // JOIN_TEAM = 9
+                case WiredBoxType.EffectRemoveActorFromTeam:
+                    return 10; // LEAVE_TEAM = 10
+                case WiredBoxType.EffectMoveFurniToNearestUser:
+                    return 11; // CHASE = 11
+                case WiredBoxType.EffectMoveFurniFromNearestUser:
+                    return 12; // FLEE = 12
+                case WiredBoxType.EffectGiveReward:
+                    return 17; // GIVE_REWARD = 17
+                case WiredBoxType.EffectExecuteWiredStacks:
+                    return 18; // CALL_ANOTHER_STACK = 18
+                case WiredBoxType.EffectKickUser:
+                    return 19; // KICK_FROM_ROOM = 19
+                case WiredBoxType.EffectMuteTriggerer:
+                    return 20; // MUTE_USER = 20
+                case WiredBoxType.EffectTeleportBotToFurniBox:
+                    return 21; // BOT_TELEPORT = 21
+                case WiredBoxType.EffectBotMovesToFurniBox:
+                    return 22; // BOT_MOVE = 22
+                case WiredBoxType.EffectBotCommunicatesToAllBox:
+                    return 23; // BOT_TALK = 23
+                case WiredBoxType.EffectBotGivesHanditemBox:
+                    return 24; // BOT_GIVE_HAND_ITEM = 24
+                case WiredBoxType.EffectBotFollowsUserBox:
+                    return 25; // BOT_FOLLOW_AVATAR = 25
+                case WiredBoxType.EffectBotChangesClothesBox:
+                    return 26; // BOT_CHANGE_FIGURE = 26
+                case WiredBoxType.EffectBotCommunicatesToUserBox:
+                    return 27; // BOT_TALK_DIRECT_TO_AVTR = 27
+                case WiredBoxType.EffectGiveCurrency:
+                    return 28; // FURNI_AREA_SELECTOR = 28
+                case WiredBoxType.EffectExecuteCommand:
+                    return 31; // USERS_AREA_SELECTOR = 31
+                case WiredBoxType.EffectGiveExperience:
+                    return 32; // USERS_NEIGHBORHOOD_SELECTOR = 32
+                case WiredBoxType.EffectApplyEffect:
+                    return 34; // FREEZE = 34
+                case WiredBoxType.EffectDamageUser:
+                case WiredBoxType.EffectHealUser:
+                    return 36; // FURNI_TO_USER = 36
+                case WiredBoxType.EffectSetMotto:
+                    return 38; // FURNI_TO_FURNI = 38 (antes 38, sin cambio)
+                case WiredBoxType.EffectFreezeUser:
+                case WiredBoxType.EffectUnfreezeUser:
+                    return 39; // SET_ALTITUDE = 39
+                case WiredBoxType.EffectGiveHuntPoints:
+                    return 41; // CONTROL_CLOCK = 41
+                case WiredBoxType.EffectGiveEnergy:
+                case WiredBoxType.EffectGiveArmor:
+                    return 42; // ADJUST_CLOCK = 42
+                case WiredBoxType.EffectGiveRPItem:
+                    return 44; // FURNI_ALTITUDE_SELECTOR = 44
+                case WiredBoxType.EffectCollisionCase:
+                    return 45; // FURNI_ON_FURNI_SELECTOR = 45
+                case WiredBoxType.EffectSetRotation:
+                    return 46; // FURNI_PICKS_SELECTOR = 46
+
+                // ── CONDITIONS (WiredConditionlayout) ─────────────────────────
+                case WiredBoxType.ConditionMatchStateAndPosition:
+                    return 0;  // STATES_MATCH = 0
+                case WiredBoxType.ConditionFurniHasUsers:
+                    return 1;  // FURNIS_HAVE_AVATARS = 1
+                case WiredBoxType.ConditionTriggererOnFurni:
+                    return 2;  // ACTOR_IS_ON_FURNI = 2
+                case WiredBoxType.ConditionUserCountInRoom:
+                    return 5;  // USER_COUNT_IN = 5
+                case WiredBoxType.ConditionActorIsInTeamBox:
+                    return 6;  // ACTOR_IS_IN_TEAM = 6
+                case WiredBoxType.ConditionFurniHasFurni:
+                    return 7;  // HAS_STACKED_FURNIS = 7
+                case WiredBoxType.ConditionFurniTypeMatches:
+                    return 8;  // STUFF_TYPE_MATCHES = 8
+                case WiredBoxType.ConditionIsGroupMember:
+                    return 10; // ACTOR_IS_GROUP_MEMBER = 10
+                case WiredBoxType.ConditionIsWearingBadge:
+                    return 11; // ACTOR_IS_WEARING_BADGE = 11
+                case WiredBoxType.ConditionIsWearingFX:
+                    return 12; // ACTOR_IS_WEARING_EFFECT = 12
+                case WiredBoxType.ConditionDontMatchStateAndPosition:
+                    return 13; // NOT_STATES_MATCH = 13
+                case WiredBoxType.ConditionFurniHasNoUsers:
+                    return 14; // FURNI_NOT_HAVE_HABBO = 14
+                case WiredBoxType.ConditionTriggererNotOnFurni:
+                    return 15; // NOT_ACTOR_ON_FURNI = 15
+                case WiredBoxType.ConditionUserCountDoesntInRoom:
+                    return 16; // NOT_USER_COUNT_IN = 16
+                case WiredBoxType.ConditionFurniHasNoFurni:
+                    return 18; // NOT_HAS_STACKED_FURNIS = 18
+                case WiredBoxType.ConditionFurniTypeDoesntMatch:
+                    return 19; // NOT_FURNI_IS_OF_TYPE = 19
+                case WiredBoxType.ConditionIsNotGroupMember:
+                    return 21; // NOT_ACTOR_IN_GROUP = 21
+                case WiredBoxType.ConditionIsNotWearingBadge:
+                    return 22; // NOT_ACTOR_WEARS_BADGE = 22
+                case WiredBoxType.ConditionIsNotWearingFX:
+                    return 23; // NOT_ACTOR_WEARING_EFFECT = 23
+                case WiredBoxType.ConditionActorHasHandItemBox:
+                    return 25; // ACTOR_HAS_HANDITEM = 25
+                case WiredBoxType.ConditionNotActorHasHandItemBox:
+                    return 31; // NOT_ACTOR_HAS_HANDITEM = 31  ← era 69, corregido
+
+                // ── RP CONDITIONS (sin equivalente directo en cliente estándar) ─
+                case WiredBoxType.ConditionHasJob:
+                    return 29;
+                case WiredBoxType.ConditionIsNight:
+                case WiredBoxType.ConditionIsDay:
+                    return 30;
+                case WiredBoxType.ConditionIsJailed:
+                case WiredBoxType.ConditionIsDead:
+                    return 33;
+                case WiredBoxType.ConditionIsDriving:
+                    return 35;
+                case WiredBoxType.ConditionHasVip:
+                    return 37;
+                case WiredBoxType.ConditionIsSitting:
+                    return 40;
+                case WiredBoxType.ConditionHasWeapon:
+                    return 43;
+                case WiredBoxType.ConditionHasRPItem:
+                    return 45;
+                case WiredBoxType.ConditionIsIdle:
+                case WiredBoxType.ConditionIsDancing:
+                    return 47;
+
+                // ── ADDONS (WiredActionLayoutCode, IDs altos) ──────────────────
+                case WiredBoxType.SpecialHighscore:
+                    return 48;
+                case WiredBoxType.AddonFilterFurni:
+                    return 56; // FILTER_FURNI_EXTRA = 56
+                case WiredBoxType.AddonFilterUser:
+                    return 57; // FILTER_USER_EXTRA = 57
+                case WiredBoxType.AddonMoveCarryUsers:
+                    return 58; // MOVE_CARRY_USERS_EXTRA = 58
+                case WiredBoxType.AddonMoveNoAnimation:
+                    return 59; // MOVE_NO_ANIMATION_EXTRA = 59
+                case WiredBoxType.AddonAnimationTime:
+                    return 60; // ANIMATION_TIME_EXTRA = 60
+                case WiredBoxType.AddonMovePhysics:
+                    return 61; // MOVE_PHYSICS_EXTRA = 61
+                case WiredBoxType.AddonUnseen:
+                    return 62; // UNSEEN_EXTRA = 62
+                case WiredBoxType.AddonRandom:
+                    return 63; // RANDOM_EXTRA = 63
+                case WiredBoxType.AddonExecuteInOrder:
+                    return 64; // EXEC_IN_ORDER_EXTRA = 64
+                case WiredBoxType.AddonExecutionLimit:
+                    return 65; // EXECUTION_LIMIT_EXTRA = 65
+                case WiredBoxType.AddonOrEval:
+                    return 66; // OR_EVAL_EXTRA = 66
+                case WiredBoxType.AddonTextOutputUsername:
+                    return 67; // TEXT_OUTPUT_USERNAME_EXTRA = 67
+                case WiredBoxType.AddonTextOutputFurniName:
+                    return 68; // TEXT_OUTPUT_FURNI_NAME_EXTRA = 68
+            }
+
+            return 0;
+        }
+
+        public static List<int> ContainsBlockedTrigger(IWiredItem box, ICollection<IWiredItem> triggers)
+        {
+            List<int> blockedItems = new();
+
+            if (box.Type != WiredBoxType.EffectShowMessage && box.Type != WiredBoxType.EffectMuteTriggerer && box.Type != WiredBoxType.EffectTeleportToFurni && box.Type != WiredBoxType.EffectKickUser && box.Type != WiredBoxType.ConditionTriggererOnFurni)
+                return blockedItems;
+
+            foreach (IWiredItem item in triggers)
+            {
+                if (item.Type == WiredBoxType.TriggerRepeat)
+                {
+                    if (!blockedItems.Contains(item.Item.GetBaseItem().SpriteId))
+                        blockedItems.Add(item.Item.GetBaseItem().SpriteId);
+                    else continue;
+                }
+                else continue;
+            }
+
+            return blockedItems;
+        }
+        public static bool IsTriggerType(WiredBoxType type) =>
+    type.ToString().StartsWith("Trigger");
+
+        public static bool IsEffectType(WiredBoxType type) =>
+            type.ToString().StartsWith("Effect");
+
+        public static bool IsConditionType(WiredBoxType type) =>
+            type.ToString().StartsWith("Condition");
+
+        public static bool IsAddonType(WiredBoxType type) =>
+            type.ToString().StartsWith("Addon");
+        public static List<int> ContainsBlockedEffect(IWiredItem box, ICollection<IWiredItem> effects)
+        {
+            List<int> blockedItems = new();
+
+            if (box.Type != WiredBoxType.TriggerRepeat)
+                return blockedItems;
+
+            bool hasMoveRotate = effects.Where(x => x.Type == WiredBoxType.EffectMoveAndRotate).ToList().Count > 0;
+            bool hasMoveNear = effects.Where(x => x.Type == WiredBoxType.EffectMoveFurniToNearestUser).ToList().Count > 0;
+
+            foreach (IWiredItem item in effects)
+            {
+                if (item.Type == WiredBoxType.EffectKickUser || item.Type == WiredBoxType.EffectMuteTriggerer || item.Type == WiredBoxType.EffectShowMessage || item.Type == WiredBoxType.EffectTeleportToFurni || item.Type == WiredBoxType.EffectBotFollowsUserBox)
+                {
+                    if (!blockedItems.Contains(item.Item.GetBaseItem().SpriteId))
+                        blockedItems.Add(item.Item.GetBaseItem().SpriteId);
+                    else continue;
+                }
+                else if ((item.Type == WiredBoxType.EffectMoveFurniToNearestUser && hasMoveRotate) || (item.Type == WiredBoxType.EffectMoveAndRotate && hasMoveNear))
+                {
+                    if (!blockedItems.Contains(item.Item.GetBaseItem().SpriteId))
+                        blockedItems.Add(item.Item.GetBaseItem().SpriteId);
+                    else continue;
+                }
+            }
+
+            return blockedItems;
+        }
+    }
+}
