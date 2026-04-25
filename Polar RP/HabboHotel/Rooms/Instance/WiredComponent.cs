@@ -1,4 +1,3 @@
-using System.Linq;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -97,13 +96,10 @@ public class WiredComponent
         WiredBoxType.ConditionIsWearingFX          => new IsWearingFXBox(_room, item),
         WiredBoxType.ConditionIsNotWearingFX       => new IsNotWearingFXBox(_room, item),
         WiredBoxType.ConditionIsWearingBadge       => new IsWearingBadgeBox(_room, item),
-        WiredBoxType.ConditionFurniTypeMatches     => new FurniTypeMatchesBox(_room, item),
-        WiredBoxType.ConditionFurniTypeDoesntMatch => new FurniTypeDoesntMatchBox(_room, item),
         WiredBoxType.ConditionIsNotWearingBadge    => new IsNotWearingBadgeBox(_room, item),
         WiredBoxType.ConditionMatchStateAndPosition       => new FurniMatchStateAndPositionBox(_room, item),
         WiredBoxType.ConditionDontMatchStateAndPosition   => new FurniDoesntMatchStateAndPositionBox(_room, item),
         WiredBoxType.ConditionActorHasHandItemBox  => new ActorHasHandItemBox(_room, item),
-        WiredBoxType.ConditionNotActorHasHandItemBox => new NotActorHasHandItemBox(_room, item),
         WiredBoxType.ConditionActorIsInTeamBox     => new ActorIsInTeamBox(_room, item),
         WiredBoxType.AddonRandomEffect             => new AddonRandomEffectBox(_room, item),
         WiredBoxType.EffectMoveFurniToNearestUser  => new MoveFurniToUserBox(_room, item),
@@ -112,7 +108,6 @@ public class WiredComponent
         WiredBoxType.EffectBotChangesClothesBox    => new BotChangesClothesBox(_room, item),
         WiredBoxType.EffectBotMovesToFurniBox      => new BotMovesToFurniBox(_room, item),
         WiredBoxType.EffectBotCommunicatesToAllBox => new BotCommunicatesToAllBox(_room, item),
-        WiredBoxType.EffectBotCommunicatesToUserBox => new BotCommunicatesToUserBox(_room, item),
         WiredBoxType.EffectBotGivesHanditemBox     => new BotGivesHandItemBox(_room, item),
         WiredBoxType.EffectBotFollowsUserBox       => new BotFollowsUserBox(_room, item),
         WiredBoxType.EffectSetRollerSpeed          => new SetRollerSpeedBox(_room, item),
@@ -157,15 +152,15 @@ public class WiredComponent
         WiredBoxType.AddonTextOutputFurniName      => new AddonTextOutputFurniNameBox(_room, item),
         WiredBoxType.AddonTextOutputUsername       => new AddonTextOutputUsernameBox(_room, item),
         WiredBoxType.AddonUnseen                   => new AddonUnseenBox(_room, item),
-        WiredBoxType.EffectSetVariable             => new SetVariableBox(_room, item),
-        WiredBoxType.EffectVariableAdd             => new VariableAddBox(_room, item),
-        WiredBoxType.ConditionVariableIsEqual      => new VariableIsEqualBox(_room, item),
-        WiredBoxType.EffectVariableSubtract        => new VariableSubtractBox(_room, item),
+        WiredBoxType.EffectSetVariable              => new SetVariableBox(_room, item),
+        WiredBoxType.EffectVariableAdd              => new VariableAddBox(_room, item),
+        WiredBoxType.ConditionVariableIsEqual       => new VariableIsEqualBox(_room, item),
+        WiredBoxType.EffectVariableSubtract         => new VariableSubtractBox(_room, item),
         WiredBoxType.ConditionVariableIsGreaterThan => new VariableIsGreaterThanBox(_room, item),
         WiredBoxType.ConditionVariableIsLessThan    => new VariableIsLessThanBox(_room, item),
-        WiredBoxType.EffectMoveFurniXYZ            => new MoveFurniXYZBox(_room, item),
-        WiredBoxType.EffectGiveHanditem            => new GiveHanditemBox(_room, item),
-        WiredBoxType.EffectTeleportToRoom         => new TeleportToRoomBox(_room, item),
+        WiredBoxType.EffectMoveFurniXYZ             => new MoveFurniXYZBox(_room, item),
+        WiredBoxType.EffectGiveHanditem             => new GiveHanditemBox(_room, item),
+        WiredBoxType.EffectTeleportToRoom           => new TeleportToRoomBox(_room, item),
         _ => LogAndReturnNull(item)
     };
 
@@ -320,11 +315,18 @@ public class WiredComponent
         var wiredItems = items.Where(i => i.IsWired).ToList();
         if (wiredItems.Count == 0) return;
 
-        var ids = string.Join(",", wiredItems.Select(i => i.Id));
         DataTable table;
         using (var dbClient = PolarEnvironment.GetDatabaseManager().GetQueryReactor())
         {
-            dbClient.SetQuery($"SELECT * FROM wired_items WHERE id IN ({ids})");
+            var paramNames = new List<string>();
+            foreach (var item in wiredItems)
+            {
+                string paramName = "id" + item.Id;
+                dbClient.AddParameter(paramName, item.Id);
+                paramNames.Add("@" + paramName);
+            }
+
+            dbClient.SetQuery("SELECT * FROM wired_items WHERE id IN (" + string.Join(",", paramNames) + ")");
             table = dbClient.getTable();
         }
 
@@ -389,7 +391,6 @@ public class WiredComponent
             }
         }
     }
-
 
 
     // ── Índices: mantener sincronizados con _wiredItems ────────────────────
