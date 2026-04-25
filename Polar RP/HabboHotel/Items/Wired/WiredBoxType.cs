@@ -110,6 +110,14 @@ namespace Polar.HabboHotel.Items.Wired
         AddonTextOutputFurniName,
         AddonTextOutputUsername,
         AddonUnseen,
-        SpecialHighscore
+        SpecialHighscore,
+
+        // Variable Wireds (from AM Extended)
+        EffectSetVariable,
+        EffectVariableAdd,
+        EffectVariableSubtract,
+        ConditionVariableIsEqual,
+        ConditionVariableIsGreaterThan,
+        ConditionVariableIsLessThan
     }
 }

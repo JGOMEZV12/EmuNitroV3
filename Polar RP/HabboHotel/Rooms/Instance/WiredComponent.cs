@@ -157,6 +157,9 @@ public class WiredComponent
         WiredBoxType.AddonTextOutputFurniName      => new AddonTextOutputFurniNameBox(_room, item),
         WiredBoxType.AddonTextOutputUsername       => new AddonTextOutputUsernameBox(_room, item),
         WiredBoxType.AddonUnseen                   => new AddonUnseenBox(_room, item),
+        WiredBoxType.EffectSetVariable             => new SetVariableBox(_room, item),
+        WiredBoxType.EffectVariableAdd             => new VariableAddBox(_room, item),
+        WiredBoxType.ConditionVariableIsEqual      => new VariableIsEqualBox(_room, item),
         _ => LogAndReturnNull(item)
     };
 

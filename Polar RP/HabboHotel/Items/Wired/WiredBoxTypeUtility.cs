@@ -177,6 +177,13 @@ namespace Polar.HabboHotel.Items.Wired
                     return WiredBoxType.ConditionIsIdle;
                 case 88:
                     return WiredBoxType.ConditionIsDancing;
+                case 89:
+                    return WiredBoxType.EffectSetVariable;
+                case 90:
+                    return WiredBoxType.EffectVariableAdd;
+                case 91:
+                    return WiredBoxType.ConditionVariableIsEqual;
+                    return WiredBoxType.ConditionIsDancing;
             }
         }
 
@@ -476,13 +483,17 @@ namespace Polar.HabboHotel.Items.Wired
 
                 case "wf_highscore": return WiredBoxType.SpecialHighscore;
 
+                // Variables
+                case "wf_act_set_variable": return WiredBoxType.EffectSetVariable;
+                case "wf_act_variable_add": return WiredBoxType.EffectVariableAdd;
+                case "wf_cnd_variable_is_equal": return WiredBoxType.ConditionVariableIsEqual;
+
                 // Bot Effects
                 case "wf_act_bot_teleport": return WiredBoxType.EffectTeleportBotToFurniBox;
                 case "wf_act_bot_clothes": return WiredBoxType.EffectBotChangesClothesBox;
                 case "wf_act_bot_move": return WiredBoxType.EffectBotMovesToFurniBox;
                 case "wf_act_bot_talk": return WiredBoxType.EffectBotCommunicatesToAllBox;
                 case "wf_act_bot_talk_to_avatar": return WiredBoxType.EffectBotCommunicatesToUserBox;
-                case "wf_act_bot_follow_avatar": return WiredBoxType.EffectBotFollowsUserBox;
                 case "wf_act_bot_give_handitem": return WiredBoxType.EffectBotGivesHanditemBox;
 
                 default: return WiredBoxType.None;
