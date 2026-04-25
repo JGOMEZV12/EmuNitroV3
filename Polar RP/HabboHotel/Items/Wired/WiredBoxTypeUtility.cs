@@ -189,6 +189,15 @@ namespace Polar.HabboHotel.Items.Wired
                     return WiredBoxType.ConditionVariableIsGreaterThan;
                 case 94:
                     return WiredBoxType.ConditionVariableIsLessThan;
+                case 95:
+                    return WiredBoxType.EffectMoveFurniXYZ;
+                case 96:
+                    return WiredBoxType.EffectGiveHanditem;
+                case 97:
+                    return WiredBoxType.EffectTeleportToRoom;
+                    return WiredBoxType.EffectGiveHanditem;
+                    return WiredBoxType.EffectMoveFurniXYZ;
+                    return WiredBoxType.ConditionVariableIsLessThan;
             }
         }
 

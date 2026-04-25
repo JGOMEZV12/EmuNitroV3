@@ -118,6 +118,11 @@ namespace Polar.HabboHotel.Items.Wired
         EffectVariableSubtract,
         ConditionVariableIsEqual,
         ConditionVariableIsGreaterThan,
-        ConditionVariableIsLessThan
+        ConditionVariableIsLessThan,
+
+        // Additional AM Extended Wireds
+        EffectTeleportToRoom,
+        EffectGiveHanditem,
+        EffectMoveFurniXYZ
     }
 }

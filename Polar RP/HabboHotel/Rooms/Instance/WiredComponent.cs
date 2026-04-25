@@ -163,6 +163,9 @@ public class WiredComponent
         WiredBoxType.EffectVariableSubtract        => new VariableSubtractBox(_room, item),
         WiredBoxType.ConditionVariableIsGreaterThan => new VariableIsGreaterThanBox(_room, item),
         WiredBoxType.ConditionVariableIsLessThan    => new VariableIsLessThanBox(_room, item),
+        WiredBoxType.EffectMoveFurniXYZ            => new MoveFurniXYZBox(_room, item),
+        WiredBoxType.EffectGiveHanditem            => new GiveHanditemBox(_room, item),
+        WiredBoxType.EffectTeleportToRoom         => new TeleportToRoomBox(_room, item),
         _ => LogAndReturnNull(item)
     };
 
