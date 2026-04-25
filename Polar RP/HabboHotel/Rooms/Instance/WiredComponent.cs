@@ -160,6 +160,9 @@ public class WiredComponent
         WiredBoxType.EffectSetVariable             => new SetVariableBox(_room, item),
         WiredBoxType.EffectVariableAdd             => new VariableAddBox(_room, item),
         WiredBoxType.ConditionVariableIsEqual      => new VariableIsEqualBox(_room, item),
+        WiredBoxType.EffectVariableSubtract        => new VariableSubtractBox(_room, item),
+        WiredBoxType.ConditionVariableIsGreaterThan => new VariableIsGreaterThanBox(_room, item),
+        WiredBoxType.ConditionVariableIsLessThan    => new VariableIsLessThanBox(_room, item),
         _ => LogAndReturnNull(item)
     };
 

@@ -183,7 +183,12 @@ namespace Polar.HabboHotel.Items.Wired
                     return WiredBoxType.EffectVariableAdd;
                 case 91:
                     return WiredBoxType.ConditionVariableIsEqual;
-                    return WiredBoxType.ConditionIsDancing;
+                case 92:
+                    return WiredBoxType.EffectVariableSubtract;
+                case 93:
+                    return WiredBoxType.ConditionVariableIsGreaterThan;
+                case 94:
+                    return WiredBoxType.ConditionVariableIsLessThan;
             }
         }
 
@@ -487,6 +492,9 @@ namespace Polar.HabboHotel.Items.Wired
                 case "wf_act_set_variable": return WiredBoxType.EffectSetVariable;
                 case "wf_act_variable_add": return WiredBoxType.EffectVariableAdd;
                 case "wf_cnd_variable_is_equal": return WiredBoxType.ConditionVariableIsEqual;
+                case "wf_act_variable_sub": return WiredBoxType.EffectVariableSubtract;
+                case "wf_cnd_variable_gt": return WiredBoxType.ConditionVariableIsGreaterThan;
+                case "wf_cnd_variable_lt": return WiredBoxType.ConditionVariableIsLessThan;
 
                 // Bot Effects
                 case "wf_act_bot_teleport": return WiredBoxType.EffectTeleportBotToFurniBox;
