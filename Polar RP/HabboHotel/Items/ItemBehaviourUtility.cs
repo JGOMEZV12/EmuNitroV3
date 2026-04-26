@@ -1,4 +1,4 @@
-﻿using Polar.Communication.Packets.Outgoing;
+using Polar.Communication.Packets.Outgoing;
 using Polar.HabboHotel.Cache;
 using Polar.HabboHotel.Groups;
 using Polar.HabboHotel.Items.Data.Toner;
@@ -15,6 +15,16 @@ namespace Polar.HabboHotel.Items
     {
         public static void GenerateExtradata(Item Item, ServerPacket Message)
         {
+            if (Item.LimitedNo > 0)
+            {
+                Message.WriteInteger(1 | 0x100);
+                Message.WriteInteger(1);
+                Message.WriteString(Item.ExtraData ?? "");
+                Message.WriteInteger(Item.LimitedNo);
+                Message.WriteInteger(Item.LimitedTot);
+                return;
+            }
+
             switch (Item.GetBaseItem().InteractionType)
             {
                 case InteractionType.GUILD_ITEM:
@@ -43,34 +53,16 @@ namespace Polar.HabboHotel.Items
 
                 case InteractionType.BACKGROUND:
                 case InteractionType.INFORMATION_TERMINAL:
-                    // 1. Calcular header: 1 = datos extra presentes, +256 si es limitado
-                    int header = 1;
-                    if (Item.LimitedNo > 0) // o item.GetBaseItem().IsLimited
-                        header += 256;
-
-                    Message.WriteInteger(header);
-
-                    // 2. Obtener pares clave-valor desde ExtraData o desde un diccionario
+                    Message.WriteInteger(1);
                     Dictionary<string, string> values = new Dictionary<string, string>();
-
-                    if (!string.IsNullOrEmpty(Item.ExtraData) && Item.ExtraData.Contains('\t'))
+                    if (!string.IsNullOrEmpty(Item.ExtraData) && Item.ExtraData.Contains('	'))
                     {
-                        string[] parts = Item.ExtraData.Split('\t');
-                        // Asegurar número par de partes
+                        string[] parts = Item.ExtraData.Split('	');
                         for (int i = 0; i < parts.Length - 1; i += 2)
                         {
                             values[parts[i]] = parts[i + 1];
                         }
                     }
-
-                    // Si además hay datos específicos (ej. limited sells, limited stack)
-                    if (Item.LimitedNo > 0)
-                    {
-                        values["limited_sells"] = Item.LimitedTot.ToString();
-                        values["limited_stack"] = Item.LimitedTot.ToString();
-                    }
-
-                    // 3. Escribir cantidad de pares y los pares
                     Message.WriteInteger(values.Count);
                     foreach (var kvp in values)
                     {
@@ -124,20 +116,12 @@ namespace Polar.HabboHotel.Items
                 case InteractionType.FARMING:
                     int cracks = 0;
                     int cracks_max = 4;
-
                     int.TryParse(Item.ExtraData, out cracks);
-
                     string state = "0";
-
-                    if (cracks >= 4)
-                        state = "8";
-                    else if (cracks >= 3)
-                        state = "6";
-                    else if (cracks >= 2)
-                        state = "4";
-                    else if (cracks >= 1)
-                        state = "2";
-
+                    if (cracks >= 4) state = "8";
+                    else if (cracks >= 3) state = "6";
+                    else if (cracks >= 2) state = "4";
+                    else if (cracks >= 1) state = "2";
                     Message.WriteInteger(7);
                     Message.WriteString(state);
                     Message.WriteInteger(cracks);
@@ -157,21 +141,15 @@ namespace Polar.HabboHotel.Items
                     if (!string.IsNullOrEmpty(Item.ExtraData) && Item.ExtraData.Contains(Convert.ToChar(5).ToString()))
                     {
                         string[] Stuff = Item.ExtraData.Split(Convert.ToChar(5));
-                        Message.WriteString("GENDER");
-                        Message.WriteString(Stuff[0]);
-                        Message.WriteString("FIGURE");
-                        Message.WriteString(Stuff[1]);
-                        Message.WriteString("OUTFIT_NAME");
-                        Message.WriteString(Stuff[2]);
+                        Message.WriteString("GENDER"); Message.WriteString(Stuff[0]);
+                        Message.WriteString("FIGURE"); Message.WriteString(Stuff[1]);
+                        Message.WriteString("OUTFIT_NAME"); Message.WriteString(Stuff[2]);
                     }
                     else
                     {
-                        Message.WriteString("GENDER");
-                        Message.WriteString("");
-                        Message.WriteString("FIGURE");
-                        Message.WriteString("");
-                        Message.WriteString("OUTFIT_NAME");
-                        Message.WriteString("");
+                        Message.WriteString("GENDER"); Message.WriteString("");
+                        Message.WriteString("FIGURE"); Message.WriteString("");
+                        Message.WriteString("OUTFIT_NAME"); Message.WriteString("");
                     }
                     break;
 
@@ -180,7 +158,6 @@ namespace Polar.HabboHotel.Items
                     {
                         if (Item.GetRoom().TonerData == null)
                             Item.GetRoom().TonerData = new TonerData(Item.Id);
-
                         Message.WriteInteger(5);
                         Message.WriteInteger(4);
                         Message.WriteInteger(Item.GetRoom().TonerData.Enabled);
@@ -198,11 +175,7 @@ namespace Polar.HabboHotel.Items
                 case InteractionType.BADGE_DISPLAY:
                     Message.WriteInteger(2);
                     Message.WriteInteger(4);
-
-                    string[] BadgeData = string.IsNullOrEmpty(Item.ExtraData)
-                        ? Array.Empty<string>()
-                        : Item.ExtraData.Split(Convert.ToChar(9));
-
+                    string[] BadgeData = string.IsNullOrEmpty(Item.ExtraData) ? Array.Empty<string>() : Item.ExtraData.Split(Convert.ToChar(9));
                     if (!string.IsNullOrEmpty(Item.ExtraData) && Item.ExtraData.Contains(Convert.ToChar(9).ToString()) && BadgeData.Length >= 3)
                     {
                         Message.WriteString("0");
@@ -212,10 +185,7 @@ namespace Polar.HabboHotel.Items
                     }
                     else
                     {
-                        Message.WriteString("0");
-                        Message.WriteString("DEV");
-                        Message.WriteString("Sledmore");
-                        Message.WriteString("13-13-1337");
+                        Message.WriteString("0"); Message.WriteString("DEV"); Message.WriteString("Sledmore"); Message.WriteString("13-13-1337");
                     }
                     break;
 
@@ -223,9 +193,7 @@ namespace Polar.HabboHotel.Items
                     Message.WriteInteger(1);
                     Message.WriteInteger(1);
                     Message.WriteString("THUMBNAIL_URL");
-
-                    var tv = PolarEnvironment.GetGame().GetTelevisionManager().TelevisionList
-                        .OrderBy(x => Guid.NewGuid()).FirstOrDefault();
+                    var tv = PolarEnvironment.GetGame().GetTelevisionManager().TelevisionList.OrderBy(x => Guid.NewGuid()).FirstOrDefault();
                     Message.WriteString("/youtubethumbnail.php?img=" + (tv?.YouTubeId ?? string.Empty));
                     break;
 
@@ -235,10 +203,7 @@ namespace Polar.HabboHotel.Items
                         var EData = Item.ExtraData.Split((char)5);
                         Message.WriteInteger(2);
                         Message.WriteInteger(EData.Length);
-                        for (int i = 0; i < EData.Length; i++)
-                        {
-                            Message.WriteString(EData[i]);
-                        }
+                        for (int i = 0; i < EData.Length; i++) Message.WriteString(EData[i]);
                     }
                     else
                     {
@@ -255,7 +220,7 @@ namespace Polar.HabboHotel.Items
                     break;
 
                 default:
-                    Message.WriteInteger(0); // Legacy StuffData Type
+                    Message.WriteInteger(0);
                     Message.WriteString(Item.GetBaseItem().InteractionType != InteractionType.FOOTBALL_GATE ? Item.ExtraData : string.Empty);
                     break;
             }
@@ -268,10 +233,83 @@ namespace Polar.HabboHotel.Items
                 default:
                     Message.WriteString(Item.ExtraData);
                     break;
-
                 case InteractionType.POSTIT:
                     Message.WriteString(string.IsNullOrEmpty(Item.ExtraData) ? string.Empty : Item.ExtraData.Split(' ')[0]);
                     break;
+            }
+        }
+
+        public static void WriteInventoryItem(Item item, ServerPacket packet)
+        {
+            packet.WriteInteger(item.Id);
+            packet.WriteString(item.GetBaseItem().Type.ToString().ToUpper());
+            packet.WriteInteger(item.Id);
+            packet.WriteInteger(item.GetBaseItem().SpriteId);
+
+            string itemName = item.GetBaseItem().ItemName;
+
+            if (itemName == "floor" || itemName == "landscape" || itemName == "song_disk" || itemName == "wallpaper" || itemName == "poster")
+            {
+                switch (itemName)
+                {
+                    case "landscape": packet.WriteInteger(4); break;
+                    case "floor": packet.WriteInteger(3); break;
+                    case "wallpaper": packet.WriteInteger(2); break;
+                    case "poster": packet.WriteInteger(6); break;
+                    case "song_disk": packet.WriteInteger(8); break;
+                }
+                packet.WriteInteger(0);
+                packet.WriteString(item.ExtraData ?? string.Empty);
+            }
+            else
+            {
+                if (itemName == "gnome_box")
+                    packet.WriteInteger(13);
+                else if (item.GetBaseItem().InteractionType == InteractionType.GIFT)
+                {
+                    string[] parts = item.ExtraData?.Split(Convert.ToChar(5)) ?? Array.Empty<string>();
+                    if (parts.Length >= 7 && int.TryParse(parts[0], out int colorId) && int.TryParse(parts[6], out int ribbonId))
+                        packet.WriteInteger((colorId * 1000) + ribbonId);
+                    else
+                        packet.WriteInteger(1);
+                }
+                else
+                    packet.WriteInteger(1);
+
+                GenerateExtradata(item, packet);
+            }
+
+            packet.WriteBoolean(item.GetBaseItem().AllowEcotronRecycle);
+            packet.WriteBoolean(item.GetBaseItem().AllowTrade);
+            packet.WriteBoolean(item.LimitedNo == 0 && item.GetBaseItem().AllowInventoryStack);
+            packet.WriteBoolean(item.GetBaseItem().AllowMarketplaceSell);
+            packet.WriteInteger(-1);
+            packet.WriteBoolean(false);
+            packet.WriteInteger(-1);
+
+            if (!item.IsWallItem)
+            {
+                packet.WriteString(string.Empty);
+                if (itemName == "song_disk")
+                {
+                    int trackId = 0;
+                    if (!string.IsNullOrEmpty(item.ExtraData))
+                    {
+                        string[] lines = item.ExtraData.Split('\n');
+                        int.TryParse(lines[lines.Length - 1], out trackId);
+                    }
+                    packet.WriteInteger(trackId);
+                }
+                else if (item.GetBaseItem().InteractionType == InteractionType.GIFT)
+                {
+                    string[] parts = item.ExtraData?.Split(Convert.ToChar(5)) ?? Array.Empty<string>();
+                    if (parts.Length >= 7 && int.TryParse(parts[0], out int colorId) && int.TryParse(parts[6], out int ribbonId))
+                        packet.WriteInteger((colorId * 1000) + ribbonId);
+                    else
+                        packet.WriteInteger(1);
+                }
+                else
+                    packet.WriteInteger(1);
             }
         }
     }
