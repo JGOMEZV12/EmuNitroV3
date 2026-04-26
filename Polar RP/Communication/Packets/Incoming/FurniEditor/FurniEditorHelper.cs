@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Data;
+using Polar.Core;
 
 namespace Polar.Communication.Packets.Incoming.FurniEditor
 {
@@ -49,20 +50,20 @@ namespace Polar.Communication.Packets.Incoming.FurniEditor
         {
             return new Dictionary<string, object>
             {
-                { "id",                      Convert.ToInt32(row["id"]) },
-                { "sprite_id",               Convert.ToInt32(row["sprite_id"]) },
-                { "item_name",               row["item_name"]?.ToString() ?? "" },
-                { "public_name",             row["public_name"]?.ToString() ?? "" },
-                { "type",                    row["type"]?.ToString() ?? "s" },
-                { "width",                   Convert.ToInt32(row["width"]) },
-                { "length",                  Convert.ToInt32(row["length"]) },
-                { "stack_height",            Convert.ToDouble(row["stack_height"]) },
-                { "allow_stack",             row["allow_stack"]?.ToString() ?? "1" },
-                { "allow_walk",              row["allow_walk"]?.ToString() ?? "0" },
-                { "allow_sit",               row["allow_sit"]?.ToString() ?? "0" },
-                { "allow_lay",               row["allow_lay"]?.ToString() ?? "0" },
-                { "interaction_type",        row["interaction_type"]?.ToString() ?? "" },
-                { "interaction_modes_count", Convert.ToInt32(row["interaction_modes_count"]) }
+                { "id",                      Convert.ToInt32(row[DatabaseCompatibility.FurniIdColumn]) },
+                { "sprite_id",               Convert.ToInt32(row[DatabaseCompatibility.FurniSpriteIdColumn]) },
+                { "item_name",               row[DatabaseCompatibility.FurniItemNameColumn]?.ToString() ?? "" },
+                { "public_name",             row.Table.Columns.Contains("public_name") ? row["public_name"]?.ToString() ?? "" : row[DatabaseCompatibility.FurniItemNameColumn]?.ToString() ?? "" },
+                { "type",                    row[DatabaseCompatibility.FurniTypeColumn]?.ToString() ?? "s" },
+                { "width",                   Convert.ToInt32(row[DatabaseCompatibility.FurniWidthColumn]) },
+                { "length",                  Convert.ToInt32(row[DatabaseCompatibility.FurniLengthColumn]) },
+                { "stack_height",            Convert.ToDouble(row[DatabaseCompatibility.FurniStackHeightColumn]) },
+                { "allow_stack",             row[DatabaseCompatibility.FurniAllowStackColumn]?.ToString() ?? "1" },
+                { "allow_walk",              row[DatabaseCompatibility.FurniAllowWalkColumn]?.ToString() ?? "0" },
+                { "allow_sit",               row[DatabaseCompatibility.FurniAllowSitColumn]?.ToString() ?? "0" },
+                { "allow_lay",               row.Table.Columns.Contains("allow_lay") ? row["allow_lay"]?.ToString() ?? "0" : "0" },
+                { "interaction_type",        row[DatabaseCompatibility.FurniInteractionTypeColumn]?.ToString() ?? "" },
+                { "interaction_modes_count", Convert.ToInt32(row[DatabaseCompatibility.FurniInteractionModesCountColumn]) }
             };
         }
 
@@ -70,19 +71,19 @@ namespace Polar.Communication.Packets.Incoming.FurniEditor
         {
             var item = ReadBaseItem(row);
 
-            item["allow_gift"] = row["allow_gift"]?.ToString() ?? "1";
-            item["allow_trade"] = row["allow_trade"]?.ToString() ?? "1";
-            item["allow_recycle"] = row["allow_recycle"]?.ToString() ?? "1";
-            item["allow_marketplace_sell"] = row["allow_marketplace_sell"]?.ToString() ?? "1";
-            item["allow_inventory_stack"] = row["allow_inventory_stack"]?.ToString() ?? "1";
-            item["vending_ids"] = row["vending_ids"]?.ToString() ?? "";
-            item["customparams"] = row["customparams"]?.ToString() ?? "";
-            item["effect_id_male"] = Convert.ToInt32(row["effect_id_male"]);
-            item["effect_id_female"] = Convert.ToInt32(row["effect_id_female"]);
-            item["clothing_on_walk"] = row["clothing_on_walk"]?.ToString() ?? "";
-            item["multiheight"] = row["multiheight"]?.ToString() ?? "";
+            item["allow_gift"] = row[DatabaseCompatibility.FurniAllowGiftColumn]?.ToString() ?? "1";
+            item["allow_trade"] = row[DatabaseCompatibility.FurniAllowTradeColumn]?.ToString() ?? "1";
+            item["allow_recycle"] = row[DatabaseCompatibility.FurniAllowRecycleColumn]?.ToString() ?? "1";
+            item["allow_marketplace_sell"] = row[DatabaseCompatibility.FurniAllowMarketplaceSellColumn]?.ToString() ?? "1";
+            item["allow_inventory_stack"] = row[DatabaseCompatibility.FurniAllowInventoryStackColumn]?.ToString() ?? "1";
+            item["vending_ids"] = row[DatabaseCompatibility.FurniVendingIdsColumn]?.ToString() ?? "";
+            item["customparams"] = row.Table.Columns.Contains("customparams") ? row["customparams"]?.ToString() ?? "" : "";
+            item["effect_id_male"] = Convert.ToInt32(row[DatabaseCompatibility.FurniEffectIdColumn]);
+            item["effect_id_female"] = row.Table.Columns.Contains("effect_id_female") ? Convert.ToInt32(row["effect_id_female"]) : Convert.ToInt32(row[DatabaseCompatibility.FurniEffectIdColumn]);
+            item["clothing_on_walk"] = row.Table.Columns.Contains("clothing_on_walk") ? row["clothing_on_walk"]?.ToString() ?? "" : "";
+            item["multiheight"] = row[DatabaseCompatibility.FurniHeightAdjustableColumn]?.ToString() ?? "";
 
-            try { item["description"] = row["description"]?.ToString() ?? ""; }
+            try { item["description"] = row.Table.Columns.Contains("description") ? row["description"]?.ToString() ?? "" : ""; }
             catch { item["description"] = ""; }
 
             return item;

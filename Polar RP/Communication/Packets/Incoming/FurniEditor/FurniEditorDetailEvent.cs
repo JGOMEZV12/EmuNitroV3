@@ -37,8 +37,7 @@ namespace Polar.Communication.Packets.Incoming.FurniEditor
 
             using (IQueryAdapter dbClient = PolarEnvironment.GetDatabaseManager().GetQueryReactor())
             {
-                // Cargar item completo
-                dbClient.SetQuery("SELECT * FROM `items_base` WHERE `id` = @id LIMIT 1");
+                dbClient.SetQuery($"SELECT * FROM `{DatabaseCompatibility.FurnitureTable}` WHERE `id` = @id LIMIT 1");
                 dbClient.AddParameter("id", itemId);
                 DataRow row = dbClient.getRow();
 
@@ -50,19 +49,18 @@ namespace Polar.Communication.Packets.Incoming.FurniEditor
 
                 item = FurniEditorHelper.ReadFullItem(row);
 
-                // Cantidad de instancias colocadas
-                dbClient.SetQuery("SELECT COUNT(*) FROM `items` WHERE `base_item` = @id");
+                dbClient.SetQuery($"SELECT COUNT(*) FROM `items` WHERE `{DatabaseCompatibility.ItemsBaseItemColumn}` = @id");
                 dbClient.AddParameter("id", itemId);
                 usageCount = dbClient.getInteger();
 
-                // Referencias de catálogo
                 dbClient.SetQuery(
                     "SELECT ci.id AS ci_id, ci.catalog_name, ci.cost_credits, ci.cost_points, ci.points_type, " +
                     "ci.page_id AS ci_page_id, COALESCE(cp.caption, '') AS page_caption " +
                     "FROM `catalog_items` ci " +
                     "LEFT JOIN `catalog_pages` cp ON ci.page_id = cp.id " +
-                    "WHERE ci.item_ids LIKE @pattern");
+                    "WHERE ci.item_ids LIKE @pattern OR ci.item_ids = @idstr");
                 dbClient.AddParameter("pattern", $"%{itemId}%");
+                dbClient.AddParameter("idstr", itemId.ToString());
 
                 DataTable catalogTable = dbClient.getTable();
                 if (catalogTable != null)
@@ -75,13 +73,7 @@ namespace Polar.Communication.Packets.Incoming.FurniEditor
             try { furniDataJson = FurniDataManager.GetItemJson(itemId); }
             catch { furniDataJson = "{}"; }
 
-            var packet = new FurniEditorDetailComposer(item, usageCount, catalogItems, furniDataJson);
-            byte[] data = packet.GetBytes();
-            Console.WriteLine($"Item: {item}");
-            Console.WriteLine($"Packet length: {data.Length}");
-            Console.WriteLine(BitConverter.ToString(data).Replace("-", " "));
-            session.SendMessage(packet);
-            //session.SendMessage(new FurniEditorDetailComposer(item, usageCount, catalogItems, furniDataJson));
+            session.SendMessage(new FurniEditorDetailComposer(item, usageCount, catalogItems, furniDataJson));
         }
     }
 }

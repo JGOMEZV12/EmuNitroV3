@@ -2,10 +2,14 @@ using System;
 using System.Collections.Generic;
 using System.Text;
 using System.Text.Json;
+using System.Threading.Tasks;
+using System.Linq;
 using Polar.Core;
 using Polar.HabboHotel.GameClients;
 using Polar.Communication.Packets.Outgoing.FurniEditor;
+using Polar.Communication.Packets.Outgoing.Rooms.Engine;
 using Polar.Database.Interfaces;
+using Polar.HabboHotel.Items;
 
 namespace Polar.Communication.Packets.Incoming.FurniEditor
 {
@@ -49,7 +53,6 @@ namespace Polar.Communication.Packets.Incoming.FurniEditor
                     return;
                 }
 
-                // Build dynamic UPDATE with whitelisted fields
                 var setClauses = new StringBuilder();
                 var paramNames = new List<string>();
                 var paramValues = new List<object>();
@@ -105,7 +108,6 @@ namespace Polar.Communication.Packets.Incoming.FurniEditor
                     using (IQueryAdapter dbClient = PolarEnvironment.GetDatabaseManager().GetQueryReactor())
                     {
                         dbClient.SetQuery(sql);
-                        // Add dynamic parameters
                         for (int i = 0; i < paramNames.Count; i++)
                             dbClient.AddParameter(paramNames[i], paramValues[i]);
                         dbClient.AddParameter("@id", id);
@@ -120,17 +122,39 @@ namespace Polar.Communication.Packets.Incoming.FurniEditor
                 }
             }
 
-            // Reload item definitions
-            // Reload item definitions
             _ = Task.Run(async () =>
             {
                 try
                 {
                     await PolarEnvironment.GetGame().GetItemManager().InitAsync();
+
+                    if (PolarEnvironment.GetGame().GetItemManager().GetItem(id, out ItemData newData))
+                    {
+                        var activeRooms = PolarEnvironment.GetGame().GetRoomManager().GetRooms();
+                        foreach (var room in activeRooms)
+                        {
+                            var itemsToUpdate = room.GetRoomItemHandler().GetWallAndFloor
+                                .Where(i => i.BaseItem == id).ToList();
+
+                            if (itemsToUpdate.Count == 0) continue;
+
+                            foreach (var item in itemsToUpdate)
+                            {
+                                room.GetGameMap().RemoveFromMap(item, false);
+                                item.Data = newData;
+                                room.GetGameMap().AddItemToMap(item, false, false);
+
+                                if (item.IsFloorItem)
+                                    room.SendMessage(new ObjectUpdateComposer(item, item.UserID));
+                                else
+                                    room.SendMessage(new ItemUpdateComposer(item, item.UserID));
+                            }
+                        }
+                    }
                 }
                 catch (Exception ex)
                 {
-                    Logging.LogException($"[FurniEditorUpdateEvent] InitAsync failed: {ex}");
+                    Logging.LogException($"[FurniEditorUpdateEvent] Update live instances failed: {ex}");
                 }
             });
 
