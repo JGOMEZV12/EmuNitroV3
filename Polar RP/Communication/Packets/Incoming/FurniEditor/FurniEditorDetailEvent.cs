@@ -53,8 +53,9 @@ namespace Polar.Communication.Packets.Incoming.FurniEditor
                 dbClient.AddParameter("id", itemId);
                 usageCount = dbClient.getInteger();
 
+                bool hasOfferId = DatabaseCompatibility.ColumnExists("catalog_items", "offer_id");
                 dbClient.SetQuery(
-                    "SELECT ci.id AS ci_id, ci.catalog_name, ci.cost_credits, ci.cost_points, ci.points_type, " +
+                    "SELECT ci.id AS ci_id, " + (hasOfferId ? "ci.offer_id" : "ci.id") + " AS offer_id, ci.catalog_name, ci.cost_credits, ci.cost_points, ci.points_type, " +
                     "ci.page_id AS ci_page_id, COALESCE(cp.caption, '') AS page_caption " +
                     "FROM `catalog_items` ci " +
                     "LEFT JOIN `catalog_pages` cp ON ci.page_id = cp.id " +

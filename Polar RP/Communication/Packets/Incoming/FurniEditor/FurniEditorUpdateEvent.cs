@@ -101,7 +101,7 @@ namespace Polar.Communication.Packets.Incoming.FurniEditor
                     return;
                 }
 
-                string sql = $"UPDATE items_base SET {setClauses} WHERE id = @id";
+                string sql = $"UPDATE `{DatabaseCompatibility.FurnitureTable}` SET {setClauses} WHERE id = @id";
 
                 try
                 {

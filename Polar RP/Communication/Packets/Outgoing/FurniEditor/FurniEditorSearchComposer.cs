@@ -19,7 +19,7 @@ namespace Polar.Communication.Packets.Outgoing.FurniEditor
                 {
                     // 14 campos base (igual que en detail)
                     WriteInteger(GetInt(item, "id"));
-                    WriteInteger(GetInt(item, "sprite_id"));
+                    int offId = GetInt(item, "offer_id", -1); WriteInteger(offId <= 0 ? GetInt(item, "sprite_id") : offId);
                     WriteString(GetStr(item, "item_name"));
                     WriteString(GetStr(item, "public_name"));
                     WriteString(GetStr(item, "type", "s"));
@@ -33,7 +33,7 @@ namespace Polar.Communication.Packets.Outgoing.FurniEditor
                     WriteString(GetStr(item, "interaction_type"));
                     WriteInteger(GetInt(item, "interaction_modes_count"));
 
-                    // 13 campos extendidos
+                    // 12 campos extendidos
                     WriteBoolean(GetBool(item, "allow_gift", true));
                     WriteBoolean(GetBool(item, "allow_trade", true));
                     WriteBoolean(GetBool(item, "allow_recycle", true));

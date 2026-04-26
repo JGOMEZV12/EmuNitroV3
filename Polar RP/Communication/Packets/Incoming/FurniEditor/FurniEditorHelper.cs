@@ -46,12 +46,13 @@ namespace Polar.Communication.Packets.Incoming.FurniEditor
             { "description",           "description" }
         };
 
-        public static Dictionary<string, object> ReadBaseItem(DataRow row)
+        public static Dictionary<string, object> ReadBaseItem(DataRow row, int offerId = -1)
         {
             return new Dictionary<string, object>
             {
                 { "id",                      Convert.ToInt32(row[DatabaseCompatibility.FurniIdColumn]) },
                 { "sprite_id",               Convert.ToInt32(row[DatabaseCompatibility.FurniSpriteIdColumn]) },
+                { "offer_id",                offerId },
                 { "item_name",               row[DatabaseCompatibility.FurniItemNameColumn]?.ToString() ?? "" },
                 { "public_name",             row.Table.Columns.Contains("public_name") ? row["public_name"]?.ToString() ?? "" : row[DatabaseCompatibility.FurniItemNameColumn]?.ToString() ?? "" },
                 { "type",                    row[DatabaseCompatibility.FurniTypeColumn]?.ToString() ?? "s" },
@@ -67,9 +68,9 @@ namespace Polar.Communication.Packets.Incoming.FurniEditor
             };
         }
 
-        public static Dictionary<string, object> ReadFullItem(DataRow row)
+        public static Dictionary<string, object> ReadFullItem(DataRow row, int offerId = -1)
         {
-            var item = ReadBaseItem(row);
+            var item = ReadBaseItem(row, offerId);
 
             item["allow_gift"] = row[DatabaseCompatibility.FurniAllowGiftColumn]?.ToString() ?? "1";
             item["allow_trade"] = row[DatabaseCompatibility.FurniAllowTradeColumn]?.ToString() ?? "1";

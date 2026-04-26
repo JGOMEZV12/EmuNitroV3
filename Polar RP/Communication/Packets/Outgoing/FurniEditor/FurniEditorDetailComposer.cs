@@ -13,7 +13,7 @@ public class FurniEditorDetailComposer : ServerPacket
     {
         // FurniItemData (base)
         WriteInteger(GetInt(item, "id"));
-        WriteInteger(GetInt(item, "sprite_id"));
+        int offId = GetInt(item, "offer_id", -1); WriteInteger(offId <= 0 ? GetInt(item, "sprite_id") : offId);
         WriteString(GetStr(item, "item_name"));
         WriteString(GetStr(item, "public_name"));
         WriteString(GetStr(item, "type", "s"));
