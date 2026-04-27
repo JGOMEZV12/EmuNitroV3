@@ -1,3 +1,5 @@
+using Polar.HabboHotel.Items.Wired;
+using System.Collections.Generic;
 using Polar.Communication.Packets.Outgoing;
 using System;
 using System.Linq;
@@ -25,39 +27,39 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Effects
             this.SetItems = new ConcurrentDictionary<int, Item>();
         }
 
-        public void HandleSave(ClientPacket Packet)
+                public void HandleSave(ClientPacket packet)
         {
-            int Unknown = Packet.PopInt();
-            string EffectId = Packet.PopString();
-            this.StringData = EffectId;
+            int paramsCount = packet.PopInt();
+            for (int i = 0; i < paramsCount; i++) packet.PopInt();
+
+            this.StringData = packet.PopString();
+
+            if (this.SetItems != null) this.SetItems.Clear();
+            int itemsCount = packet.PopInt();
+            for (int i = 0; i < itemsCount; i++)
+            {
+                Item item = Instance.GetRoomItemHandler().GetItem(packet.PopInt());
+                if (item != null) this.SetItems.TryAdd(item.Id, item);
+            }
+
+            int delay = packet.PopInt();
+            if (this is IWiredCycle cycle) cycle.Delay = delay;
         }
 
         
-        public void Serialize(ServerPacket Packet)
+                                public void Serialize(ServerPacket packet)
         {
-            Packet.WriteBoolean(false);
-            Packet.WriteInteger(100);
-            Packet.WriteInteger(SetItems.Count);
-            foreach (Item Item in SetItems.Values.ToList())
-            {
-                Packet.WriteInteger(Item.Id);
-            }
-            Packet.WriteInteger(Item.GetBaseItem().SpriteId);
-            Packet.WriteInteger(Item.Id);
-            Packet.WriteString(StringData);
-            Packet.WriteInteger(0);
-            if (this is IWiredCycle)
-            {
-                Packet.WriteInteger(WiredBoxTypeUtility.GetWiredId(Type));
-                Packet.WriteInteger(0);
-                Packet.WriteInteger(((IWiredCycle)this).Delay);
-            }
-            else
-            {
-                Packet.WriteInteger(0);
-                Packet.WriteInteger(WiredBoxTypeUtility.GetWiredId(Type));
-                Packet.WriteInteger(0);
-            }
+            packet.WriteBoolean(false);
+            packet.WriteInteger(100);
+            packet.WriteInteger(SetItems?.Count ?? 0);
+            foreach (var item in SetItems?.Values.ToList() ?? new List<Item>()) packet.WriteInteger(item.Id);
+            packet.WriteInteger(Item.GetBaseItem().SpriteId);
+            packet.WriteInteger(Item.Id);
+            packet.WriteString(StringData ?? "");
+            packet.WriteInteger(0); // Params count
+            packet.WriteInteger(0); // Categorical
+            packet.WriteInteger(WiredBoxTypeUtility.GetWiredId(Type));
+            packet.WriteInteger(this is IWiredCycle cycle ? cycle.Delay : 0);
         }
         public bool Execute(params object[] Params)
         {

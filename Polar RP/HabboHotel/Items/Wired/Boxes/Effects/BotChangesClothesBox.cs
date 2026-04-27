@@ -1,3 +1,4 @@
+using Polar.HabboHotel.Items.Wired;
 using System;
 using System.Linq;
 using System.Text;
@@ -30,48 +31,38 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Effects
             this.SetItems = new ConcurrentDictionary<int, Item>();
         }
 
-        public void HandleSave(ClientPacket Packet)
+                public void HandleSave(ClientPacket packet)
         {
-            int IntCount = Packet.PopInt();   // cantidad de ints
-            int BotSource = Packet.PopInt();   // botSource
-            string ChatConfig = Packet.PopString(); // "botName\tbotLook"
+            int paramsCount = packet.PopInt();
+            for (int i = 0; i < paramsCount; i++) packet.PopInt();
 
-            if (!ChatConfig.Contains("\t")) return;
-            string[] parts = ChatConfig.Split('\t');
-            if (parts.Length != 2) return;
+            this.StringData = packet.PopString();
 
-            this.StringData = BotSource + ";" + parts[0] + ";" + parts[1];
-        }
-
-        public void Serialize(ServerPacket Packet)
-        {
-            string botName = "";
-            string botLook = "";
-            int botSource = 0;
-
-            if (!string.IsNullOrEmpty(this.StringData))
+            if (this.SetItems != null) this.SetItems.Clear();
+            int itemsCount = packet.PopInt();
+            for (int i = 0; i < itemsCount; i++)
             {
-                string[] parts = this.StringData.Split(';');
-                if (parts.Length == 3)
-                {
-                    botSource = int.Parse(parts[0]);
-                    botName = parts[1];
-                    botLook = parts[2];
-                }
+                Item item = Instance.GetRoomItemHandler().GetItem(packet.PopInt());
+                if (item != null) this.SetItems.TryAdd(item.Id, item);
             }
 
-            Packet.WriteBoolean(false);
-            Packet.WriteInteger(5);
-            Packet.WriteInteger(0);
-            Packet.WriteInteger(Item.GetBaseItem().SpriteId);
-            Packet.WriteInteger(Item.Id);
-            Packet.WriteString(botName + "\t" + botLook);
-            Packet.WriteInteger(1);
-            Packet.WriteInteger(botSource);
-            Packet.WriteInteger(0);
-            Packet.WriteInteger(WiredBoxTypeUtility.GetWiredId(Type));
-            Packet.WriteInteger(0);
-            Packet.WriteInteger(0);
+            int delay = packet.PopInt();
+            if (this is IWiredCycle cycle) cycle.Delay = delay;
+        }
+
+                                public void Serialize(ServerPacket packet)
+        {
+            packet.WriteBoolean(false);
+            packet.WriteInteger(100);
+            packet.WriteInteger(SetItems?.Count ?? 0);
+            foreach (var item in SetItems?.Values.ToList() ?? new List<Item>()) packet.WriteInteger(item.Id);
+            packet.WriteInteger(Item.GetBaseItem().SpriteId);
+            packet.WriteInteger(Item.Id);
+            packet.WriteString(StringData ?? "");
+            packet.WriteInteger(0); // Params count
+            packet.WriteInteger(0); // Categorical
+            packet.WriteInteger(WiredBoxTypeUtility.GetWiredId(Type));
+            packet.WriteInteger(this is IWiredCycle cycle ? cycle.Delay : 0);
         }
 
         public bool Execute(params object[] Params)

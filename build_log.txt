@@ -1,0 +1,14 @@
+  Determining projects to restore...
+/app/Polar RP/Polar RP.csproj : warning NU1902: Package 'log4net' 3.0.4 has a known moderate severity vulnerability, https://github.com/advisories/GHSA-4f7c-pmjv-c25w [/app/Polar RP.sln]
+  All projects are up-to-date for restore.
+/app/Polar RP/Polar RP.csproj : warning NU1902: Package 'log4net' 3.0.4 has a known moderate severity vulnerability, https://github.com/advisories/GHSA-4f7c-pmjv-c25w
+  Polar RP -> /app/Polar RP/bin/Debug/net8.0/Polar RP.dll
+
+Build succeeded.
+
+/app/Polar RP/Polar RP.csproj : warning NU1902: Package 'log4net' 3.0.4 has a known moderate severity vulnerability, https://github.com/advisories/GHSA-4f7c-pmjv-c25w [/app/Polar RP.sln]
+/app/Polar RP/Polar RP.csproj : warning NU1902: Package 'log4net' 3.0.4 has a known moderate severity vulnerability, https://github.com/advisories/GHSA-4f7c-pmjv-c25w
+    2 Warning(s)
+    0 Error(s)
+
+Time Elapsed 00:00:02.54

@@ -1,3 +1,4 @@
+using Polar.HabboHotel.Items.Wired;
 using Polar.Communication.Packets.Incoming;
 using Polar.Communication.Packets.Outgoing;
 using Polar.Communication.Packets.Outgoing.Rooms.Engine;
@@ -55,51 +56,37 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Effects
         }
 
         // AMBAS CAJAS — HandleSave corregido:
-        public void HandleSave(ClientPacket Packet)
+                public void HandleSave(ClientPacket packet)
         {
-            int IntCount = Packet.PopInt();      // ints.length = 0 o 1
-            for (int i = 0; i < IntCount; i++)
-                Packet.PopInt();                 // consumir ints
+            int paramsCount = packet.PopInt();
+            for (int i = 0; i < paramsCount; i++) packet.PopInt();
 
-            string StringParam = Packet.PopString();
+            this.StringData = packet.PopString();
 
-            int FurniCount = Packet.PopInt();
-            SetItems.Clear();
-            for (int i = 0; i < FurniCount; i++)
+            if (this.SetItems != null) this.SetItems.Clear();
+            int itemsCount = packet.PopInt();
+            for (int i = 0; i < itemsCount; i++)
             {
-                Item selected = Instance.GetRoomItemHandler().GetItem(Packet.PopInt());
-                if (selected != null && !Instance.GetWired().OtherBoxHasItem(this, selected.Id))
-                    SetItems.TryAdd(selected.Id, selected);
+                Item item = Instance.GetRoomItemHandler().GetItem(packet.PopInt());
+                if (item != null) this.SetItems.TryAdd(item.Id, item);
             }
 
-            this.Delay = Packet.PopInt();
-            int SelectionCode = Packet.PopInt();
-
-            //Console.WriteLine($"[MoveFurniToUserBox] IntCount={IntCount} FurniCount={FurniCount} Delay={Delay} SelectionCode={SelectionCode}");
+            int delay = packet.PopInt();
+            if (this is IWiredCycle cycle) cycle.Delay = delay;
         }
-        public void Serialize(ServerPacket Packet)
+                                public void Serialize(ServerPacket packet)
         {
-            int furniSource = 0;
-            if (!string.IsNullOrEmpty(this.StringData))
-                int.TryParse(this.StringData, out furniSource);
-
-            Packet.WriteBoolean(false);                              // stuffTypeSelectionEnabled
-            Packet.WriteInteger(100);                                // furniLimit
-            Packet.WriteInteger(SetItems.Count);                     // stuffIds count
-            foreach (Item item in SetItems.Values.ToList())
-                Packet.WriteInteger(item.Id);                        // stuffIds
-
-            Packet.WriteInteger(Item.GetBaseItem().SpriteId);        // stuffTypeId
-            Packet.WriteInteger(Item.Id);                            // id
-            Packet.WriteString("");                                  // stringParam
-            Packet.WriteInteger(1);                                  // intParams count
-            Packet.WriteInteger(furniSource);                        // intParams[0] = furniSource
-            Packet.WriteInteger(0);                                  // stuffTypeSelectionCode
-
-            // WiredActionDefinition
-            Packet.WriteInteger(WiredBoxTypeUtility.GetWiredId(Type)); // type
-            Packet.WriteInteger(this.Delay);                           // delayInPulses
-            Packet.WriteInteger(0);                                    // conflictingTriggers count
+            packet.WriteBoolean(false);
+            packet.WriteInteger(100);
+            packet.WriteInteger(SetItems?.Count ?? 0);
+            foreach (var item in SetItems?.Values.ToList() ?? new List<Item>()) packet.WriteInteger(item.Id);
+            packet.WriteInteger(Item.GetBaseItem().SpriteId);
+            packet.WriteInteger(Item.Id);
+            packet.WriteString(StringData ?? "");
+            packet.WriteInteger(0); // Params count
+            packet.WriteInteger(0); // Categorical
+            packet.WriteInteger(WiredBoxTypeUtility.GetWiredId(Type));
+            packet.WriteInteger(this is IWiredCycle cycle ? cycle.Delay : 0);
         }
         public bool Execute(params object[] Params)
         {

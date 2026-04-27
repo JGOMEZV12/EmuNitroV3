@@ -1,8 +1,5 @@
-
-using Polar.HabboHotel.Items;
 using Polar.HabboHotel.Items.Wired;
-
-
+using System.Collections.Generic;
 namespace Polar.Communication.Packets.Outgoing.Rooms.Furni.Wired
 {
     class WiredEffectConfigComposer : ServerPacket
@@ -11,13 +8,8 @@ namespace Polar.Communication.Packets.Outgoing.Rooms.Furni.Wired
             : base(ServerPacketHeader.WiredEffectConfigMessageComposer)
         {
             Box.Serialize(this);
-
-            base.WriteInteger(BlockedItems.Count()); // Incompatible items loop
-            if (BlockedItems.Count() > 0)
-            {
-                foreach (int ItemId in BlockedItems.ToList())
-                    base.WriteInteger(ItemId);
-            }
+            WriteInteger(BlockedItems?.Count ?? 0);
+            if (BlockedItems != null) foreach (int Id in BlockedItems) WriteInteger(Id);
         }
     }
 }

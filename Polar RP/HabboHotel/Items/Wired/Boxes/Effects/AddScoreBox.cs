@@ -1,3 +1,4 @@
+using Polar.HabboHotel.Items.Wired;
 using Polar.Communication.Packets.Outgoing;
 using System;
 using System.Linq;
@@ -38,24 +39,23 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Effects
             this.TickCount = Delay;
         }
 
-        public void HandleSave(ClientPacket Packet)
+                public void HandleSave(ClientPacket packet)
         {
-            int IntCount = Packet.PopInt();   // cantidad de ints (= 3)
-            int Score = Packet.PopInt();   // score
-            int Operation = Packet.PopInt();   // 0 = add, 1 = remove
-            int UserSource = Packet.PopInt();  // fuente del usuario
-            string Unknown = Packet.PopString();
-            int Delay = Packet.PopInt();
+            int paramsCount = packet.PopInt();
+            for (int i = 0; i < paramsCount; i++) packet.PopInt();
 
-            Console.WriteLine($"[AddScore] HandleSave recibido:");
-            Console.WriteLine($"  IntCount:   {IntCount}");
-            Console.WriteLine($"  Score:      {Score}");
-            Console.WriteLine($"  Operation:  {Operation}");
-            Console.WriteLine($"  UserSource: {UserSource}");
-            Console.WriteLine($"  Delay:      {Delay}");
+            this.StringData = packet.PopString();
 
-            this.Delay = Delay;
-            this.StringData = Score + ";" + Operation + ";" + UserSource;
+            if (this.SetItems != null) this.SetItems.Clear();
+            int itemsCount = packet.PopInt();
+            for (int i = 0; i < itemsCount; i++)
+            {
+                Item item = Instance.GetRoomItemHandler().GetItem(packet.PopInt());
+                if (item != null) this.SetItems.TryAdd(item.Id, item);
+            }
+
+            int delay = packet.PopInt();
+            if (this is IWiredCycle cycle) cycle.Delay = delay;
         }
 
         public bool OnCycle()
@@ -81,30 +81,19 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Effects
         }
 
 
-        public void Serialize(ServerPacket Packet)
+                                public void Serialize(ServerPacket packet)
         {
-            if (string.IsNullOrEmpty(this.StringData))
-                this.StringData = "1;0;0";
-
-            string[] parts = this.StringData.Split(';');
-            int score = parts.Length > 0 ? int.Parse(parts[0]) : 1;
-            int operation = parts.Length > 1 ? int.Parse(parts[1]) : 0;
-            int userSource = parts.Length > 2 ? int.Parse(parts[2]) : 0;
-
-            Packet.WriteBoolean(false);
-            Packet.WriteInteger(5);
-            Packet.WriteInteger(0);
-            Packet.WriteInteger(Item.GetBaseItem().SpriteId);
-            Packet.WriteInteger(Item.Id);
-            Packet.WriteString("");
-            Packet.WriteInteger(3);
-            Packet.WriteInteger(score);
-            Packet.WriteInteger(operation);
-            Packet.WriteInteger(userSource);
-            Packet.WriteInteger(0);
-            Packet.WriteInteger(WiredBoxTypeUtility.GetWiredId(Type));
-            Packet.WriteInteger(this.Delay);
-            Packet.WriteInteger(0);
+            packet.WriteBoolean(false);
+            packet.WriteInteger(100);
+            packet.WriteInteger(SetItems?.Count ?? 0);
+            foreach (var item in SetItems?.Values.ToList() ?? new List<Item>()) packet.WriteInteger(item.Id);
+            packet.WriteInteger(Item.GetBaseItem().SpriteId);
+            packet.WriteInteger(Item.Id);
+            packet.WriteString(StringData ?? "");
+            packet.WriteInteger(0); // Params count
+            packet.WriteInteger(0); // Categorical
+            packet.WriteInteger(WiredBoxTypeUtility.GetWiredId(Type));
+            packet.WriteInteger(this is IWiredCycle cycle ? cycle.Delay : 0);
         }
         public bool Execute(params object[] Params)
         {

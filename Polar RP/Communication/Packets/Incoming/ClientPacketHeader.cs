@@ -1,6 +1,13 @@
 ﻿namespace Polar.Communication.Packets.Incoming
 {
     public static class ClientPacketHeader
+        public const int WiredMonitorRequestEvent = 10021;
+        public const int WiredRoomSettingsRequestEvent = 10022;
+        public const int WiredRoomSettingsSaveEvent = 10023;
+        public const int WiredUserVariablesRequestEvent = 10024;
+        public const int WiredUserVariableUpdateEvent = 10025;
+        public const int WiredUserVariableManageEvent = 10026;
+        public const int WiredUserInspectMoveEvent = 10027;
     {
         // PRODUCTION-201609061203-935497134
         public const int DeleteNavigatorSavedSearchMessageEvent = 1954; // PRODUCTION-201611291003-338511768
@@ -381,7 +388,7 @@
 
         // BattlePass
         public const int GetBattlePassMessageEvent = 10020;
-        public const int ClaimBattlePassRewardMessageEvent = 10021;
+        public const int ClaimBattlePassRewardMessageEvent = 10029;
 
         // Furni Editor
         public const int FurniEditorSearchEvent = 10040;

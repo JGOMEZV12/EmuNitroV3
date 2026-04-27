@@ -1,6 +1,11 @@
 ﻿namespace Polar.Communication.Packets.Outgoing
 {
     public static class ServerPacketHeader
+        public const int WiredMonitorDataComposer = 5101;
+        public const int WiredRoomSettingsDataComposer = 5102;
+        public const int WiredUserVariablesDataComposer = 5103;
+        public const int ConfInvisStateComposer = 5104;
+        public const int AreaHideComposer = 6001;
     {
         // PRODUCTION-201609061203-935497134
         public const int NavigatorSavedSearchMessageComposer = 3984; // PRODUCTION-201611291003-338511768

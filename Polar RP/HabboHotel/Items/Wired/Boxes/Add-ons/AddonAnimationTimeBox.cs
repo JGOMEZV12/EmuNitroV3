@@ -1,3 +1,6 @@
+using Polar.HabboHotel.Items.Wired;
+using System.Collections.Generic;
+using System.Linq;
 using Polar.Communication.Packets.Outgoing;
 using Polar.Communication.Packets.Incoming;
 using Polar.HabboHotel.Rooms;
@@ -33,35 +36,38 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Add_ons
             this.StringData = "";
         }
 
-        public void HandleSave(ClientPacket packet)
+                public void HandleSave(ClientPacket packet)
         {
-            int value = packet.PopInt();
+            int paramsCount = packet.PopInt();
+            for (int i = 0; i < paramsCount; i++) packet.PopInt();
 
-            // Fallback a StringData si el valor no cambió y StringData tiene algo
-            if (value == _durationMs && !string.IsNullOrEmpty(StringData))
+            this.StringData = packet.PopString();
+
+            if (this.SetItems != null) this.SetItems.Clear();
+            int itemsCount = packet.PopInt();
+            for (int i = 0; i < itemsCount; i++)
             {
-                if (!int.TryParse(StringData, out value))
-                    value = _durationMs;
+                Item item = Instance.GetRoomItemHandler().GetItem(packet.PopInt());
+                if (item != null) this.SetItems.TryAdd(item.Id, item);
             }
 
-            _durationMs = NormalizeDuration(value);
-            StringData = JsonSerializer.Serialize(new JsonData(_durationMs));
+            int delay = packet.PopInt();
+            if (this is IWiredCycle cycle) cycle.Delay = delay;
         }
 
-        public void Serialize(ServerPacket packet)
+                                public void Serialize(ServerPacket packet)
         {
             packet.WriteBoolean(false);
-            packet.WriteInteger(0);
-            packet.WriteInteger(0);
+            packet.WriteInteger(100);
+            packet.WriteInteger(SetItems?.Count ?? 0);
+            foreach (var item in SetItems?.Values.ToList() ?? new List<Item>()) packet.WriteInteger(item.Id);
             packet.WriteInteger(Item.GetBaseItem().SpriteId);
             packet.WriteInteger(Item.Id);
-            packet.WriteString("");
-            packet.WriteInteger(1);
-            packet.WriteInteger(_durationMs);
-            packet.WriteInteger(0);
+            packet.WriteString(StringData ?? "");
+            packet.WriteInteger(0); // Params count
+            packet.WriteInteger(0); // Categorical
             packet.WriteInteger(WiredBoxTypeUtility.GetWiredId(Type));
-            packet.WriteInteger(0);
-            packet.WriteInteger(0);
+            packet.WriteInteger(this is IWiredCycle cycle ? cycle.Delay : 0);
         }
 
         public void LoadData(string wiredData)

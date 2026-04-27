@@ -1,3 +1,4 @@
+using Polar.HabboHotel.Items.Wired;
 using Polar.Communication.Packets.Outgoing;
 using Polar.Communication.Packets.Incoming;
 using Polar.HabboHotel.Rooms;
@@ -41,33 +42,38 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Add_ons
             this.StringData = "";
         }
 
-        public void HandleSave(ClientPacket packet)
+                public void HandleSave(ClientPacket packet)
         {
-            int resolvedPickAmount = packet.PopInt();
-            int resolvedSkipExecutions = packet.PopInt();
+            int paramsCount = packet.PopInt();
+            for (int i = 0; i < paramsCount; i++) packet.PopInt();
 
-            _pickAmount = NormalizePickAmount(resolvedPickAmount);
-            _skipExecutions = NormalizeSkipExecutions(resolvedSkipExecutions);
-            ClearRecentExecutions();
+            this.StringData = packet.PopString();
 
-            StringData = JsonSerializer.Serialize(new JsonData(_pickAmount, _skipExecutions));
+            if (this.SetItems != null) this.SetItems.Clear();
+            int itemsCount = packet.PopInt();
+            for (int i = 0; i < itemsCount; i++)
+            {
+                Item item = Instance.GetRoomItemHandler().GetItem(packet.PopInt());
+                if (item != null) this.SetItems.TryAdd(item.Id, item);
+            }
+
+            int delay = packet.PopInt();
+            if (this is IWiredCycle cycle) cycle.Delay = delay;
         }
 
-        public void Serialize(ServerPacket packet)
+                                public void Serialize(ServerPacket packet)
         {
             packet.WriteBoolean(false);
-            packet.WriteInteger(0);
-            packet.WriteInteger(0);
+            packet.WriteInteger(100);
+            packet.WriteInteger(SetItems?.Count ?? 0);
+            foreach (var item in SetItems?.Values.ToList() ?? new List<Item>()) packet.WriteInteger(item.Id);
             packet.WriteInteger(Item.GetBaseItem().SpriteId);
             packet.WriteInteger(Item.Id);
-            packet.WriteString("");
-            packet.WriteInteger(2);
-            packet.WriteInteger(_pickAmount);
-            packet.WriteInteger(_skipExecutions);
-            packet.WriteInteger(0);
+            packet.WriteString(StringData ?? "");
+            packet.WriteInteger(0); // Params count
+            packet.WriteInteger(0); // Categorical
             packet.WriteInteger(WiredBoxTypeUtility.GetWiredId(Type));
-            packet.WriteInteger(0);
-            packet.WriteInteger(0);
+            packet.WriteInteger(this is IWiredCycle cycle ? cycle.Delay : 0);
         }
 
         public void LoadData(string wiredData)
