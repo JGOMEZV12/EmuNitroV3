@@ -17,7 +17,7 @@ namespace Polar.HabboHotel.Items
         {
             if (Item.LimitedNo > 0)
             {
-                Message.WriteInteger(1 | 0x100);
+                Message.WriteInteger(0x100);
                 Message.WriteInteger(1);
                 Message.WriteString(Item.ExtraData ?? "");
                 Message.WriteInteger(Item.LimitedNo);
@@ -55,9 +55,9 @@ namespace Polar.HabboHotel.Items
                 case InteractionType.INFORMATION_TERMINAL:
                     Message.WriteInteger(1);
                     Dictionary<string, string> values = new Dictionary<string, string>();
-                    if (!string.IsNullOrEmpty(Item.ExtraData) && Item.ExtraData.Contains('	'))
+                    if (!string.IsNullOrEmpty(Item.ExtraData) && Item.ExtraData.Contains('\t'))
                     {
-                        string[] parts = Item.ExtraData.Split('	');
+                        string[] parts = Item.ExtraData.Split('\t');
                         for (int i = 0; i < parts.Length - 1; i += 2)
                         {
                             values[parts[i]] = parts[i + 1];
@@ -80,9 +80,9 @@ namespace Polar.HabboHotel.Items
                     }
                     else
                     {
-                        if (!int.TryParse(extraData[6], out int giftStyle))
-                            giftStyle = 0;
-                        int style = giftStyle * 1000 + giftStyle;
+                        int style = 0;
+                        if (int.TryParse(extraData[0], out int colorId) && int.TryParse(extraData[6], out int ribbonId))
+                            style = (colorId * 1000) + ribbonId;
 
                         using (UserCache purchaser = PolarEnvironment.GetGame().GetCacheManager().GenerateUser(Convert.ToInt32(extraData[2])))
                         {
@@ -93,11 +93,10 @@ namespace Polar.HabboHotel.Items
                             }
                             else
                             {
-                                Message.WriteInteger(style);
                                 Message.WriteInteger(1);
                                 Message.WriteInteger(6);
                                 Message.WriteString("EXTRA_PARAM");
-                                Message.WriteString(string.Empty);
+                                Message.WriteString(style.ToString());
                                 Message.WriteString("MESSAGE");
                                 Message.WriteString(extraData[1]);
                                 Message.WriteString("PURCHASER_NAME");
@@ -115,17 +114,11 @@ namespace Polar.HabboHotel.Items
 
                 case InteractionType.FARMING:
                     int cracks = 0;
-                    int cracks_max = 4;
                     int.TryParse(Item.ExtraData, out cracks);
-                    string state = "0";
-                    if (cracks >= 4) state = "8";
-                    else if (cracks >= 3) state = "6";
-                    else if (cracks >= 2) state = "4";
-                    else if (cracks >= 1) state = "2";
                     Message.WriteInteger(7);
-                    Message.WriteString(state);
+                    Message.WriteString(cracks >= 4 ? "8" : (cracks * 2).ToString());
                     Message.WriteInteger(cracks);
-                    Message.WriteInteger(cracks_max);
+                    Message.WriteInteger(4);
                     break;
 
                 case InteractionType.CRACKABLE_EGG:
@@ -176,7 +169,7 @@ namespace Polar.HabboHotel.Items
                     Message.WriteInteger(2);
                     Message.WriteInteger(4);
                     string[] BadgeData = string.IsNullOrEmpty(Item.ExtraData) ? Array.Empty<string>() : Item.ExtraData.Split(Convert.ToChar(9));
-                    if (!string.IsNullOrEmpty(Item.ExtraData) && Item.ExtraData.Contains(Convert.ToChar(9).ToString()) && BadgeData.Length >= 3)
+                    if (BadgeData.Length >= 3)
                     {
                         Message.WriteString("0");
                         Message.WriteString(BadgeData[0]);
@@ -257,6 +250,7 @@ namespace Polar.HabboHotel.Items
                     case "wallpaper": packet.WriteInteger(2); break;
                     case "poster": packet.WriteInteger(6); break;
                     case "song_disk": packet.WriteInteger(8); break;
+                    default: packet.WriteInteger(1); break;
                 }
                 packet.WriteInteger(0);
                 packet.WriteString(item.ExtraData ?? string.Empty);
@@ -281,15 +275,15 @@ namespace Polar.HabboHotel.Items
 
             packet.WriteBoolean(item.GetBaseItem().AllowEcotronRecycle);
             packet.WriteBoolean(item.GetBaseItem().AllowTrade);
-            packet.WriteBoolean(item.LimitedNo == 0 && item.GetBaseItem().AllowInventoryStack);
-            packet.WriteBoolean(item.GetBaseItem().AllowMarketplaceSell);
-            packet.WriteInteger(-1);
-            packet.WriteBoolean(false);
-            packet.WriteInteger(-1);
+            packet.WriteBoolean(item.LimitedNo == 0 && item.GetBaseItem().AllowInventoryStack); // Nitro order: 3. Stackable
+            packet.WriteBoolean(item.GetBaseItem().AllowMarketplaceSell); // Nitro order: 4. Sellable
+            packet.WriteInteger(-1); // secondsToExpire
+            packet.WriteBoolean(false); // hasRentPeriodStarted
+            packet.WriteInteger(-1); // roomId
 
             if (!item.IsWallItem)
             {
-                packet.WriteString(string.Empty);
+                packet.WriteString(string.Empty); // slotId
                 if (itemName == "song_disk")
                 {
                     int trackId = 0;

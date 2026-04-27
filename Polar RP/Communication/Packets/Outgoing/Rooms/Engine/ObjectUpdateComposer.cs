@@ -26,28 +26,35 @@ namespace Polar.Communication.Packets.Outgoing.Rooms.Engine
             if (interactionType == InteractionType.GIFT)
             {
                 string[] giftData = item.ExtraData?.Split((char)5) ?? Array.Empty<string>();
-                if (giftData.Length >= 7 && int.TryParse(giftData[6], out int giftStyle))
-                    WriteInteger(giftStyle * 1000 + giftStyle);
+                if (giftData.Length >= 7 && int.TryParse(giftData[0], out int colorId) && int.TryParse(giftData[6], out int ribbonId))
+                    WriteInteger(colorId * 1000 + ribbonId);
                 else
-                    WriteInteger(0);
+                    WriteInteger(1);
             }
             else if (interactionType == InteractionType.MUSIC_DISC)
             {
                 if (int.TryParse(item.ExtraData, out int songId))
                     WriteInteger(songId);
                 else
-                    WriteInteger(0);
+                    WriteInteger(1);
             }
             else
             {
-                WriteInteger(0);
+                WriteInteger(1);
             }
 
             ItemBehaviourUtility.GenerateExtradata(item, this);
 
             WriteInteger(-1); // expires
-            WriteInteger(0);  // usagePolicy
+            WriteInteger(item.GetBaseItem().Modes > 1 ? 1 : 0); // usagePolicy
             WriteInteger(userId);
+            WriteInteger(item.Data.Stackable ? 1 : 0);
+            WriteInteger(item.Data.IsSeat ? 1 : 0);
+            WriteInteger(0); // allowLay
+            WriteInteger(item.Data.Walkable ? 1 : 0);
+            WriteInteger(item.Data.Width);
+            WriteInteger(item.Data.Length);
+            WriteInteger(0); // teleportTargetId
         }
     }
 }
