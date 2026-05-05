@@ -82,6 +82,7 @@ namespace Polar.HabboHotel.Items
         public FarmingData FarmingData;
         public TexasHoldEmItem TexasHoldEmData;
         public WiredComponent WiredComponent;
+        public string WiredData;
 
         public Dictionary<int, ThreeDCoord> GetAffectedTiles2 { get; private set; }
 
@@ -111,7 +112,7 @@ namespace Polar.HabboHotel.Items
         public Item(int id, int roomId, int baseItem, string extraData, int x, int y, double z, int rot,
             int userid, int group, int limitedNumber, int limitedStack, string wallCoord,
             Room room = null, RentableSpaceData house = null, FarmingSpace farmingSpace = null,
-            TexasHoldEmItem texasHoldEmData = null)
+            TexasHoldEmItem texasHoldEmData = null, string wiredData = "")
         {
             ItemData data = null;
             if (!PolarEnvironment.GetGame().GetItemManager().GetItem(baseItem, out data))
@@ -143,6 +144,7 @@ namespace Polar.HabboHotel.Items
             LimitedNo = limitedNumber;
             LimitedTot = limitedStack;
             TexasHoldEmData = texasHoldEmData;
+            WiredData = wiredData;
 
             // FIX: cacheamos GetBaseItem() una sola vez en el constructor
             var baseItemData = GetBaseItem();
