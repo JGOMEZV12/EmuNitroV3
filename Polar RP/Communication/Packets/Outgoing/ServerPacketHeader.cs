@@ -331,6 +331,7 @@
         public const int SendRoomThumbnailAlertMessageComposer = 3595; // PRODUCTION-201611291003-338511768
         /* Nux */
         public const int NuxAlertMessageComposer = 2023; // PRODUCTION-201611291003-338511768
+        public const int InClientLinkComposer = 2023;
         public const int NuxUserStatus = 3738; // PRODUCTION-201611291003-338511768
         public const int LTDCountdownComposer = 3926; // PRODUCTION-201611291003-338511768
         public const int NuxItemListComposer = 3575; // PRODUCTION-201611291003-338511768
@@ -355,6 +356,11 @@
         public const int ReloadRecyclerComposer = 3433; // PRODUCTION-201611291003-338511768
         public const int RecyclerStateComposer = 468; // PRODUCTION-201611291003-338511768
 
+        public const int WiredMonitorDataComposer = 5101; // CUSTOM
+        public const int WiredRoomSettingsDataComposer = 5102; // CUSTOM
+        public const int WiredUserVariablesDataComposer = 5103; // CUSTOM
+        public const int ConfInvisStateComposer = 5104; // CUSTOM
+        public const int AreaHideComposer = 6001; // CUSTOM
         // RP Inventory
         public const int RPItemList = 5300;
 

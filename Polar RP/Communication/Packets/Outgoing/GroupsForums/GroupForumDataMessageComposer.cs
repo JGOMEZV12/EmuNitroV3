@@ -8,6 +8,7 @@ namespace Polar.Communication.Packets.Outgoing.Groups
     {
         public Group group { get; }
         public GameClient Session { get; }
+
         public GroupForumDataMessageComposer(Group Group, GameClient session)
             : base(ServerPacketHeader.GroupForumDataMessageComposer)
         {
@@ -18,69 +19,68 @@ namespace Polar.Communication.Packets.Outgoing.Groups
 
         public void Compose(ServerPacket packet)
         {
-            string string1 = string.Empty, string2 = string.Empty, string3 = string.Empty, string4 = string.Empty;
+            bool IsMember = Session.GetHabbo().GetPermissions().HasRight("all_groups_member") || group.IsMember(Session.GetHabbo().Id);
+            bool IsAdmin = Session.GetHabbo().GetPermissions().HasRight("all_groups_admin") || group.IsAdmin(Session.GetHabbo().Id);
+            bool IsOwner = Session.GetHabbo().GetPermissions().HasRight("all_groups_owner") || group.CreatorId == Session.GetHabbo().Id;
+            bool IsStaff = Session.GetHabbo().GetPermissions().HasRight("acc_modtool_ticket_q");
 
-            bool IsMember = false;
-            bool IsAdmin = false;
-            bool IsOwner = false;
-
-            if (Session.GetHabbo().GetPermissions().HasRight("all_groups_member") || group.IsMember(Session.GetHabbo().Id))
-                IsMember = true;
-            if (Session.GetHabbo().GetPermissions().HasRight("all_groups_admin") || group.IsAdmin(Session.GetHabbo().Id))
-                IsAdmin = true;
-            if (Session.GetHabbo().GetPermissions().HasRight("all_groups_owner") || group.CreatorId == Session.GetHabbo().Id)
-                IsOwner = true;
+            // ── Datos del foro ─────────────────────────────────────────────────
+            // Java: serializeForumData() — totalThreads, totalComments, newComments, lastComment
+            int totalThreads = 0;
+            int totalComments = group.ForumMessagesCount;
+            int newComments = 0;
+            int lastPosterId = group.ForumLastPosterId;
+            string lastPosterName = group.ForumLastPosterName;
+            int lastPostTime = group.ForumLastPostTime;
 
             packet.WriteInteger(group.Id);
             packet.WriteString(group.Name);
             packet.WriteString(group.Description);
             packet.WriteString(group.Badge);
-            packet.WriteInteger(0);
-            packet.WriteInteger(0);
-            packet.WriteInteger(group.ForumMessagesCount);
-            packet.WriteInteger(0);
-            packet.WriteInteger(0);
-            packet.WriteInteger(group.ForumLastPosterId);
-            packet.WriteString(group.ForumLastPosterName);
-            packet.WriteInteger(group.ForumLastPostTime);
+            packet.WriteInteger(totalThreads);      // ✅ Java: totalThreads (no hardcoded 0)
+            packet.WriteInteger(0);                  // rating
+            packet.WriteInteger(totalComments);      // ✅ Java: total comments
+            packet.WriteInteger(newComments);        // ✅ Java: unread comments (no hardcoded 0)
+            packet.WriteInteger(lastPosterId);       // ✅ Java: lastComment.threadId → lastComment.userId
+            packet.WriteString(lastPosterName);
+            packet.WriteInteger(lastPostTime);       // tiempo relativo (now - createdAt)
             packet.WriteInteger(group.WhoCanRead);
             packet.WriteInteger(group.WhoCanPost);
             packet.WriteInteger(group.WhoCanThread);
             packet.WriteInteger(group.WhoCanMod);
 
-            if (group.WhoCanRead == 1 && !IsMember)
-                string1 = "not_member";
-            if (group.WhoCanRead == 2 && !IsAdmin)
-                string1 = "not_admin";
-            if (group.WhoCanRead == 3 && !IsOwner)
-                string1 = "not_owner";
+            // ── Errores de permiso — lógica exacta del Java ───────────────────
+            string errorRead = "";
+            if (group.WhoCanRead == 1 && !IsMember && !IsStaff) errorRead = "not_member";
+            else if (group.WhoCanRead == 2 && !IsAdmin && !IsStaff) errorRead = "not_admin";
 
-            if (group.WhoCanPost == 1 && !IsMember)
-                string2 = "not_member";
-            if (group.WhoCanPost == 2 && !IsAdmin)
-                string2 = "not_admin";
-            if (group.WhoCanPost == 3 && !IsOwner)
-                string2 = "not_owner";
+            string errorPost = "";
+            if (group.WhoCanPost == 1 && !IsMember && !IsStaff) errorPost = "not_member";
+            else if (group.WhoCanPost == 2 && !IsAdmin && !IsStaff) errorPost = "not_admin";
+            else if (group.WhoCanPost == 3 && group.CreatorId != Session.GetHabbo().Id && !IsStaff) errorPost = "not_owner";
 
-            if (group.WhoCanThread == 1 && !IsMember)
-                string3 = "not_member";
-            if (group.WhoCanThread == 2 && !IsAdmin)
-                string3 = "not_admin";
-            if (group.WhoCanThread == 3 && !IsOwner)
-                string3 = "not_owner";
+            string errorThread = "";
+            if (group.WhoCanThread == 1 && !IsMember && !IsStaff) errorThread = "not_member";
+            else if (group.WhoCanThread == 2 && !IsAdmin && !IsStaff) errorThread = "not_admin";
+            else if (group.WhoCanThread == 3 && group.CreatorId != Session.GetHabbo().Id && !IsStaff) errorThread = "not_owner";
 
-            if (group.WhoCanMod == 2 && !IsAdmin)
-                string4 = "not_admin";
-            if (group.WhoCanMod == 3 && !IsOwner)
-                string4 = "not_owner";
+            string errorMod = "";
+            if (group.WhoCanMod == 3 && group.CreatorId != Session.GetHabbo().Id && !IsStaff) errorMod = "not_owner";
+            else if (!IsAdmin && !IsStaff) errorMod = "not_admin";
 
-            packet.WriteString(string1);
-            packet.WriteString(string2);
-            packet.WriteString(string3);
-            packet.WriteString(string4);
-            packet.WriteString(string.Empty);
-            packet.WriteBoolean(Session.GetHabbo().Id == group.CreatorId);
-            packet.WriteBoolean(true);
+            packet.WriteString(errorRead);
+            packet.WriteString(errorPost);
+            packet.WriteString(errorThread);
+            packet.WriteString(errorMod);
+            packet.WriteString("");  // citizen
+
+            packet.WriteBoolean(group.CreatorId == Session.GetHabbo().Id); // Forum Settings
+
+            // ✅ Java: canMod depende de WhoCanMod.state
+            if (group.WhoCanMod == 3)
+                packet.WriteBoolean(group.CreatorId == Session.GetHabbo().Id || IsStaff);
+            else
+                packet.WriteBoolean(group.CreatorId == Session.GetHabbo().Id || IsStaff || IsAdmin);
         }
     }
 }

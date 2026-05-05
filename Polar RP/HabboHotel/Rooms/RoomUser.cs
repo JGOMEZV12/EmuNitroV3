@@ -278,18 +278,18 @@ namespace Polar.HabboHotel.Rooms
                 if (user == null || user.IsBot) continue;
                 if (user.GetClient()?.GetHabbo() == null) continue;
 
-               /*if (IsPet)
-                {
-                    //if (!user.GetClient().GetHabbo().AllowPetSpeech) continue;
-                    user.GetClient().SendMessage(new ChatComposer(VirtualId, message, 0, 0, string.Empty));
-                }
+                /*if (IsPet)
+                 {
+                     //if (!user.GetClient().GetHabbo().AllowPetSpeech) continue;
+                     user.GetClient().SendMessage(new ChatComposer(VirtualId, message, 0, 0, string.Empty));
+                 }
+                 else
+                 {*/
+                int effectiveBubble = bubble == 0 ? 2 : bubble;
+                if (!shout)
+                    user.GetClient().SendMessage(new ChatComposer(VirtualId, message, 0, effectiveBubble, colour));
                 else
-                {*/
-                    int effectiveBubble = bubble == 0 ? 2 : bubble;
-                    if (!shout)
-                        user.GetClient().SendMessage(new ChatComposer(VirtualId, message, 0, effectiveBubble, colour));
-                    else
-                        user.GetClient().SendMessage(new ShoutComposer(VirtualId, message, 0, effectiveBubble, colour));
+                    user.GetClient().SendMessage(new ShoutComposer(VirtualId, message, 0, effectiveBubble, colour));
                 //}
             }
         }
@@ -369,20 +369,20 @@ namespace Polar.HabboHotel.Rooms
                 string translated = PolarEnvironment.translate(finalMessage, lg1, lg2)
                                     + $" [{lg1.ToUpper()} -> {lg2.ToUpper()}]";
                 int emotion = PolarEnvironment.GetGame().GetChatManager().GetEmotions().GetEmotionsForText(finalMessage);
-                GetRoom().SendMessage(new UserNameChangeComposer(habbo, true));
+                //GetRoom().SendMessage(new UserNameChangeComposer(habbo, true));
                 packet = shout
                     ? new ShoutComposer(VirtualId, translated, emotion, bubble, colour)
                     : (ServerPacket)new ChatComposer(VirtualId, translated, emotion, bubble, colour);
-                GetRoom().SendMessage(new UserNameChangeComposer(habbo, true));
+                //GetRoom().SendMessage(new UserNameChangeComposer(habbo, true));
             }
             else
             {
-                GetRoom().SendMessage(new UserNameChangeComposer(habbo, true));
+                //GetRoom().SendMessage(new UserNameChangeComposer(habbo, true));
                 int emotion = PolarEnvironment.GetGame().GetChatManager().GetEmotions().GetEmotionsForText(finalMessage);
                 packet = shout
                     ? new ShoutComposer(VirtualId, finalMessage, emotion, bubble, colour)
                     : (ServerPacket)new ChatComposer(VirtualId, finalMessage, emotion, bubble, colour);
-                GetRoom().SendMessage(new UserNameChangeComposer(habbo, true));
+                //GetRoom().SendMessage(new UserNameChangeComposer(habbo, true));
             }
 
             var roomUserMgr = mRoom.GetRoomUserManager();
@@ -392,7 +392,7 @@ namespace Polar.HabboHotel.Rooms
                 var rp = senderClient?.GetRoleplay();
                 int senderId = senderClient?.GetHabbo()?.Id ?? 0;
 
-                GetRoom().SendMessage(new UserNameChangeComposer(habbo, true));
+                //GetRoom().SendMessage(new UserNameChangeComposer(habbo, true));
                 foreach (RoomUser user in roomUserMgr.GetRoomUsers().ToList())
                 {
                     if (user?.GetClient()?.GetHabbo() == null) continue;
@@ -405,7 +405,7 @@ namespace Polar.HabboHotel.Rooms
 
                     user.GetClient().SendMessage(packet);
                 }
-                GetRoom().SendMessage(new UserNameChangeComposer(habbo, true));
+                //GetRoom().SendMessage(new UserNameChangeComposer(habbo, true));
             }
 
 

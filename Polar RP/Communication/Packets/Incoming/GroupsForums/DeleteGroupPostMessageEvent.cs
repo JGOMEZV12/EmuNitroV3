@@ -2,11 +2,8 @@
 using System.Data;
 using System.Linq;
 using System.Collections.Generic;
-
 using Polar.Database.Interfaces;
 using Polar.HabboHotel.GameClients;
-using Polar.HabboHotel.Guides;
-using Polar.HabboHotel.Rooms;
 using Polar.HabboHotel.Groups;
 using Polar.Communication.Packets.Outgoing.Groups;
 using Polar.Communication.Packets.Outgoing.Rooms.Notifications;
@@ -23,75 +20,58 @@ namespace Polar.Communication.Packets.Incoming.Groups
             int StateToSet = Packet.PopInt();
 
             Group group = GroupManager.GetJob(groupId);
-            bool IsAdmin = false;
-            if (group.IsAdmin(Session.GetHabbo().Id) || Session.GetHabbo().GetPermissions().HasRight("corporation_rights") || group.CreatorId == Session.GetHabbo().Id || Session.GetHabbo().GetPermissions().HasRight("roleplay_corp_manager"))
-                IsAdmin = true;
+            if (group == null || !group.ForumEnabled) return;
 
-            if (!IsAdmin)
-                return;
+            bool IsAdmin = group.IsAdmin(Session.GetHabbo().Id)
+                        || Session.GetHabbo().GetPermissions().HasRight("corporation_rights")
+                        || group.CreatorId == Session.GetHabbo().Id
+                        || Session.GetHabbo().GetPermissions().HasRight("roleplay_corp_manager");
 
-            if (group == null || !group.ForumEnabled)
-                return;
+            if (!IsAdmin) return;
 
             using (IQueryAdapter dbClient = PolarEnvironment.GetDatabaseManager().GetQueryReactor())
             {
-                dbClient.SetQuery(string.Format("SELECT * FROM groups_forums_posts WHERE parent_id = {0} ORDER BY id", parentId));
+                dbClient.SetQuery("SELECT * FROM groups_forums_posts WHERE parent_id = @pid ORDER BY id");
+                dbClient.AddParameter("pid", parentId);
                 DataTable Table = dbClient.getTable();
 
                 int t = 0;
-
                 foreach (DataRow Row in Table.Rows)
                 {
                     t++;
                     if (t == index)
                     {
-                        string state = "0";
-                        if (StateToSet == 20 || StateToSet == 10)
-                            state = "1";
-                        
-                        dbClient.RunQuery("UPDATE `groups_forums_posts` SET `hidden` = @hid WHERE id = @id");
+                        string state = (StateToSet == 20 || StateToSet == 10) ? "1" : "0";
+                        dbClient.SetQuery("UPDATE groups_forums_posts SET hidden = @hid WHERE id = @id");
                         dbClient.AddParameter("id", Convert.ToInt32(Row["id"]));
                         dbClient.AddParameter("hid", state);
                         dbClient.RunQuery();
+                        break;
                     }
                 }
 
-                Session.SendMessage(new RoomNotificationComposer(((StateToSet == 20) || (StateToSet == 10)) ? "forums.message.hidden" : "forums.message.restored"));
+                Session.SendMessage(new RoomNotificationComposer(
+                    (StateToSet == 20 || StateToSet == 10) ? "forums.message.hidden" : "forums.message.restored"));
 
                 dbClient.SetQuery("SELECT * FROM groups_forums_posts WHERE group_id = @groupid AND parent_id = @threadid OR id = @threadid ORDER BY timestamp ASC");
                 dbClient.AddParameter("groupid", groupId);
                 dbClient.AddParameter("threadid", parentId);
-
                 DataTable Table2 = dbClient.getTable();
+                if (Table2 == null) return;
 
-                if (Table2 == null)
-                    return;
-
-                int b = (Table2.Rows.Count <= 20) ? Table2.Rows.Count : 20;
+                int b = Math.Min(Table2.Rows.Count, 20);
                 var posts = new List<GroupForumPost>();
-
-                int i = 1;
-
-                while (i <= b)
+                for (int i = 0; i < b; i++)
                 {
-                    DataRow Row = Table2.Rows[i - 1];
-
-                    if (Row == null)
-                    {
-                        b--;
-                        continue;
-                    }
-
-                    var thread = new GroupForumPost(Row);
-
-                    if (thread.ParentId == 0 && thread.Hidden)
-                        return;
-
-                    posts.Add(thread);
-
-                    i++;
+                    DataRow row = Table2.Rows[i];
+                    if (row == null) continue;
+                    var post = new GroupForumPost(row);
+                    if (post.ParentId == 0 && post.Hidden) return;
+                    posts.Add(post);
                 }
-                Session.SendMessage(new GroupForumReadThreadMessageComposer(Session, groupId, parentId, 0, b, 0, posts));
+
+                // ✅ Nuevo constructor: (groupId, threadId, startIndex, posts)
+                Session.SendMessage(new GroupForumReadThreadMessageComposer(groupId, parentId, 0, posts));
             }
         }
     }

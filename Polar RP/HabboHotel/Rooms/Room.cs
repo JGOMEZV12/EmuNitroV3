@@ -3,6 +3,7 @@ using Polar.Communication.Packets.Outgoing;
 using Polar.Communication.Packets.Outgoing.QuickPolls;
 using Polar.Communication.Packets.Outgoing.Rooms.Avatar;
 using Polar.Communication.Packets.Outgoing.Rooms.Engine;
+using Polar.Communication.Packets.Outgoing.Rooms.Furni.Wired;
 using Polar.Communication.Packets.Outgoing.Rooms.Session;
 using Polar.Core;
 using Polar.Database.Interfaces;
@@ -21,13 +22,16 @@ using Polar.HabboHotel.Rooms.Games.Freeze;
 using Polar.HabboHotel.Rooms.Games.Teams;
 using Polar.HabboHotel.Rooms.Instance;
 using Polar.HabboHotel.Rooms.TraxMachine;
+using Polar.HabboHotel.Users;
 using Polar.HabboRoleplay.Bots.Manager;
 using Polar.HabboRoleplay.Houses;
 using Polar.HabboRoleplay.Misc;
 using System;
 using System.Buffers;
+using System.Collections.Concurrent;
 using System.Data;
 using System.Net.Sockets;
+using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace Polar.HabboHotel.Rooms
 {
@@ -49,7 +53,16 @@ namespace Polar.HabboHotel.Rooms
         private RoomTraxManager _traxManager;
         public TonerData TonerData;
         public MoodlightData MoodlightData;
-
+        public int wiredInspectMask = WIRED_ACCESS_DEFAULT_INSPECT_MASK;
+        public int wiredModifyMask = WIRED_ACCESS_DEFAULT_MODIFY_MASK;
+        public static int WIRED_ACCESS_EVERYONE = 1;
+        public static int WIRED_ACCESS_USERS_WITH_RIGHTS = 2;
+        public static int WIRED_ACCESS_GROUP_MEMBERS = 4;
+        public static int WIRED_ACCESS_GROUP_ADMINS = 8;
+        public static int WIRED_ACCESS_ALLOWED_INSPECT_MASK = WIRED_ACCESS_EVERYONE | WIRED_ACCESS_USERS_WITH_RIGHTS | WIRED_ACCESS_GROUP_MEMBERS | WIRED_ACCESS_GROUP_ADMINS;
+        public static int WIRED_ACCESS_ALLOWED_MODIFY_MASK = WIRED_ACCESS_USERS_WITH_RIGHTS | WIRED_ACCESS_GROUP_MEMBERS | WIRED_ACCESS_GROUP_ADMINS;
+        public static int WIRED_ACCESS_DEFAULT_INSPECT_MASK = 0;
+        public static int WIRED_ACCESS_DEFAULT_MODIFY_MASK = 0;
         public Dictionary<int, double> Bans;
         public Dictionary<int, double> MutedUsers;
 
@@ -63,7 +76,7 @@ namespace Polar.HabboHotel.Rooms
         private Freeze _freeze;
         private Soccer _soccer;
         private BattleBanzai _banzai;
-
+        private object wiredSettingsLock = new object();
         private Gamemap _gamemap;
         private GameItemHandler _gameItemHandler;
         private RoomData _roomData;
@@ -72,7 +85,7 @@ namespace Polar.HabboHotel.Rooms
 
         private RoomUserManager _roomUserManager;
         private RoomItemHandling _roomItemHandling;
-
+        private volatile bool wiredSettingsLoaded;
         private List<string> _wordFilterList;
         private FilterComponent _filterComponent;
         private WiredComponent _wiredComponent;
@@ -83,6 +96,7 @@ namespace Polar.HabboHotel.Rooms
         internal List<int> noPoolAnswers;
         public int IsLagging { get; set; }
         public int IdleTime { get; set; }
+        public ConcurrentDictionary<string, string> WiredVariables;
         private bool _hideWired;
         private bool _gamblingRoom;
         public bool DiscoMode;
@@ -146,6 +160,7 @@ namespace Polar.HabboHotel.Rooms
             this.poolQuestion = string.Empty;
             this.yesPoolAnswers = new List<int>();
             this.noPoolAnswers = new List<int>();
+            this.WiredVariables = new ConcurrentDictionary<string, string>();
             this.WardrobeEnabled = Data.WardrobeEnabled;
             this.PhoneStoreEnabled = Data.PhoneStoreEnabled;
             this.MallEnabled = Data.MallEnabled;
@@ -618,6 +633,7 @@ namespace Polar.HabboHotel.Rooms
                     foreach (DataRow row in data.Rows)
                         UsersWithRights.Add(Convert.ToInt32(row["user_id"]));
             }
+            PushWiredSettingsToCurrentHabbos();
         }
 
         public List<Item> GetItemsByInteraction(InteractionType ItemInteraction)
@@ -877,18 +893,17 @@ namespace Polar.HabboHotel.Rooms
         {
             Room Room = Session.GetHabbo().CurrentRoom;
 
-            // Enviar heightmaps
-            Session.SendMessage(new HeightMapComposer(Room.GetGameMap().Model.Heightmap));
-            Session.SendMessage(new FloorHeightMapComposer(Room, Room.GetGameMap().Model.GetRelativeHeightmap(), Room.GetGameMap().StaticModel.WallHeight));
+            // Java orden:
+            // 1° RoomRelativeMapComposer → HeightMapComposer  (width + totalTiles + shorts)
+            // 2° RoomHeightMapComposer   → FloorHeightMapComposer (bool + wallHeight + string)
+            Session.SendMessage(new HeightMapComposer(Room));
+            Session.SendMessage(new FloorHeightMapComposer(Room));
 
-            // Snapshot único de la lista — evita múltiples ToList()/ToArray()
             var userList = _roomUserManager.GetUserList().ToList();
 
-            // Un solo paquete UsersComposer con TODOS los usuarios en lugar de uno por usuario
             if (userList.Count > 0)
                 Session.SendMessage(new UsersComposer(userList));
 
-            // Estados secundarios: solo los que realmente los tienen
             foreach (RoomUser roomUser in userList)
             {
                 if (roomUser == null) continue;
@@ -906,13 +921,9 @@ namespace Polar.HabboHotel.Rooms
 
                 if (!roomUser.IsBot && !roomUser.IsPet && roomUser.CurrentEffect > 0)
                     Session.SendMessage(new AvatarEffectComposer(roomUser.VirtualId, roomUser.CurrentEffect));
-                // Corregido: era Room.SendMessage (broadcast) — debe ser Session.SendMessage (solo al entrante)
             }
 
-            // Un solo UserUpdateComposer con el snapshot ya tomado
             Session.SendMessage(new UserUpdateComposer(userList));
-
-            // Items: snapshots únicos
             Session.SendMessage(new ObjectsComposer(Room.GetRoomItemHandler().GetFloor.ToArray(), Room));
             Session.SendMessage(new ItemsComposer(Room.GetRoomItemHandler().GetWall.ToArray(), Room));
         }
@@ -1077,7 +1088,161 @@ namespace Polar.HabboHotel.Rooms
         {
             DisposeAsync().GetAwaiter().GetResult();
         }
+        public static bool hasWiredAccess(int mask, int permissionMask)
+        {
+            return (mask & permissionMask) != 0;
+        }
 
+        public static int sanitizeWiredInspectMask(int mask)
+        {
+            int sanitizedMask = mask & WIRED_ACCESS_ALLOWED_INSPECT_MASK;
+
+            if (hasWiredAccess(sanitizedMask, WIRED_ACCESS_GROUP_MEMBERS))
+            {
+                sanitizedMask |= WIRED_ACCESS_GROUP_ADMINS;
+            }
+
+            return sanitizedMask;
+        }
+        private static int sanitizeWiredModifyMask(int mask)
+        {
+            int sanitizedMask = mask & WIRED_ACCESS_ALLOWED_MODIFY_MASK;
+
+            if (hasWiredAccess(sanitizedMask, WIRED_ACCESS_GROUP_MEMBERS))
+            {
+                sanitizedMask |= WIRED_ACCESS_GROUP_ADMINS;
+            }
+
+            return sanitizedMask;
+        }
+        private void ensureWiredSettingsLoaded()
+        {
+            if (wiredSettingsLoaded) return;
+
+            lock (wiredSettingsLock)
+            {
+                if (wiredSettingsLoaded) return;
+
+                wiredInspectMask = WIRED_ACCESS_DEFAULT_INSPECT_MASK;
+                wiredModifyMask = WIRED_ACCESS_DEFAULT_MODIFY_MASK;
+
+                try
+                {
+                    using (IQueryAdapter dbClient = PolarEnvironment.GetDatabaseManager().GetQueryReactor())
+                    {
+                        dbClient.SetQuery(
+                            "SELECT `inspect_mask`, `modify_mask` FROM `room_wired_settings` " +
+                            "WHERE `room_id` = @roomId LIMIT 1");
+                        dbClient.AddParameter("roomId", this.Id);
+
+                        System.Data.DataRow row = dbClient.getRow();
+                        if (row != null)
+                        {
+                            wiredInspectMask = sanitizeWiredInspectMask(Convert.ToInt32(row["inspect_mask"]));
+                            wiredModifyMask = sanitizeWiredModifyMask(Convert.ToInt32(row["modify_mask"]));
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Logging.LogException($"[EnsureWiredSettingsLoaded] SQL error: {ex}");
+                }
+
+                wiredSettingsLoaded = true;
+            }
+        }
+
+        public bool canManageWiredSettings(Habbo habbo)
+        {
+            return habbo != null;
+        }
+        public bool canModifyWired(Habbo habbo)
+        {
+            if (habbo == null)
+            {
+                return false;
+            }
+
+            if (this.canManageWiredSettings(habbo))
+            {
+                return true;
+            }
+            this.ensureWiredSettingsLoaded();
+            return false;
+        }
+
+        public bool canInspectWired(Habbo habbo)
+        {
+            if (habbo == null)
+            {
+                return false;
+            }
+
+            if (this.canManageWiredSettings(habbo))
+            {
+                return true;
+            }
+
+            return false;
+        }
+
+        public bool SaveWiredSettings(int inspectMask, int modifyMask)
+        {
+            int sanitizedInspectMask = sanitizeWiredInspectMask(inspectMask);
+            int sanitizedModifyMask = sanitizeWiredModifyMask(modifyMask);
+
+            // Java: sanitizedInspectMask |= sanitizedModifyMask
+            sanitizedInspectMask |= sanitizedModifyMask;
+
+            lock (wiredSettingsLock)
+            {
+                int previousInspectMask = this.wiredInspectMask;
+                int previousModifyMask = this.wiredModifyMask;
+
+                this.wiredInspectMask = sanitizedInspectMask;
+                this.wiredModifyMask = sanitizedModifyMask;
+                this.wiredSettingsLoaded = true;
+
+                try
+                {
+                    using (IQueryAdapter dbClient = PolarEnvironment.GetDatabaseManager().GetQueryReactor())
+                    {
+                        dbClient.SetQuery(
+                            "INSERT INTO `room_wired_settings` (`room_id`, `inspect_mask`, `modify_mask`) " +
+                            "VALUES (@roomId, @inspectMask, @modifyMask) " +
+                            "ON DUPLICATE KEY UPDATE `inspect_mask` = VALUES(`inspect_mask`), `modify_mask` = VALUES(`modify_mask`)");
+                        dbClient.AddParameter("roomId", this.Id);
+                        dbClient.AddParameter("inspectMask", sanitizedInspectMask);
+                        dbClient.AddParameter("modifyMask", sanitizedModifyMask);
+                        dbClient.RunQuery();
+                    }
+
+                    PushWiredSettingsToCurrentHabbos();
+                    return true;
+                }
+                catch (Exception ex)
+                {
+                    // Revertir en caso de error, igual que el Java
+                    this.wiredInspectMask = previousInspectMask;
+                    this.wiredModifyMask = previousModifyMask;
+                    Logging.LogException($"[SaveWiredSettings] SQL error: {ex}");
+                    return false;
+                }
+            }
+        }
+
+        public void PushWiredSettingsToCurrentHabbos()
+        {
+            foreach (RoomUser roomUser in GetRoomUserManager().GetUserList())
+            {
+                if (roomUser == null || roomUser.IsBot || roomUser.GetClient() == null) continue;
+
+                Habbo habbo = roomUser.GetClient().GetHabbo();
+                if (habbo == null) continue;
+
+                roomUser.GetClient().SendMessage(new WiredRoomSettingsDataComposer(this, habbo));
+            }
+        }
         public async ValueTask DisposeAsync()
         {
             if (mDisposed) return;

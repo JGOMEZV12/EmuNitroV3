@@ -589,7 +589,7 @@ namespace Polar.HabboRoleplay.Misc
                     Gang.AddLog(Session.GetHabbo().Id, Session.GetHabbo().Username + " ha capturado el " + Turf.Name + " ganando $ " + String.Format("{0:N0}", GangsClaimTurfBonif) + " para la banda.", GangsClaimTurfBonif);
                 }
                 else { }
-                    Gang.AddLog(Session.GetHabbo().Id, Session.GetHabbo().Username + " ha capturado el " + Turf.Name, 0);
+                Gang.AddLog(Session.GetHabbo().Id, Session.GetHabbo().Username + " ha capturado el " + Turf.Name, 0);
             }
             else
                 Gang.AddLog(Session.GetHabbo().Id, Session.GetHabbo().Username + " ha capturado el " + Turf.Name, 0);
@@ -972,7 +972,7 @@ namespace Polar.HabboRoleplay.Misc
 
             if (CustomAmount == false)
                 Session.SendWhisper("*La empresa ha ganado (" + Amount + "$), Gracias a ti, Sigue trabajando!*", 0);
-            
+
             Session.GetRoleplay().ClearWebSocketDialogue();
             Session.GetRoleplay().RefreshStatDialogue();
         }
@@ -1128,7 +1128,7 @@ namespace Polar.HabboRoleplay.Misc
         {
             using (IQueryAdapter dbClient = PolarEnvironment.GetDatabaseManager().GetQueryReactor())
             {
-               dbClient.RunQuery($"UPDATE `{Polar.Core.DatabaseCompatibility.ItemsTable}` SET `room_id` = '0' WHERE `id` = '" + furni_id + "' LIMIT 1");
+                dbClient.RunQuery($"UPDATE `{Polar.Core.DatabaseCompatibility.ItemsTable}` SET `room_id` = '0' WHERE `id` = '" + furni_id + "' LIMIT 1");
             }
 
             if (Client != null && Client.GetRoomUser() != null && newroom <= 0)
@@ -1306,7 +1306,7 @@ namespace Polar.HabboRoleplay.Misc
                         Client.GetRoleplay().Chofer = (Client.GetRoleplay().PasajerosCount <= 0) ? false : true;
                         Client.GetRoomUser().AllowOverride = (Client.GetRoleplay().PasajerosCount <= 0) ? false : true;
 
-                        
+
                         // SI EL PASAJERO ES COMPAÑERO DE BASURERO
                         if (PJ.GetRoleplay().IsBasuPasaj)
                             PJ.GetRoleplay().IsBasuPasaj = false;
@@ -1550,7 +1550,7 @@ namespace Polar.HabboRoleplay.Misc
                     dbClient.SetQuery($"SELECT id FROM `{Polar.Core.DatabaseCompatibility.ItemsTable}` WHERE id = '" + ItemId + "'");
                     if (dbClient.getInteger() <= 0)
                     {
-                         dbClient.SetQuery($"INSERT INTO `{Polar.Core.DatabaseCompatibility.ItemsTable}` (id,user_id,room_id,{Polar.Core.DatabaseCompatibility.ItemsBaseItemColumn}) VALUES (" + ItemId + ", 0, " + roomid + ", " + BaseItem + ")");
+                        dbClient.SetQuery($"INSERT INTO `{Polar.Core.DatabaseCompatibility.ItemsTable}` (id,user_id,room_id,{Polar.Core.DatabaseCompatibility.ItemsBaseItemColumn}) VALUES (" + ItemId + ", 0, " + roomid + ", " + BaseItem + ")");
                         dbClient.RunQuery();
                     }
                 }
@@ -2076,7 +2076,7 @@ namespace Polar.HabboRoleplay.Misc
                         else
                         {
                             //User.SendNameColourPacket();
-                           // User.SendMeCommandPacket();
+                            // User.SendMeCommandPacket();
 
                             Session.SendMessage(new ShoutComposer(User.VirtualId, Speech, 0, Bubble, Colour));
                         }
@@ -2130,101 +2130,102 @@ namespace Polar.HabboRoleplay.Misc
                 string Gender = Client.GetHabbo().Gender;
 
                 if (Type.ToLower() == "poof")
-            {
-                Look = Client.GetRoleplay().OriginalOutfit;
-                Motto = Client.GetRoleplay().OriginalMotto;
-            }
-
-            int JobId = Client.GetRoleplay().JobId;
-            int JobRank = Client.GetRoleplay().JobRank;
-
-            Group Group = GroupManager.GetJob(JobId);
-            GroupRank GroupRank = GroupManager.GetJobRank(JobId, JobRank);
-
-            if (Client.GetRoleplay().IsDead)
-            {
-                if (Gender.ToLower() == "m")
-                    Look = SplitFigure(Look, "lg-280-83.ch-215-83");
-
-                if (Gender.ToLower() == "f")
-                    Look = SplitFigure(Look, "lg-710-83.ch-635-83");
-
-                Motto = "[EN COMA] " + Client.GetRoleplay().Class;
-            }
-
-            if (Client.GetRoleplay().IsJailed)
-            {
-                Random Random = new Random();
-                int PrisonNumber = Random.Next(11111, 100000);
-
-                if (Gender.ToLower() == "m")
-                    Look = SplitFigure(Look, "ch-3688-94.sh-300-1.hd-180-1.lg-9587209-94-64");
-
-                if (Gender.ToLower() == "f")
-                    Look = SplitFigure(Look, "ch-3689-94.lg-9587209-94-64.sh-735-92.hd-600-1");
-
-                /*if (Client.GetRoleplay().Jailbroken)
-                    Motto = "[ESCAPADO] Prisionero [#" + PrisonNumber + "]";
-                else
-                    */Motto = "[PRISIONERO] Prisionero [#" + PrisonNumber + "]";
-            }
-
-            if (Client.GetRoleplay().IsWorking)
-            {
-                if (Client.GetRoleplay().JobId != 15)
                 {
-                    if (Gender.ToLower() == "m" && GroupRank.MaleFigure != "")
-                        WorkLook = GroupRank.MaleFigure;
-
-                    if (Gender.ToLower() == "f" && GroupRank.FemaleFigure != "")
-                        WorkLook = GroupRank.FemaleFigure;
-
-                    Look = SplitFigure(Look, WorkLook);
+                    Look = Client.GetRoleplay().OriginalOutfit;
+                    Motto = Client.GetRoleplay().OriginalMotto;
                 }
-                Motto = "[TRABAJANDO] " + Group.Name + " " + GroupRank.Name;
-            }
 
-            if (Client.GetRoleplay().SexTimer > 0)
-            {
-                if (Gender.ToLower() == "m")  
-                    Look = SplitFigure(Look, "lg-7218322-79.ch-3203-153638.-180-7");
+                int JobId = Client.GetRoleplay().JobId;
+                int JobRank = Client.GetRoleplay().JobRank;
 
-                if (Gender.ToLower() == "f")
-                    Look = SplitFigure(Look, "ch-3135-1320.lg-7218322-66.-600-1");
-            }
+                Group Group = GroupManager.GetJob(JobId);
+                GroupRank GroupRank = GroupManager.GetJobRank(JobId, JobRank);
 
-            if (Client.GetRoleplay().ChalecoPor > 0)
-            {
-                if (Gender.ToLower() == "m")
-                    Look = SplitFigure(Look, "cc-3420-1408");
+                if (Client.GetRoleplay().IsDead)
+                {
+                    if (Gender.ToLower() == "m")
+                        Look = SplitFigure(Look, "lg-280-83.ch-215-83");
 
-                if (Gender.ToLower() == "f")
-                    Look = SplitFigure(Look, "cc-3420-1408");
-            }
+                    if (Gender.ToLower() == "f")
+                        Look = SplitFigure(Look, "lg-710-83.ch-635-83");
 
-            if (Client.GetRoleplay().Embarazo > 0)
-            {
-                if (Gender.ToLower() == "f")
-                    Look = SplitFigure(Look, "ch-6050578-73.sh-730-92.hd-3096-1.lg-827-92");
-                Motto = "[EMBARAZADA]";
-            }
+                    Motto = "[EN COMA] " + Client.GetRoleplay().Class;
+                }
 
-            Client.SendMessage(new AvatarAspectUpdateComposer(Look, Gender));
+                if (Client.GetRoleplay().IsJailed)
+                {
+                    Random Random = new Random();
+                    int PrisonNumber = Random.Next(11111, 100000);
 
-            var RoomUser = Client.GetRoomUser();
-            if (RoomUser != null)
-            {
-                Client.GetHabbo().Look = Look;
-                if (RoomUser.IsAsleep)
-                    Client.GetHabbo().Motto = "[DORMIDO] " + Motto;
-                else
-                    Client.GetHabbo().Motto = Motto;
+                    if (Gender.ToLower() == "m")
+                        Look = SplitFigure(Look, "ch-3688-94.sh-300-1.hd-180-1.lg-9587209-94-64");
 
-                Client.SendMessage(new UserChangeComposer(RoomUser, true));
+                    if (Gender.ToLower() == "f")
+                        Look = SplitFigure(Look, "ch-3689-94.lg-9587209-94-64.sh-735-92.hd-600-1");
 
-                if (Client.GetHabbo().CurrentRoom != null)
-                    Client.GetHabbo().CurrentRoom.SendMessage(new UserChangeComposer(RoomUser, false));
-            }
+                    /*if (Client.GetRoleplay().Jailbroken)
+                        Motto = "[ESCAPADO] Prisionero [#" + PrisonNumber + "]";
+                    else
+                        */
+                    Motto = "[PRISIONERO] Prisionero [#" + PrisonNumber + "]";
+                }
+
+                if (Client.GetRoleplay().IsWorking)
+                {
+                    if (Client.GetRoleplay().JobId != 15)
+                    {
+                        if (Gender.ToLower() == "m" && GroupRank.MaleFigure != "")
+                            WorkLook = GroupRank.MaleFigure;
+
+                        if (Gender.ToLower() == "f" && GroupRank.FemaleFigure != "")
+                            WorkLook = GroupRank.FemaleFigure;
+
+                        Look = SplitFigure(Look, WorkLook);
+                    }
+                    Motto = "[TRABAJANDO] " + Group.Name + " " + GroupRank.Name;
+                }
+
+                if (Client.GetRoleplay().SexTimer > 0)
+                {
+                    if (Gender.ToLower() == "m")
+                        Look = SplitFigure(Look, "lg-7218322-79.ch-3203-153638.-180-7");
+
+                    if (Gender.ToLower() == "f")
+                        Look = SplitFigure(Look, "ch-3135-1320.lg-7218322-66.-600-1");
+                }
+
+                if (Client.GetRoleplay().ChalecoPor > 0)
+                {
+                    if (Gender.ToLower() == "m")
+                        Look = SplitFigure(Look, "cc-3420-1408");
+
+                    if (Gender.ToLower() == "f")
+                        Look = SplitFigure(Look, "cc-3420-1408");
+                }
+
+                if (Client.GetRoleplay().Embarazo > 0)
+                {
+                    if (Gender.ToLower() == "f")
+                        Look = SplitFigure(Look, "ch-6050578-73.sh-730-92.hd-3096-1.lg-827-92");
+                    Motto = "[EMBARAZADA]";
+                }
+
+                Client.SendMessage(new AvatarAspectUpdateComposer(Look, Gender));
+
+                var RoomUser = Client.GetRoomUser();
+                if (RoomUser != null)
+                {
+                    Client.GetHabbo().Look = Look;
+                    if (RoomUser.IsAsleep)
+                        Client.GetHabbo().Motto = "[DORMIDO] " + Motto;
+                    else
+                        Client.GetHabbo().Motto = Motto;
+
+                    Client.SendMessage(new UserChangeComposer(RoomUser, true));
+
+                    if (Client.GetHabbo().CurrentRoom != null)
+                        Client.GetHabbo().CurrentRoom.SendMessage(new UserChangeComposer(RoomUser, false));
+                }
             }
             catch (Exception ex)
             {
@@ -2492,22 +2493,22 @@ namespace Polar.HabboRoleplay.Misc
         public static void AddWizard(GameClient Client, Hechizos Wizard)
         {
 
-                using (var DB = PolarEnvironment.GetDatabaseManager().GetQueryReactor())
-                {
-                    DB.SetQuery("INSERT INTO `rp_hechizos_owned` (`user_id`,`base_wizard`,`name`,`power`,`firingrange`,`shields`,`firingdamage`,`health`) VALUES (@userid,@baseweapon,@name,@power,@frange,@shields,@fdamage,@health)");
-                    DB.AddParameter("userid", Client.GetHabbo().Id);
-                    DB.AddParameter("baseweapon", Wizard.Name.ToLower());
-                    DB.AddParameter("name", Wizard.PublicName);
-                    DB.AddParameter("power", Wizard.Power);
-                    DB.AddParameter("frange", Wizard.FiringRange);
-                    DB.AddParameter("shields", Wizard.Shields);
-                    DB.AddParameter("fdamage", Wizard.FiringDamage);
-                    DB.AddParameter("health", Wizard.Health);
-                    DB.RunQuery();
+            using (var DB = PolarEnvironment.GetDatabaseManager().GetQueryReactor())
+            {
+                DB.SetQuery("INSERT INTO `rp_hechizos_owned` (`user_id`,`base_wizard`,`name`,`power`,`firingrange`,`shields`,`firingdamage`,`health`) VALUES (@userid,@baseweapon,@name,@power,@frange,@shields,@fdamage,@health)");
+                DB.AddParameter("userid", Client.GetHabbo().Id);
+                DB.AddParameter("baseweapon", Wizard.Name.ToLower());
+                DB.AddParameter("name", Wizard.PublicName);
+                DB.AddParameter("power", Wizard.Power);
+                DB.AddParameter("frange", Wizard.FiringRange);
+                DB.AddParameter("shields", Wizard.Shields);
+                DB.AddParameter("fdamage", Wizard.FiringDamage);
+                DB.AddParameter("health", Wizard.Health);
+                DB.RunQuery();
 
-                    Client.GetRoleplay().OwnedHechizos.TryAdd(Wizard.Name.ToLower(), Wizard);
-                }
-  
+                Client.GetRoleplay().OwnedHechizos.TryAdd(Wizard.Name.ToLower(), Wizard);
+            }
+
             PolarEnvironment.GetGame().GetWebEventManager().ExecuteWebEvent(Client, "event_item", "update");
         }
 
@@ -2516,7 +2517,7 @@ namespace Polar.HabboRoleplay.Misc
             RoomData roomData = PolarEnvironment.GetGame().GetRoomManager().GenerateRoomData(RID);
             if (Client != null && roomData != null)
             {
-                
+
                 if (Client.GetHabbo().InRoom)
                 {
                     Room OldRoom = null;
@@ -2656,7 +2657,7 @@ namespace Polar.HabboRoleplay.Misc
                     }
                     break;
                 #endregion
-               
+
                 #region Mecánico
                 case "Mecanico":
                     if (JobXp < 50)
@@ -2715,7 +2716,7 @@ namespace Polar.HabboRoleplay.Misc
                     break;
                 #endregion
 
-     
+
 
                 #region Default
                 default:
@@ -2730,7 +2731,7 @@ namespace Polar.HabboRoleplay.Misc
             {
                 #region Ladrón
                 case "ladron":
-                    
+
                     break;
                 #endregion
 
@@ -2826,7 +2827,7 @@ namespace Polar.HabboRoleplay.Misc
                 return;
         }
         public static void SendUserNew(GameClient Client, int RID, string Message = "")
-{
+        {
             RoomData roomData = PolarEnvironment.GetGame().GetRoomManager().GenerateRoomData(RID);
             if (Client == null || roomData == null)
             {
@@ -2890,130 +2891,130 @@ namespace Polar.HabboRoleplay.Misc
 
             #region Tutorial Step Check
             if (Client.GetRoleplay().TutorialStep == 13 && newRoom.WardrobeEnabled && newRoom.Type.Equals("public"))
-            PolarEnvironment.GetGame().GetWebEventManager().SendDataDirect(Client, "compose_tutorial|13");
-        else if (Client.GetRoleplay().TutorialStep == 18 && newRoom.PhoneStoreEnabled && newRoom.Type.Equals("public"))
-            PolarEnvironment.GetGame().GetWebEventManager().SendDataDirect(Client, "compose_tutorial|18");
-        else if (Client.GetRoleplay().TutorialStep == 23 && newRoom.BuyCarEnabled && newRoom.Type.Equals("public"))
-            PolarEnvironment.GetGame().GetWebEventManager().SendDataDirect(Client, "compose_tutorial|24");
-        else if (Client.GetRoleplay().TutorialStep == 27 && newRoom.MallEnabled && newRoom.Type.Equals("public"))
-            PolarEnvironment.GetGame().GetWebEventManager().SendDataDirect(Client, "compose_tutorial|28");
-        #endregion
+                PolarEnvironment.GetGame().GetWebEventManager().SendDataDirect(Client, "compose_tutorial|13");
+            else if (Client.GetRoleplay().TutorialStep == 18 && newRoom.PhoneStoreEnabled && newRoom.Type.Equals("public"))
+                PolarEnvironment.GetGame().GetWebEventManager().SendDataDirect(Client, "compose_tutorial|18");
+            else if (Client.GetRoleplay().TutorialStep == 23 && newRoom.BuyCarEnabled && newRoom.Type.Equals("public"))
+                PolarEnvironment.GetGame().GetWebEventManager().SendDataDirect(Client, "compose_tutorial|24");
+            else if (Client.GetRoleplay().TutorialStep == 27 && newRoom.MallEnabled && newRoom.Type.Equals("public"))
+                PolarEnvironment.GetGame().GetWebEventManager().SendDataDirect(Client, "compose_tutorial|28");
+            #endregion
 
-        Client.SendMessage(new RoomVisualizationSettingsComposer(newRoom.WallThickness, newRoom.FloorThickness, newRoom.Hidewall));
+            Client.SendMessage(new RoomVisualizationSettingsComposer(newRoom.WallThickness, newRoom.FloorThickness, newRoom.Hidewall));
 
-        RoomUser ThisUser = null;
-        if (Client.GetHabbo() != null)
-            ThisUser = newRoom.GetRoomUserManager().GetRoomUserByHabbo(Client.GetHabbo().Username);
+            RoomUser ThisUser = null;
+            if (Client.GetHabbo() != null)
+                ThisUser = newRoom.GetRoomUserManager().GetRoomUserByHabbo(Client.GetHabbo().Username);
 
-        if (ThisUser != null && Client.GetHabbo().PetId == 0)
+            if (ThisUser != null && Client.GetHabbo().PetId == 0)
                 newRoom.SendMessage(new UserChangeComposer(ThisUser, false));
 
-        if (newRoom.GetWired() != null)
+            if (newRoom.GetWired() != null)
                 newRoom.GetWired().TriggerEvent(WiredBoxType.TriggerRoomEnter, Client.GetHabbo());
 
-        foreach (RoomUser Bot in newRoom.GetRoomUserManager().GetBots().ToList())
-        {
-            if (Bot.IsBot || Bot.IsPet)
-                Bot.BotAI.OnUserEnterRoom(ThisUser);
-        }
-
-        if (PolarEnvironment.GetUnixTimestamp() < Client.GetHabbo().FloodTime && Client.GetHabbo().FloodTime != 0)
-            Client.SendMessage(new FloodControlComposer(
-                (int)Client.GetHabbo().FloodTime - (int)PolarEnvironment.GetUnixTimestamp()));
-
-        if (Client.GetHabbo().CurrentRoom == null)
-            Client.GetRoleplay().IsWorking = false;
-
-        if (Client.GetRoleplay().IsWorking)
-        {
-            int JobId = Client.GetRoleplay().JobId;
-            int JobRank = Client.GetRoleplay().JobRank;
-
-            if (!GroupManager.GetJobRank(JobId, JobRank).CanWorkHere(newRoom.Id))
+            foreach (RoomUser Bot in newRoom.GetRoomUserManager().GetBots().ToList())
             {
-                if (GroupManager.HasJobCommand(Client, "guide"))
-                {
-                    var guideManager = PolarEnvironment.GetGame().GetGuideManager();
-                    guideManager.RemoveGuide(Client);
+                if (Bot.IsBot || Bot.IsPet)
+                    Bot.BotAI.OnUserEnterRoom(ThisUser);
+            }
 
-                    if (Client.GetRoleplay().GuideOtherUser != null)
-                    {
-                        Client.GetRoleplay().GuideOtherUser.SendMessage(new OnGuideSessionDetachedComposer(0));
-                        Client.GetRoleplay().GuideOtherUser.SendMessage(new OnGuideSessionDetachedComposer(1));
-                        if (Client.GetRoleplay().GuideOtherUser.GetRoleplay() != null)
-                        {
-                            Client.GetRoleplay().GuideOtherUser.GetRoleplay().Sent911Call = false;
-                            Client.GetRoleplay().GuideOtherUser.GetRoleplay().GuideOtherUser = null;
-                        }
-                        Client.GetRoleplay().GuideOtherUser = null;
-                        Client.SendMessage(new OnGuideSessionDetachedComposer(0));
-                        Client.SendMessage(new OnGuideSessionDetachedComposer(1));
-                    }
-                    else
-                        Client.SendMessage(new HelperToolConfigurationComposer(Client));
-                }
-                WorkManager.RemoveWorkerFromList(Client);
+            if (PolarEnvironment.GetUnixTimestamp() < Client.GetHabbo().FloodTime && Client.GetHabbo().FloodTime != 0)
+                Client.SendMessage(new FloodControlComposer(
+                    (int)Client.GetHabbo().FloodTime - (int)PolarEnvironment.GetUnixTimestamp()));
+
+            if (Client.GetHabbo().CurrentRoom == null)
                 Client.GetRoleplay().IsWorking = false;
-                Client.GetHabbo().Poof();
-            }
-        }
 
-        PolarEnvironment.GetGame().GetWebEventManager().ExecuteWebEvent(Client, "event_group", "close");
-        PolarEnvironment.GetGame().GetWebEventManager().ExecuteWebEvent(Client, "event_group", "open");
-        PolarEnvironment.GetGame().GetWebEventManager().ExecuteWebEvent(Client, "event_gang", "turf_cap_off");
-
-        if (Client.GetRoleplay().ViewProducts)
-        {
-            PolarEnvironment.GetGame().GetWebEventManager().ExecuteWebEvent(Client, "event_products", "close");
-            Client.GetRoleplay().ViewProducts = false;
-        }
-
-        if (Client.GetRoleplay().ViewChangeName)
-        {
-            PolarEnvironment.GetGame().GetWebEventManager().ExecuteWebEvent(Client, "event_changename", "close");
-            Client.GetRoleplay().ViewChangeName = false;
-        }
-
-        if (Client.GetRoleplay().ViewCarList)
-        {
-            PolarEnvironment.GetGame().GetWebEventManager().ExecuteWebEvent(Client, "event_vehicle", "closeshop");
-            Client.GetRoleplay().ViewCarList = false;
-        }
-
-        if (Client.GetRoleplay().ViewWeaponsList)
-        {
-            PolarEnvironment.GetGame().GetWebEventManager().ExecuteWebEvent(Client, "event_shop", "closeshop");
-            Client.GetRoleplay().ViewWeaponsList = false;
-        }
-
-        if (Client.GetRoleplay().ViewApartments)
-        {
-            PolarEnvironment.GetGame().GetWebEventManager().ExecuteWebEvent(Client, "event_apart", "apart_close");
-            PolarEnvironment.GetGame().GetWebEventManager().ExecuteWebEvent(Client, "event_apart", "close");
-            Client.GetRoleplay().ViewApartments = false;
-        }
-
-        if (Client.GetRoleplay().Pasajero == true)
-        {
-            GameClient Chofer = PolarEnvironment.GetGame().GetClientManager()
-                .GetClientByUsername(Client.GetRoleplay().ChoferName);
-            if (Chofer != null && Client.GetRoomUser() != null)
+            if (Client.GetRoleplay().IsWorking)
             {
-                Chofer.SendMessage(new UserRemoveComposer(Client.GetRoomUser().VirtualId));
-                Client.SendMessage(new UserRemoveComposer(Client.GetRoomUser().VirtualId));
+                int JobId = Client.GetRoleplay().JobId;
+                int JobRank = Client.GetRoleplay().JobRank;
+
+                if (!GroupManager.GetJobRank(JobId, JobRank).CanWorkHere(newRoom.Id))
+                {
+                    if (GroupManager.HasJobCommand(Client, "guide"))
+                    {
+                        var guideManager = PolarEnvironment.GetGame().GetGuideManager();
+                        guideManager.RemoveGuide(Client);
+
+                        if (Client.GetRoleplay().GuideOtherUser != null)
+                        {
+                            Client.GetRoleplay().GuideOtherUser.SendMessage(new OnGuideSessionDetachedComposer(0));
+                            Client.GetRoleplay().GuideOtherUser.SendMessage(new OnGuideSessionDetachedComposer(1));
+                            if (Client.GetRoleplay().GuideOtherUser.GetRoleplay() != null)
+                            {
+                                Client.GetRoleplay().GuideOtherUser.GetRoleplay().Sent911Call = false;
+                                Client.GetRoleplay().GuideOtherUser.GetRoleplay().GuideOtherUser = null;
+                            }
+                            Client.GetRoleplay().GuideOtherUser = null;
+                            Client.SendMessage(new OnGuideSessionDetachedComposer(0));
+                            Client.SendMessage(new OnGuideSessionDetachedComposer(1));
+                        }
+                        else
+                            Client.SendMessage(new HelperToolConfigurationComposer(Client));
+                    }
+                    WorkManager.RemoveWorkerFromList(Client);
+                    Client.GetRoleplay().IsWorking = false;
+                    Client.GetHabbo().Poof();
+                }
             }
+
+            PolarEnvironment.GetGame().GetWebEventManager().ExecuteWebEvent(Client, "event_group", "close");
+            PolarEnvironment.GetGame().GetWebEventManager().ExecuteWebEvent(Client, "event_group", "open");
+            PolarEnvironment.GetGame().GetWebEventManager().ExecuteWebEvent(Client, "event_gang", "turf_cap_off");
+
+            if (Client.GetRoleplay().ViewProducts)
+            {
+                PolarEnvironment.GetGame().GetWebEventManager().ExecuteWebEvent(Client, "event_products", "close");
+                Client.GetRoleplay().ViewProducts = false;
+            }
+
+            if (Client.GetRoleplay().ViewChangeName)
+            {
+                PolarEnvironment.GetGame().GetWebEventManager().ExecuteWebEvent(Client, "event_changename", "close");
+                Client.GetRoleplay().ViewChangeName = false;
+            }
+
+            if (Client.GetRoleplay().ViewCarList)
+            {
+                PolarEnvironment.GetGame().GetWebEventManager().ExecuteWebEvent(Client, "event_vehicle", "closeshop");
+                Client.GetRoleplay().ViewCarList = false;
+            }
+
+            if (Client.GetRoleplay().ViewWeaponsList)
+            {
+                PolarEnvironment.GetGame().GetWebEventManager().ExecuteWebEvent(Client, "event_shop", "closeshop");
+                Client.GetRoleplay().ViewWeaponsList = false;
+            }
+
+            if (Client.GetRoleplay().ViewApartments)
+            {
+                PolarEnvironment.GetGame().GetWebEventManager().ExecuteWebEvent(Client, "event_apart", "apart_close");
+                PolarEnvironment.GetGame().GetWebEventManager().ExecuteWebEvent(Client, "event_apart", "close");
+                Client.GetRoleplay().ViewApartments = false;
+            }
+
+            if (Client.GetRoleplay().Pasajero == true)
+            {
+                GameClient Chofer = PolarEnvironment.GetGame().GetClientManager()
+                    .GetClientByUsername(Client.GetRoleplay().ChoferName);
+                if (Chofer != null && Client.GetRoomUser() != null)
+                {
+                    Chofer.SendMessage(new UserRemoveComposer(Client.GetRoomUser().VirtualId));
+                    Client.SendMessage(new UserRemoveComposer(Client.GetRoomUser().VirtualId));
+                }
+            }
+
+            if (Client.GetRoomUser() != null)
+            {
+                if (Client.GetRoomUser().CurrentEffect == 23)
+                    Client.GetRoomUser().ApplyEffect(0);
+            }
+
+
+            if (!string.IsNullOrEmpty(Message))
+                Client.SendMessage(new MOTDNotificationComposer(Message));
         }
-
-        if (Client.GetRoomUser() != null)
-        {
-            if (Client.GetRoomUser().CurrentEffect == 23)
-                Client.GetRoomUser().ApplyEffect(0);
-        }
-
-
-        if (!string.IsNullOrEmpty(Message))
-            Client.SendMessage(new MOTDNotificationComposer(Message));
-}
         public static void SendUser(GameClient Client, int RID, string Message = "")
         {
             RoomData roomData = PolarEnvironment.GetGame().GetRoomManager().GenerateRoomData(RID);
@@ -3041,8 +3042,8 @@ namespace Polar.HabboRoleplay.Misc
                 // New JDN
 
                 #region Habbo=>PrepareRoom
-            Room Room;
-            if (!PolarEnvironment.GetGame().GetRoomManager().LoadRoom(RID, out Room))
+                Room Room;
+                if (!PolarEnvironment.GetGame().GetRoomManager().LoadRoom(RID, out Room))
                 {
                     Client.SendMessage(new CloseConnectionComposer());
                     return;
@@ -3062,7 +3063,7 @@ namespace Polar.HabboRoleplay.Misc
                 }
                 Client.GetHabbo().CurrentRoomId = Room.RoomId;
                 #endregion
-                
+
                 Client.GetHabbo().HomeRoom = Room.Id;
                 Client.GetRoleplay().InState = false;
 
@@ -3127,7 +3128,7 @@ namespace Polar.HabboRoleplay.Misc
                     PolarEnvironment.GetGame().GetWebEventManager().SendDataDirect(Client, "compose_tutorial|28");
                 }
                 #endregion
-               
+
                 #region Clean Websockets (Al cambiar de sala)
 
                 #region Groups
@@ -3746,8 +3747,8 @@ namespace Polar.HabboRoleplay.Misc
                         {
                             dbClient.SetQuery($"INSERT INTO `{Polar.Core.DatabaseCompatibility.ItemsTable}` (user_id, {Polar.Core.DatabaseCompatibility.ItemsBaseItemColumn}, room_id) VALUES (1, " + BaseId + ", " + roomid + ")");
                             dbClient.RunQuery();
-                             dbClient.SetQuery($"SELECT id FROM `{Polar.Core.DatabaseCompatibility.ItemsTable}` WHERE user_id = '1' AND room_id = '" + roomid + "' AND {Polar.Core.DatabaseCompatibility.ItemsBaseItemColumn} = '" + BaseId + "' ORDER BY id DESC LIMIT 1");
-							 ItDemId = dbClient.getInteger();
+                            dbClient.SetQuery($"SELECT id FROM `{Polar.Core.DatabaseCompatibility.ItemsTable}` WHERE user_id = '1' AND room_id = '" + roomid + "' AND {Polar.Core.DatabaseCompatibility.ItemsBaseItemColumn} = '" + BaseId + "' ORDER BY id DESC LIMIT 1");
+                            ItDemId = dbClient.getInteger();
                             ItemId = ItDemId;
                         }
                         catch (Exception ex)
@@ -3803,7 +3804,6 @@ namespace Polar.HabboRoleplay.Misc
                     if (IsFood && Session != null && Session.GetHabbo() != null)
                     {
                         NewItem.InteractingUser = Session.GetHabbo().Id;
-                        // Session = null; ← ELIMINA ESTA LÍNEA
                     }
 
                     // Place the item in the room
@@ -3981,7 +3981,7 @@ namespace Polar.HabboRoleplay.Misc
         /// <param name="Time">Desired Delay (In Seconds)</param>
         public static void SendDelayedWhisper(GameClient Client, string Msg, int Bubble = 1, int Time = 3)
         {
-            Task.Run(async delegate 
+            Task.Run(async delegate
             {
                 await Task.Delay(Time * 1000);
                 if (Client == null) return;

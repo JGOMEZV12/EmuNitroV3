@@ -1,80 +1,52 @@
 ﻿using System;
 using System.Collections.Generic;
 using Polar.HabboHotel.Groups;
+using Polar.HabboHotel.GameClients;
 
 namespace Polar.Communication.Packets.Outgoing.Groups
 {
     internal class GroupForumListingsMessageComposer : ServerPacket
     {
-        public int selectType { get; }
-        public int qtdForums { get; }
-        public int startIndex { get; }
-        public List<Group> Groups { get; }
-        public GroupForumListingsMessageComposer(int SelectType, int QtdForums, int StartIndex, List<Group> groups)
+        public GroupForumListingsMessageComposer(int mode, int startIndex, List<Group> groups, GameClient session)
             : base(ServerPacketHeader.GroupForumListingsMessageComposer)
         {
-            this.selectType = SelectType;
-            this.qtdForums = QtdForums;
-            this.startIndex = StartIndex;
-            this.Groups = groups;
-            Compose(this);
+            Compose(this, mode, startIndex, groups, session);
         }
 
-        public void Compose(ServerPacket packet)
+        public void Compose(ServerPacket packet, int mode, int startIndex, List<Group> groups, GameClient session)
         {
-            packet.WriteInteger(selectType);
+            // ✅ Java: mode → totalSize → startIndex → count (max 20) → serializeForumData x count
+            int count = Math.Min(groups.Count, 20);
 
-            if (selectType == 0 || selectType == 1)
-            {
-                packet.WriteInteger(qtdForums == 0 ? 1 : qtdForums);
-                packet.WriteInteger(startIndex);
-                packet.WriteInteger(Groups.Count);
+            packet.WriteInteger(mode);
+            packet.WriteInteger(groups.Count);  // total
+            packet.WriteInteger(startIndex);
+            packet.WriteInteger(count);
 
-                foreach (Group Group in Groups)
-                {
-                    packet.WriteInteger(Group.Id);
-                    packet.WriteString(Group.Name);
-                    packet.WriteString(string.Empty);
-                    packet.WriteString(Group.Badge);
-                    packet.WriteInteger(0);
-                    packet.WriteInteger((int)Math.Round(Group.ForumScore));
-                    packet.WriteInteger(Group.ForumMessagesCount);
-                    packet.WriteInteger(0);
-                    packet.WriteInteger(0);
-                    packet.WriteInteger(Group.ForumLastPosterId);
-                    packet.WriteString(Group.ForumLastPosterName);
-                    packet.WriteInteger(Group.ForumLastPostTime);
-                    packet.WriteInteger(0);
-                }
-            }
-            else if (selectType == 2)
-            {
-                packet.WriteInteger(Groups.Count == 0 ? 1 : Groups.Count);
-                packet.WriteInteger(startIndex);
-                packet.WriteInteger(Groups.Count);
+            int habboId = session.GetHabbo().Id;
 
-                foreach (Group Group in Groups)
-                {
-                    packet.WriteInteger(Group.Id);
-                    packet.WriteString(Group.Name);
-                    packet.WriteString(string.Empty);
-                    packet.WriteString(Group.Badge);
-                    packet.WriteInteger(0);
-                    packet.WriteInteger((int)Math.Round(Group.ForumScore));
-                    packet.WriteInteger(Group.ForumMessagesCount);
-                    packet.WriteInteger(0);
-                    packet.WriteInteger(0);
-                    packet.WriteInteger(Group.ForumLastPosterId);
-                    packet.WriteString(Group.ForumLastPosterName);
-                    packet.WriteInteger(Group.ForumLastPostTime);
-                    packet.WriteInteger(0);
-                }
-            }
-            else
+            for (int i = startIndex; i < startIndex + count && i < groups.Count; i++)
             {
-                packet.WriteInteger(1);
-                packet.WriteInteger(startIndex);
-                packet.WriteInteger(0);
+                Group g = groups[i];
+                int totalThreads = 0;
+                int totalComments = g.ForumMessagesCount;
+                int newComments = 0;
+                int lastPosterId = g.ForumLastPosterId;
+                string lastPosterName = g.ForumLastPosterName;
+                int lastPostTime = g.ForumLastPostTime;
+
+                packet.WriteInteger(g.Id);
+                packet.WriteString(g.Name);
+                packet.WriteString(g.Description);
+                packet.WriteString(g.Badge);
+                packet.WriteInteger(totalThreads);
+                packet.WriteInteger(0);              // rating
+                packet.WriteInteger(totalComments);
+                packet.WriteInteger(newComments);    // ✅ unread
+                packet.WriteInteger(lastPosterId);   // ✅ lastComment threadId
+                packet.WriteInteger(lastPosterId);   // ✅ lastComment userId
+                packet.WriteString(lastPosterName);
+                packet.WriteInteger(lastPostTime);
             }
         }
     }

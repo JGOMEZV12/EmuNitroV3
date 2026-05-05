@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Linq;
 using System.Text;
 using System.Collections.Generic;
@@ -372,6 +372,7 @@ namespace Polar.HabboHotel.Rooms.Chat.Commands
             this.Register("cambiarclase", new ChangeClassCommand());
             this.Register("flechas", new ArrowCommand());
             this.Register("walk", new ArrowCommand());
+            this.Register("prefix", new PrefixCommand());
 
             // Timers & Cooldowns
             this.Register("timeleft", new TimeLeftCommand());
@@ -561,6 +562,7 @@ namespace Polar.HabboHotel.Rooms.Chat.Commands
 
             // Apartment
             this.Register("kick", new KickCommand());
+            this.Register("wired", new WiredCommand());
             this.Register("roomkick", new RoomKickCommand());
             this.Register("pickall", new PickAllCommand());
             //this.Register("chooser", new ChooserCommand());

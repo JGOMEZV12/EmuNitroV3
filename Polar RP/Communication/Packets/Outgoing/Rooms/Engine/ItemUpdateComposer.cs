@@ -18,20 +18,42 @@ namespace Polar.Communication.Packets.Outgoing.Rooms.Engine
 
         private void WriteWallItem(Item Item, int UserId)
         {
-            WriteString(Item.Id.ToString());
-            WriteInteger(Item.GetBaseItem().SpriteId);
-            WriteString(Item.wallCoord);
-            ItemBehaviourUtility.GenerateWallExtradata(Item, this);
-            WriteInteger(-1);
-            WriteInteger((Item.GetBaseItem().Modes > 1) ? 1 : 0);
-            WriteInteger(UserId);
-            WriteInteger(Item.Data.Stackable ? 1 : 0);
-            WriteInteger(Item.Data.IsSeat ? 1 : 0);
-            WriteInteger(0);
-            WriteInteger(Item.Data.Walkable ? 1 : 0);
-            WriteInteger(Item.Data.Width);
-            WriteInteger(Item.Data.Length);
-            WriteInteger(0);
+            var interactionType = Item.Data.InteractionType;
+            // ── serializeWallData — orden exacto del Java ─────────────────────
+            WriteString(Item.Id.ToString());                                    // id (string)
+            WriteInteger(Item.GetBaseItem().SpriteId);                         // spriteId
+            WriteString(Item.wallCoord ?? string.Empty);                       // wallPosition
+
+            // ✅ PostIt: solo la primera parte del extradata (color), igual que Java
+            if (Item.GetBaseItem().InteractionType == InteractionType.POSTIT)
+                WriteString(Item.ExtraData.Split(' ')[0]);
+            else
+                WriteString(Item.ExtraData ?? string.Empty);                   // extradata
+
+            WriteInteger(-1);                                                   // secondsToExpiration
+            // ── _usagePolicy ──────────────────────────────────────────────────
+            if (interactionType == InteractionType.TELEPORT ||
+                interactionType == InteractionType.SWITCH ||
+                interactionType == InteractionType.VENDING_MACHINE ||
+                interactionType == InteractionType.INFO_TERMINAL ||
+                interactionType == InteractionType.POSTIT ||
+                interactionType == InteractionType.PUZZLE_BOX)
+                WriteInteger(2);
+            else if (Item.GetBaseItem().Modes > 1)
+                WriteInteger(1);
+            else
+                WriteInteger(0);
+            WriteInteger(Item.UserID);                                          // userId
+            WriteInteger(Item.GetBaseItem().Stackable ? 1 : 0);             // allowStack
+            WriteInteger(Item.GetBaseItem().IsSeat ? 1 : 0);             // allowSit
+            WriteInteger(0);             // allowLay
+            WriteInteger(Item.GetBaseItem().Walkable ? 1 : 0);             // allowWalk
+            WriteInteger(Item.GetBaseItem().Width);                             // dimensionsX
+            WriteInteger(Item.GetBaseItem().Length);                            // dimensionsY
+            WriteInteger(0);                           // teleportTargetId
+
+            // ✅ username — leído en FurnitureWallAddParser después del parse()
+            WriteString(PolarEnvironment.GetUserInfoBy("username", "id", Item.UserID.ToString()) ?? string.Empty);
         }
     }
 }

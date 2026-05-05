@@ -1,21 +1,28 @@
 ﻿using Polar.HabboHotel.Rooms;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace Polar.Communication.Packets.Outgoing.Rooms.Engine
 {
+    /// <summary>
+    /// Equivalente al Java RoomHeightMapComposer.
+    /// Envía: boolean (true) + wallHeight (int) + heightmap string (normalizado a \r).
+    /// Usa el heightmap ESTÁTICO de DB, no el reconstruido desde arrays.
+    /// </summary>
     internal class FloorHeightMapComposer : ServerPacket
     {
-        public FloorHeightMapComposer(Room room, string Map, int WallHeight)
+        public FloorHeightMapComposer(Room room)
             : base(ServerPacketHeader.FloorHeightMapMessageComposer)
         {
-         
-            base.WriteBoolean(true);// zoomed in
-            base.WriteInteger(WallHeight);
-            base.WriteString(Map);
+            WriteBoolean(true);
+            WriteInteger(room.GetGameMap().StaticModel.WallHeight);
+
+            // Java: room.getLayout().getRelativeMap()
+            //   = this.heightmap.replace("\r\n", "\r")
+            // Usa el heightmap ESTÁTICO original de DB, normalizado a \r
+            string relativeMap = room.GetGameMap().StaticModel.Heightmap
+                .Replace("\r\n", "\r")
+                .Replace("\n", "\r");
+
+            WriteString(relativeMap);
         }
     }
 }

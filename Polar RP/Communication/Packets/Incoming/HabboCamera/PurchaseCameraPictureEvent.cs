@@ -1,5 +1,4 @@
 ﻿using Polar.Communication.Packets.Outgoing.HabboCamera;
-using Polar.Database.Interfaces;
 using Polar.HabboHotel.GameClients;
 using Polar.HabboHotel.Items;
 using Polar.HabboHotel.Camera;
@@ -11,44 +10,55 @@ namespace Polar.Communication.Packets.Incoming.HabboCamera
 {
     class PurchaseCameraPictureEvent : IPacketEvent
     {
+        private const string PHOTO_BASE_URL = "https://swf.kekolands.com/newfoto/";
+
         public void Parse(GameClient Session, ClientPacket Packet)
         {
-            if (Session?.GetHabbo() == null) return;
+            Console.WriteLine("[Camera:Purchase] Paquete recibido");
 
-            // ✅ FIX #1: lastPhotoPreview no tenía null-check.
-            //   Un paquete manipulado (comprar sin haber tomado foto) causaba NullReferenceException.
+            if (Session?.GetHabbo() == null)
+            {
+                Console.WriteLine("[Camera:Purchase] Session o Habbo es null — saliendo");
+                return;
+            }
+
             JSONCamera jsonInfo = Session.GetHabbo().lastPhotoPreview;
             if (jsonInfo == null)
             {
+                Console.WriteLine("[Camera:Purchase] lastPhotoPreview es null — el usuario no ha tomado foto");
                 Session.SendNotification("¡Debes tomar una foto antes de poder comprarla!");
                 return;
             }
 
-            // ✅ FIX #2: Int32.Parse sin manejo de error.
-            //   Si el config tiene un valor no numérico el servidor lanzaba excepción en startup.
+            Console.WriteLine($"[Camera:Purchase] jsonInfo OK — encrypted_id={jsonInfo.encrypted_id} preview={jsonInfo.preview}");
+
             string imagen2Str = PolarEnvironment.GetConfig().data["Camera_img_2"];
+            Console.WriteLine($"[Camera:Purchase] Camera_img_2='{imagen2Str}'");
+
             if (!int.TryParse(imagen2Str, out int imagenint2))
             {
-                //Logging.LogException("PurchaseCameraPictureEvent: Camera_img_2 no es un entero válido: " + imagen2Str);
+                Console.WriteLine("[Camera:Purchase] Camera_img_2 no es un entero válido — saliendo");
                 return;
             }
 
             ItemData ItemDataSmall;
             if (!PolarEnvironment.GetGame().GetItemManager().GetItem(imagenint2, out ItemDataSmall))
+            {
+                Console.WriteLine($"[Camera:Purchase] ItemData no encontrado para id={imagenint2} — saliendo");
                 return;
+            }
 
-            // ✅ FIX #3: CurrentRoom puede ser null si el usuario salió de la sala.
+            Console.WriteLine($"[Camera:Purchase] ItemData OK — id={ItemDataSmall.Id}");
+
             string roomName = Session.GetHabbo().CurrentRoom?.Name ?? "una sala";
-
             string roomId = jsonInfo.room_id;
             double timestamp = jsonInfo.timestamp;
             string md5image = jsonInfo.encrypted_id;
             string username = Session.GetHabbo().Username;
 
-            // ✅ FIX #4: ExtraData se construía con concatenación directa de valores de usuario.
-            //   Si el username contenía " o \ el JSON quedaba malformado.
-            //   Ahora se serializa con Newtonsoft para garantizar escape correcto.
-            string photoUrl = CameraHelper.BASE_URL + "photos/" + md5image + ".png";
+            string photoUrl = PHOTO_BASE_URL + "photos/" + md5image + ".png";
+            Console.WriteLine($"[Camera:Purchase] photoUrl={photoUrl}");
+
             string ExtraData = JsonConvert.SerializeObject(new
             {
                 w = photoUrl,
@@ -58,17 +68,29 @@ namespace Polar.Communication.Packets.Incoming.HabboCamera
                 t = timestamp.ToString()
             });
 
-            PolarEnvironment.SendMs2(
-                "",
-                RoleplayManager.CDNSWF + "/newfoto/" + jsonInfo.preview,
-                "¡Mira está foto que ha tomada por " + username + "!",
-                "En " + roomName,
-                Session.GetHabbo().Look,
-                true);
+            Console.WriteLine($"[Camera:Purchase] ExtraData={ExtraData}");
 
-            Session.GetHabbo().GetInventoryComponent().AddNewItem(0, ItemDataSmall.Id, ExtraData, 0, true, false, 0, 0);
-            Session.GetHabbo().GetInventoryComponent().UpdateItems(false);
-            Session.SendMessage(new CamereFinishPurchaseComposer());
+            try
+            {
+                Session.GetHabbo().GetInventoryComponent().AddNewItem(0, ItemDataSmall.Id, ExtraData, 0, true, false, 0, 0);
+                Console.WriteLine("[Camera:Purchase] AddNewItem OK");
+                Session.GetHabbo().GetInventoryComponent().UpdateItems(false);
+                Console.WriteLine("[Camera:Purchase] UpdateItems OK");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Camera:Purchase] Error al añadir item: {ex.Message}");
+            }
+
+            try
+            {
+                Session.SendMessage(new CamereFinishPurchaseComposer());
+                Console.WriteLine("[Camera:Purchase] CamereFinishPurchaseComposer enviado — DONE");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Camera:Purchase] Error al enviar composer: {ex.Message}");
+            }
         }
     }
 }

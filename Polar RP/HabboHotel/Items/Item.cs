@@ -387,6 +387,7 @@ namespace Polar.HabboHotel.Items
 
                 switch (GetBaseItem().InteractionType)
                 {
+                    case InteractionType.MULTI_HEIGHT: return new InteractorMultiHeight();
                     case InteractionType.FOOTBALL: return new InteractorBall();
                     case InteractionType.TRAINER_GYM: return new InteractorTrainerGym();
                     case InteractionType.JUKEBOX: return new InteractorJukebox();
@@ -1199,6 +1200,7 @@ namespace Polar.HabboHotel.Items
         public void UpdateState(bool inDb, bool inRoom)
         {
             if (GetRoom() == null) return;
+            Console.WriteLine($"[UpdateState] Item={GetBaseItem().ItemName} ExtraData={ExtraData} inDb={inDb} inRoom={inRoom} IsFloorItem={IsFloorItem}");
             if (inDb) GetRoom().GetRoomItemHandler().UpdateItem(this);
             if (inRoom)
             {

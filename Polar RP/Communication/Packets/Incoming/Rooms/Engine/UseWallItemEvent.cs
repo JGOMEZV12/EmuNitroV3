@@ -35,7 +35,11 @@ namespace Polar.Communication.Packets.Incoming.Rooms.Engine
 
             string oldData = Item.ExtraData;
             int request = Packet.PopInt();
-
+            Console.WriteLine($"[Furni] Id={Item.Id} Name={Item.GetBaseItem().ItemName} " +
+    $"Modes={Item.GetBaseItem().Modes} " +
+    $"AdjHeights={Item.GetBaseItem().AdjustableHeights?.Count ?? 0} " +
+    $"InteractionType={Item.GetBaseItem().InteractionType} " +
+    $"HasRights={hasRights} ExtraData={Item.ExtraData}");
             Item.Interactor.OnTrigger(Session, Item, request, hasRights);
             Item.GetRoom().GetWired().TriggerEvent(WiredBoxType.TriggerStateChanges, Session.GetHabbo(), Item);
         

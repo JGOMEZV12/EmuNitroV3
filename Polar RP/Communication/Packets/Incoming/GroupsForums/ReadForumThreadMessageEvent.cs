@@ -1,15 +1,10 @@
 ﻿using System;
 using System.Data;
-using System.Linq;
 using System.Collections.Generic;
-
 using Polar.Database.Interfaces;
 using Polar.HabboHotel.GameClients;
-using Polar.HabboHotel.Guides;
-using Polar.HabboHotel.Rooms;
 using Polar.HabboHotel.Groups;
 using Polar.Communication.Packets.Outgoing.Groups;
-using Polar.Communication.Packets.Outgoing.Rooms.Notifications;
 
 namespace Polar.Communication.Packets.Incoming.Groups
 {
@@ -23,46 +18,29 @@ namespace Polar.Communication.Packets.Incoming.Groups
             int StopIndex = Packet.PopInt();
 
             Group Group = GroupManager.GetJob(GroupId);
-
-            if (Group == null || !Group.ForumEnabled)
-                return;
+            if (Group == null || !Group.ForumEnabled) return;
 
             using (IQueryAdapter dbClient = PolarEnvironment.GetDatabaseManager().GetQueryReactor())
             {
                 dbClient.SetQuery("SELECT * FROM groups_forums_posts WHERE group_id = @groupid AND parent_id = @threadid OR id = @threadid ORDER BY timestamp ASC");
                 dbClient.AddParameter("groupid", GroupId);
                 dbClient.AddParameter("threadid", ThreadId);
-
                 DataTable Table = dbClient.getTable();
+                if (Table == null) return;
 
-                if (Table == null)
-                    return;
-
-                int b = (Table.Rows.Count <= 20) ? Table.Rows.Count : 20;
+                int b = Math.Min(Table.Rows.Count, 20);
                 var posts = new List<GroupForumPost>();
-
-                int i = 1;
-
-                while (i <= b)
+                for (int i = 0; i < b; i++)
                 {
-                    DataRow Row = Table.Rows[i - 1];
-
-                    if (Row == null)
-                    {
-                        b--;
-                        continue;
-                    }
-
-                    var thread = new GroupForumPost(Row);
-
-                    if (thread.ParentId == 0 && thread.Hidden)
-                        return;
-
-                    posts.Add(thread);
-
-                    i++;
+                    DataRow row = Table.Rows[i];
+                    if (row == null) continue;
+                    var post = new GroupForumPost(row);
+                    if (post.ParentId == 0 && post.Hidden) return;
+                    posts.Add(post);
                 }
-                Session.SendMessage(new GroupForumReadThreadMessageComposer(Session, GroupId, ThreadId, StartIndex,b, 0, posts));
+
+                // ✅ Nuevo constructor: (groupId, threadId, startIndex, posts)
+                Session.SendMessage(new GroupForumReadThreadMessageComposer(GroupId, ThreadId, StartIndex, posts));
             }
         }
     }

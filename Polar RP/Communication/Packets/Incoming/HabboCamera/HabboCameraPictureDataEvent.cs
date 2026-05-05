@@ -34,8 +34,9 @@ namespace Polar.Communication.Packets.Incoming.HabboCamera
                 // ✅ FIX: Llamada async — ya no bloquea el hilo del handler.
                 string result = await CameraHelper.RequestAsync("camera", Session.GetHabbo().Id, Session.GetHabbo().CurrentRoom.Id, base64);
 
-                // ✅ FIX: Validar que la respuesta no esté vacía antes de deserializar.
-                //   Si el servidor devuelve HTML de error, DeserializeObject lanzaría excepción.
+                // ✅ Log temporal para ver qué devuelve el PHP
+                //Console.WriteLine($"[Camera] Result: '{result}'");
+
                 if (string.IsNullOrWhiteSpace(result))
                 {
                     Session.SendNotification("¡Se produjo un error al intentar guardar esta imagen! ¡Inténtalo de nuevo!");

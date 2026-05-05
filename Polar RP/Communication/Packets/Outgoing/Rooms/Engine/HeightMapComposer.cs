@@ -1,76 +1,45 @@
-﻿using System;
-using System.Linq;
+﻿using Polar.HabboHotel.Rooms;
 
 namespace Polar.Communication.Packets.Outgoing.Rooms.Engine
 {
+    /// <summary>
+    /// Equivalente al Java RoomRelativeMapComposer.
+    /// El cliente (RoomHeightMapParser) decodifica así:
+    ///   isRoomTile  = height >= 0        → negativo = tile inválido/bloqueado
+    ///   tileHeight  = (height & 16383) / 256
+    /// short.MaxValue (32767) es POSITIVO → cliente lo trataría como tile válido
+    /// con altura ~127, causando suelo visible donde no debería haberlo.
+    /// Solución: usar -1 para tiles bloqueados.
+    /// </summary>
     internal class HeightMapComposer : ServerPacket
     {
-        // Constantes para mejorar legibilidad
-        private const char INVALID_TILE = 'x';
-        private const int HEIGHT_MULTIPLIER = 256;
-        private const short INVALID_HEIGHT = -1;
+        private const short BLOCKED_TILE = -1;
 
-        public HeightMapComposer(string Map)
+        public HeightMapComposer(Room room)
             : base(ServerPacketHeader.HeightMapMessageComposer)
         {
-            if (string.IsNullOrWhiteSpace(Map))
-                throw new ArgumentException("El mapa de alturas no puede estar vacío.", nameof(Map));
+            var layout = room.GetGameMap();
+            int mapSizeX = layout.Model.MapSizeX;
+            int mapSizeY = layout.Model.MapSizeY;
 
-            // Limpiar y separar filas (asume que las filas terminan con '\r')
-            Map = Map.Replace("\n", "");          // Eliminar saltos de línea sobrantes
-            string[] rows = Map.Split('\r', StringSplitOptions.RemoveEmptyEntries);
+            WriteInteger(mapSizeX);
+            WriteInteger(mapSizeX * mapSizeY);
 
-            if (rows.Length == 0)
-                throw new InvalidOperationException("No se encontraron filas en el mapa de alturas.");
-
-            int width = rows[0].Length;
-            int totalTiles = width * rows.Length;
-
-            // Escribir cabeceras del paquete
-            base.WriteInteger(width);          // Ancho del mapa
-            base.WriteInteger(totalTiles);     // Total de celdas
-
-            // Recorrer cada fila y columna
-            for (int y = 0; y < rows.Length; y++)
+            for (short y = 0; y < mapSizeY; y++)
             {
-                string currentRow = rows[y];
-                // Si la fila actual tiene ancho distinto, se completa con 'x' (tile inválido)
-                int rowWidth = currentRow.Length;
-
-                for (int x = 0; x < width; x++)
+                for (short x = 0; x < mapSizeX; x++)
                 {
-                    char tileChar = (x < rowWidth) ? currentRow[x] : INVALID_TILE;
-                    short heightValue = GetHeightValue(tileChar);
-                    base.WriteShort(heightValue);
+                    if (!layout.ValidTile(x, y) ||
+                        layout.Model.SqState[x, y] == SquareState.BLOCKED)
+                    {
+                        WriteShort(BLOCKED_TILE); // negativo → isRoomTile() = false
+                        continue;
+                    }
+
+                    // (floorHeight * 256) → cliente decodifica: (value & 16383) / 256
+                    WriteShort((short)(layout.Model.SqFloorHeight[x, y] * 256));
                 }
             }
-        }
-
-        /// <summary>
-        /// Convierte un carácter de altura en el valor numérico a enviar.
-        /// </summary>
-        private short GetHeightValue(char c)
-        {
-            if (c == INVALID_TILE)
-                return INVALID_HEIGHT;
-
-            // Si es dígito ('0'..'9')
-            if (char.IsDigit(c))
-            {
-                int digit = c - '0';
-                return (short)(digit * HEIGHT_MULTIPLIER);
-            }
-
-            // Para letras minúsculas ('a'..'z') que representan alturas 10..35
-            if (c >= 'a' && c <= 'z')
-            {
-                int value = (c - 'a') + 10;   // 'a'=10, 'b'=11, ...
-                return (short)(value * HEIGHT_MULTIPLIER);
-            }
-
-            // Si el carácter no es válido, se considera tile inválido (o se puede loguear)
-            // Podrías lanzar una excepción o simplemente devolver -1.
-            return INVALID_HEIGHT;
         }
     }
 }

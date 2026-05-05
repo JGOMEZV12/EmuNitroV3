@@ -2,59 +2,42 @@
 using System.Collections.Generic;
 using Polar.HabboHotel.Groups;
 using Polar.HabboHotel.GameClients;
-using Polar.HabboHotel.Users;
 
 namespace Polar.Communication.Packets.Outgoing.Groups
 {
     internal class GroupForumReadThreadMessageComposer : ServerPacket
     {
-        public GameClient Session { get; }
-        public int GroupId { get; }
-        public int ThreadId { get; }
-        public int StartIndex { get; }
-        public int b { get; }
-        public int indx;
-        public List<GroupForumPost> posts { get; }
-        public GroupForumReadThreadMessageComposer(GameClient Session, int GroupId, int ThreadId, int StartIndex, int b, int indx, List<GroupForumPost> posts)
+        public GroupForumReadThreadMessageComposer(int groupId, int threadId, int startIndex, List<GroupForumPost> posts)
             : base(ServerPacketHeader.GroupForumReadThreadMessageComposer)
         {
-            this.Session = Session;
-            this.GroupId = GroupId;
-            this.ThreadId = ThreadId;
-            this.StartIndex = StartIndex;
-            this.b = b;
-            this.indx = indx;
-            this.posts = posts;
-            Compose(this);
+            Compose(this, groupId, threadId, startIndex, posts);
         }
 
-        public void Compose(ServerPacket packet)
+        public void Compose(ServerPacket packet, int groupId, int threadId, int startIndex, List<GroupForumPost> posts)
         {
-            packet.WriteInteger(GroupId);
-            packet.WriteInteger(ThreadId);
-            packet.WriteInteger(StartIndex);
-            packet.WriteInteger(b);
+            // ✅ Java GuildForumCommentsComposer: guildId → threadId → startIndex → count → comments
+            packet.WriteInteger(groupId);
+            packet.WriteInteger(threadId);
+            packet.WriteInteger(startIndex);
+            packet.WriteInteger(posts.Count);
 
-            foreach (GroupForumPost Post in posts)
+            int now = Convert.ToInt32(PolarEnvironment.GetUnixTimestamp());
+
+            foreach (GroupForumPost post in posts)
             {
-                packet.WriteInteger(indx++ - 1);
-                packet.WriteInteger(indx - 1);
-                packet.WriteInteger(Post.PosterId);
-                packet.WriteString(Post.PosterName);
-                packet.WriteString(Post.PosterLook);
-                packet.WriteInteger(Convert.ToInt32(PolarEnvironment.GetUnixTimestamp()) - Post.Timestamp);
-                packet.WriteString(Post.PostContent);
-                if (Post.Hidden)
-                    packet.WriteByte(10);
-                else
-                    packet.WriteByte(0);
+                // ✅ Java: comment.serialize() — sin índices manuales, sin ForumPosts extra
+                packet.WriteInteger(post.Id);
+                packet.WriteInteger(post.PosterId);
+                packet.WriteString(post.PosterName);
+                packet.WriteString(post.PosterLook);
+                packet.WriteInteger(now - post.Timestamp);
+                packet.WriteString(post.PostContent);
+                packet.WriteByte(post.Hidden ? (byte)10 : (byte)0);
                 packet.WriteInteger(0);
-                if (Post.Hider != 0)
-                    packet.WriteString(PolarEnvironment.GetHabboById(Post.Hider).Username);
-                else
-                    packet.WriteString("");
+                packet.WriteString(post.Hider != 0
+                    ? (PolarEnvironment.GetHabboById(post.Hider)?.Username ?? "")
+                    : "");
                 packet.WriteInteger(0);
-                packet.WriteInteger(PolarEnvironment.GetHabboById(Post.PosterId).GetStats().ForumPosts);
             }
         }
     }

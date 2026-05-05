@@ -281,6 +281,7 @@
         public const int GetBadgesMessageEvent = 2769; // PRODUCTION-201611291003-338511768
         public const int GetWeaponsMessageEvent = 10563; // PRODUCTION-201611291003-338511768
         public const int UseFurnitureMessageEvent = 99; // PRODUCTION-201611291003-338511768
+        public const int ClickFurniMessageEvent = 6002; // PRODUCTION-201611291003-338511768
         public const int GoToFlatMessageEvent = 685; // PRODUCTION-201611291003-338511768
         public const int GetSanctionStatusMessageEvent = 2746; // PRODUCTION-201611291003-338511768
         public const int SubmitNewTicketMessageEvent = 1691; // PRODUCTION-201611291003-338511768
@@ -380,8 +381,15 @@
         public const int DesequipRPInventory = 5302;
 
         // BattlePass
-        public const int GetBattlePassMessageEvent = 10020;
-        public const int ClaimBattlePassRewardMessageEvent = 10021;
+        //public const int GetBattlePassMessageEvent = 10020;
+        //public const int ClaimBattlePassRewardMessageEvent = 10021;
+        public const int WiredMonitorRequestEvent = 10021;
+        public const int WiredRoomSettingsRequestEvent = 10022;
+        public const int WiredRoomSettingsSaveEvent = 10023;
+        public const int WiredUserVariablesRequestEvent = 10024;
+        public const int WiredUserVariableUpdateEvent = 10025;
+        public const int WiredUserVariableManageEvent = 10026;
+        public const int WiredUserInspectMoveEvent = 10027;
 
         // Furni Editor
         public const int FurniEditorSearchEvent = 10040;

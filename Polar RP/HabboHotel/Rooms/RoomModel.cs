@@ -14,7 +14,7 @@ namespace Polar.HabboHotel.Rooms
     public class RoomModel
     {
         // ─────────────────────────────────────
-        //  Propiedades (antes campos públicos mutables)
+        //  Propiedades
         // ─────────────────────────────────────
         public int DoorOrientation { get; private set; }
         public int DoorX { get; private set; }
@@ -46,15 +46,13 @@ namespace Polar.HabboHotel.Rooms
             DoorOrientation = doorOrientation;
             WallHeight = wallHeight;
 
-            // FIX: guardamos el heightmap ya en minúsculas
-            Heightmap = heightmap.ToLower();
+            // FIX: ya NO se fuerza ToLower() — Parse() acepta a-z y A-Z
+            Heightmap = heightmap;
             GotPublicPool = !string.IsNullOrEmpty(poolmap);
 
-            // FIX: Convert.ToChar(13) → '\r' más legible
-            // FIX: Split con StringSplitOptions para ignorar líneas vacías al final
-            string[] tmpHeightmap = Heightmap.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+            string[] tmpHeightmap = Heightmap.Split(
+                new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
 
-            // FIX: poolmap null-safe — si no hay pool usamos array vacío en lugar de llamar Split sobre null
             string[] tmpFxMap = GotPublicPool
                 ? poolmap.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)
                 : Array.Empty<string>();
@@ -69,19 +67,17 @@ namespace Polar.HabboHotel.Rooms
             if (GotPublicPool)
                 RoomModelFx = new byte[MapSizeX, MapSizeY];
 
-            // FIX: catch vacío eliminado — si el parse falla ahora se propaga correctamente
-            // con el id del modelo en el mensaje para facilitar el debug
             try
             {
                 for (int y = 0; y < MapSizeY; y++)
                 {
-                    // FIX: Replace doble (\r y \n) reemplazado por el Split con ambos separadores arriba
                     string line = tmpHeightmap[y];
 
                     for (int x = 0; x < line.Length; x++)
                     {
                         char square = line[x];
-                        if (square == 'x')
+
+                        if (square == 'x' || square == 'X')
                         {
                             SqState[x, y] = SquareState.BLOCKED;
                         }
@@ -100,21 +96,30 @@ namespace Polar.HabboHotel.Rooms
         }
 
         // ─────────────────────────────────────
-        //  Parse — FIX: switch de 36 cases reemplazado por aritmética
+        //  Parse
+        //  FIX: ahora acepta 0-9, a-z Y A-Z
+        //       — consistente con DynamicRoomModel que emite A-Z
         // ─────────────────────────────────────
 
         /// <summary>
-        /// Convierte un carácter de heightmap (0-9, a-z) en su valor numérico (0-35).
+        /// Convierte un carácter de heightmap en su valor numérico (0-35).
+        ///   '0'-'9' → 0-9
+        ///   'a'-'z' → 10-35  (minúsculas, desde DB)
+        ///   'A'-'Z' → 10-35  (mayúsculas, desde DynamicRoomModel)
         /// </summary>
         public static short Parse(char input)
         {
             if (input >= '0' && input <= '9')
-                return (short)(input - '0');           // 0–9
+                return (short)(input - '0');
 
             if (input >= 'a' && input <= 'z')
-                return (short)(input - 'a' + 10);      // 10–35
+                return (short)(input - 'a' + 10);
 
-            throw new FormatException($"Invalid heightmap character '{input}'. Must be 0-9 or a-z.");
+            if (input >= 'A' && input <= 'Z')
+                return (short)(input - 'A' + 10);
+
+            throw new FormatException(
+                $"Invalid heightmap character '{input}'. Must be 0-9, a-z or A-Z.");
         }
 
         /// <summary>
@@ -125,7 +130,8 @@ namespace Polar.HabboHotel.Rooms
             if (input >= '0' && input <= '9')
                 return (byte)(input - '0');
 
-            throw new FormatException($"Invalid byte character '{input}'. Must be 0-9.");
+            throw new FormatException(
+                $"Invalid byte character '{input}'. Must be 0-9.");
         }
 
         // ─────────────────────────────────────

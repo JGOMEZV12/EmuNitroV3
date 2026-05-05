@@ -152,6 +152,15 @@ public class WiredComponent
         WiredBoxType.AddonTextOutputFurniName      => new AddonTextOutputFurniNameBox(_room, item),
         WiredBoxType.AddonTextOutputUsername       => new AddonTextOutputUsernameBox(_room, item),
         WiredBoxType.AddonUnseen                   => new AddonUnseenBox(_room, item),
+        WiredBoxType.EffectSetVariable              => new SetVariableBox(_room, item),
+        WiredBoxType.EffectVariableAdd              => new VariableAddBox(_room, item),
+        WiredBoxType.ConditionVariableIsEqual       => new VariableIsEqualBox(_room, item),
+        WiredBoxType.EffectVariableSubtract         => new VariableSubtractBox(_room, item),
+        WiredBoxType.ConditionVariableIsGreaterThan => new VariableIsGreaterThanBox(_room, item),
+        WiredBoxType.ConditionVariableIsLessThan    => new VariableIsLessThanBox(_room, item),
+        WiredBoxType.EffectMoveFurniXYZ             => new MoveFurniXYZBox(_room, item),
+        WiredBoxType.EffectGiveHanditem             => new GiveHanditemBox(_room, item),
+        WiredBoxType.EffectTeleportToRoom           => new TeleportToRoomBox(_room, item),
         _ => LogAndReturnNull(item)
     };
 
@@ -299,66 +308,81 @@ public class WiredComponent
     }
 
     // ── LoadWiredBox — sin cambios de lógica, solo usa nuevo AddBox ────────
-    public IWiredItem LoadWiredBox(Item item)
+    public IWiredItem LoadWiredBox(Item item) { LoadWiredBoxes(new[] { item }); TryGet(item.Id, out var box); return box; }
+
+    public void LoadWiredBoxes(IEnumerable<Item> items)
     {
-        var newBox = GenerateNewBox(item);
-        if (newBox == null) return null;
+        var wiredItems = items.Where(i => i.IsWired).ToList();
+        if (wiredItems.Count == 0) return;
 
-        using var dbClient = PolarEnvironment.GetDatabaseManager().GetQueryReactor();
-        dbClient.SetQuery("SELECT * FROM wired_items WHERE id=@id LIMIT 1");
-        dbClient.AddParameter("id", item.Id);
-        var row = dbClient.getRow();
-
-        if (row != null)
+        var ids = string.Join(",", wiredItems.Select(i => i.Id));
+        DataTable table;
+        using (var dbClient = PolarEnvironment.GetDatabaseManager().GetQueryReactor())
         {
-            string rawString = Convert.ToString(row["string"]);
-            newBox.StringData = string.IsNullOrEmpty(rawString)
-                ? newBox.Type switch
-                {
-                    WiredBoxType.ConditionMatchStateAndPosition or
-                    WiredBoxType.ConditionDontMatchStateAndPosition or
-                    WiredBoxType.EffectMatchPosition => "0;0;0",
-                    WiredBoxType.ConditionUserCountInRoom or
-                    WiredBoxType.ConditionUserCountDoesntInRoom or
-                    WiredBoxType.EffectMoveAndRotate => "0;0",
-                    WiredBoxType.ConditionFurniHasNoFurni => "0",
-                    _ => ""
-                }
-                : rawString;
+            dbClient.SetQuery($"SELECT * FROM wired_items WHERE id IN ({ids})");
+            table = dbClient.getTable();
+        }
 
-            newBox.BoolData = Convert.ToInt32(row["bool"]) == 1;
-            newBox.ItemsData = Convert.ToString(row["items"]);
+        var rows = table?.Rows.Cast<DataRow>().ToDictionary(r => Convert.ToInt32(r["id"])) ?? new Dictionary<int, DataRow>();
 
-            if (newBox is IWiredCycle cycle)
-                cycle.Delay = Convert.ToInt32(row["delay"]);
+        foreach (var item in wiredItems)
+        {
+            var newBox = GenerateNewBox(item);
+            if (newBox == null) continue;
 
-            foreach (var str in newBox.ItemsData.Split(';'))
+            if (rows.TryGetValue(item.Id, out var row))
             {
-                var sId = str.Contains(':') ? str.Split(':')[0] : str;
-                if (int.TryParse(sId, out int id))
-                {
-                    var selectedItem = _room.GetRoomItemHandler().GetItem(id);
-                    if (selectedItem != null)
-                        newBox.SetItems.TryAdd(selectedItem.Id, selectedItem);
-                }
+                ApplyRowToBox(newBox, row);
+            }
+            else
+            {
+                newBox.ItemsData = "";
+                newBox.StringData = "";
+                newBox.BoolData = false;
+                SaveBox(newBox);
+            }
+
+            if (!AddBox(newBox))
+            {
+                TryRemove(newBox.Item.Id);
+                AddBox(newBox);
             }
         }
-        else
-        {
-            newBox.ItemsData = "";
-            newBox.StringData = "";
-            newBox.BoolData = false;
-            SaveBox(newBox);
-        }
+    }
 
-        if (!AddBox(newBox))
-        {
-            // Ya existe — reemplazar y reindexar
-            TryRemove(newBox.Item.Id);
-            AddBox(newBox);
-        }
+    private void ApplyRowToBox(IWiredItem newBox, DataRow row)
+    {
+        string rawString = Convert.ToString(row["string"]);
+        newBox.StringData = string.IsNullOrEmpty(rawString)
+            ? newBox.Type switch
+            {
+                WiredBoxType.ConditionMatchStateAndPosition or
+                WiredBoxType.ConditionDontMatchStateAndPosition or
+                WiredBoxType.EffectMatchPosition => "0;0;0",
+                WiredBoxType.ConditionUserCountInRoom or
+                WiredBoxType.ConditionUserCountDoesntInRoom or
+                WiredBoxType.EffectMoveAndRotate => "0;0",
+                WiredBoxType.ConditionFurniHasNoFurni => "0",
+                _ => ""
+            }
+            : rawString;
 
-        return newBox;
+        newBox.BoolData = Convert.ToInt32(row["bool"]) == 1;
+        newBox.ItemsData = Convert.ToString(row["items"]);
+
+        if (newBox is IWiredCycle cycle)
+            cycle.Delay = Convert.ToInt32(row["delay"]);
+
+        foreach (var str in newBox.ItemsData.Split(';'))
+        {
+            var sId = str.Contains(':') ? str.Split(':')[0] : str;
+            if (int.TryParse(sId, out int id))
+            {
+                var selectedItem = _room.GetRoomItemHandler().GetItem(id);
+                if (selectedItem != null)
+                    newBox.SetItems.TryAdd(selectedItem.Id, selectedItem);
+            }
+        }
     }
 
 

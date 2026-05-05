@@ -1,9 +1,3 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
 namespace Polar.Communication.Packets.Outgoing.Inventory.Furni
 {
     class FurniListUpdateComposer : ServerPacket
@@ -11,7 +5,6 @@ namespace Polar.Communication.Packets.Outgoing.Inventory.Furni
         public FurniListUpdateComposer()
             : base(ServerPacketHeader.FurniListUpdateMessageComposer)
         {
-
         }
     }
 }

@@ -1,156 +1,74 @@
 ﻿using Polar.Core;
-using Polar.HabboHotel.Groups;
 using Polar.HabboHotel.Items;
 using Polar.HabboHotel.Rooms;
-using Polar.HabboHotel.Users;
 using Polar.Utilities;
 using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Net.Sockets;
-using System.Text;
 
 namespace Polar.Communication.Packets.Outgoing.Rooms.Engine
 {
     internal class ObjectAddComposer : ServerPacket
     {
-        public ObjectAddComposer(Item Item, Room Room)
+        public ObjectAddComposer(Item item, string itemOwnerName)
             : base(ServerPacketHeader.ObjectAddMessageComposer)
         {
-            base.WriteInteger(Item.Id);
-            base.WriteInteger(Item.GetBaseItem().SpriteId);
-            base.WriteInteger(Item.GetX);
-            base.WriteInteger(Item.GetY);
-            base.WriteInteger(Item.Rotation);
-            base.WriteString(Item.GetZ.ToString("G", System.Globalization.CultureInfo.InvariantCulture));
+            itemOwnerName ??= string.Empty;
 
-            if (Item.Data.InteractionType == InteractionType.TROPHY ||
-                Item.Data.InteractionType == InteractionType.CRACKABLE ||
-                Item.GetBaseItem().ItemName == "gnome_box")
-                base.WriteString("1.0");
-            else if (Item.Data.Walkable || Item.Data.IsSeat)
-                base.WriteString(Item.GetZ.ToString("G", System.Globalization.CultureInfo.InvariantCulture));
-            else
-                base.WriteString(String.Empty);
+            var interactionType = item.Data.InteractionType;
+            string zStr = item.GetZ.ToString("G", System.Globalization.CultureInfo.InvariantCulture);
 
-            // _extra: Gift usa estilo, MusicDisc usa songId, default = 1
-            if (Item.Data.InteractionType == InteractionType.GIFT)
+            WriteInteger(item.Id);
+            WriteInteger(item.GetBaseItem().SpriteId);
+            WriteInteger(item.GetX);
+            WriteInteger(item.GetY);
+            WriteInteger(item.Rotation);
+            WriteString(ObjectUpdateComposer.GetStackHeight(item, interactionType, zStr));
+
+            // ✅ stackHeight con AdjustableHeights
+            WriteString(ObjectUpdateComposer.GetStackHeight(item, interactionType, zStr));
+
+            if (interactionType == InteractionType.GIFT)
             {
-                string[] giftData = Item.ExtraData?.Split((char)5) ?? Array.Empty<string>();
-                if (giftData.Length >= 7 && int.TryParse(giftData[6], out int giftStyle))
-                    base.WriteInteger(giftStyle * 1000 + giftStyle);
+                string[] parts = item.ExtraData?.Split((char)5) ?? Array.Empty<string>();
+                if (parts.Length >= 7 &&
+                    int.TryParse(parts[0], out int colorId) &&
+                    int.TryParse(parts[6], out int ribbonId))
+                    WriteInteger((colorId * 1000) + ribbonId);
                 else
-                    base.WriteInteger(1);
+                    WriteInteger(1);
             }
-            else if (Item.Data.InteractionType == InteractionType.MUSIC_DISC)
-            {
-                if (int.TryParse(Item.ExtraData, out int songId))
-                    base.WriteInteger(songId);
-                else
-                    base.WriteInteger(1);
-            }
+            else if (interactionType == InteractionType.MUSIC_DISC)
+                WriteInteger(int.TryParse(item.ExtraData, out int songId) ? songId : 1);
             else
+                WriteInteger(1);
+
+            try
             {
-                base.WriteInteger(1); // default, no 0
+                ItemBehaviourUtility.GenerateExtradata(item, this);
+            }
+            catch (Exception ex)
+            {
+                Logging.WriteLine(
+                    $"[GenerateExtradata FAIL] Item {item.Id} tipo {interactionType} ExtraData='{item.ExtraData}': {ex.Message}",
+                    ConsoleColor.DarkGray);
+                WriteInteger(0);
+                WriteString(string.Empty);
             }
 
-            // _data
-        
-
-                if (Item.LimitedNo > 0)
-                {
-                    base.WriteInteger(1);
-                    base.WriteInteger(256);
-                    base.WriteString(Item.ExtraData ?? "");
-                    base.WriteInteger(Item.LimitedNo);
-                    base.WriteInteger(Item.LimitedTot);
-                }
-                else if (Item.Data.InteractionType == InteractionType.INFO_TERMINAL)
-                {
-                    base.WriteInteger(0);
-                    base.WriteInteger(1);
-                    base.WriteInteger(1);
-                    base.WriteString("internalLink");
-                    base.WriteString(Item.ExtraData ?? "");
-                }
-                else if (Item.Data.InteractionType == InteractionType.FX_PROVIDER)
-                {
-                    base.WriteInteger(0);
-                    base.WriteInteger(1);
-                    base.WriteInteger(1);
-                    base.WriteString("effectId");
-                    base.WriteString(Item.ExtraData ?? "");
-                }
-                else if (Item.Data.InteractionType == InteractionType.PINATA)
-                {
-                    base.WriteInteger(0);
-                    base.WriteInteger(7);
-                    base.WriteString("6");
-                    base.WriteInteger(string.IsNullOrEmpty(Item.ExtraData) ? 0 : int.Parse(Item.ExtraData));
-                    base.WriteInteger(100);
-                }
-                else if (Item.Data.InteractionType == InteractionType.PINATATRIGGERED)
-                {
-                    base.WriteInteger(0);
-                    base.WriteInteger(7);
-                    base.WriteString("0");
-                    base.WriteInteger(string.IsNullOrEmpty(Item.ExtraData) ? 0 : int.Parse(Item.ExtraData));
-                    base.WriteInteger(1);
-                }
-                else if (Item.Data.InteractionType == InteractionType.MAGICEGG)
-                {
-                    base.WriteInteger(0);
-                    base.WriteInteger(7);
-                    base.WriteString(Item.ExtraData ?? "");
-                    base.WriteInteger(string.IsNullOrEmpty(Item.ExtraData) ? 0 : int.Parse(Item.ExtraData));
-                    base.WriteInteger(23);
-                }
-                else if (Item.Data.InteractionType == InteractionType.MAGICCHEST)
-                {
-                    base.WriteInteger(0);
-                    base.WriteInteger(7);
-                    base.WriteString(Item.ExtraData ?? "");
-                    base.WriteInteger(string.IsNullOrEmpty(Item.ExtraData) ? 0 : int.Parse(Item.ExtraData));
-                    base.WriteInteger(1);
-                }
-                else
-                {
-                    try
-                    {
-                        ItemBehaviourUtility.GenerateExtradata(Item, this);
-                    }
-                    catch (Exception ex)
-                    {
-                        Logging.WriteLine($"[GenerateExtradata FAIL] Item {Item.Id} tipo {Item.Data.InteractionType} ExtraData='{Item.ExtraData}': {ex}", ConsoleColor.DarkGray);
-                        base.WriteInteger(0);  // tipo legacy
-                        base.WriteString("");  // string vacío
-                    }
-                }
-
-
-            base.WriteInteger(-1); // _expires
-
-            // _usagePolicy - lógica del Java de referencia
-            if (Item.Data.InteractionType == InteractionType.TELEPORT ||
-                Item.Data.InteractionType == InteractionType.SWITCH ||
-                Item.Data.InteractionType == InteractionType.VENDING_MACHINE ||
-                Item.Data.InteractionType == InteractionType.INFO_TERMINAL ||
-                Item.Data.InteractionType == InteractionType.POSTIT)
-                base.WriteInteger(2);
-            else if (Item.GetBaseItem().Modes > 1)
-                base.WriteInteger(1);
-            else
-                base.WriteInteger(0);
-
-            base.WriteInteger(Item.UserID);
-            base.WriteInteger(Item.Data.Stackable ? 1 : 0);
-            base.WriteInteger(Item.Data.IsSeat ? 1 : 0);
-            base.WriteInteger(0); // allowLay
-            base.WriteInteger(Item.Data.Walkable ? 1 : 0);
-            base.WriteInteger(Item.Data.Width);
-            base.WriteInteger(Item.Data.Length);
-            base.WriteInteger(0); // teleportTargetId
-            base.WriteString(Room.OwnerName ?? ""); // _username
+            WriteInteger(-1);
+            WriteInteger((item.GetBaseItem().Modes > 1) ? 1 : 0);
+            WriteInteger(item.UserID);
+            WriteInteger(item.Data.Stackable ? 1 : 0);
+            WriteInteger(item.Data.IsSeat ? 1 : 0);
+            WriteInteger(0);
+            WriteInteger(item.Data.Walkable ? 1 : 0);
+            WriteInteger(item.Data.Width);
+            WriteInteger(item.Data.Length);
+            WriteInteger(0);
+            WriteString(Convert.ToString(itemOwnerName));
         }
+
+        public ObjectAddComposer(Item item, Room room)
+            : this(item, PolarEnvironment.GetUserInfoBy("username", "id", item.UserID.ToString()))
+        { }
     }
 }

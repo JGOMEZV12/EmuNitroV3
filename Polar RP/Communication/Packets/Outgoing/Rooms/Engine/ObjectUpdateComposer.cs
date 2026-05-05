@@ -1,12 +1,7 @@
 ﻿using Polar.Core;
-using Polar.HabboHotel.Groups;
 using Polar.HabboHotel.Items;
-using Polar.HabboHotel.Users;
 using Polar.Utilities;
 using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
 
 namespace Polar.Communication.Packets.Outgoing.Rooms.Engine
 {
@@ -15,147 +10,108 @@ namespace Polar.Communication.Packets.Outgoing.Rooms.Engine
         public Item Item { get; }
         public int UserId { get; }
 
-        public ObjectUpdateComposer(Item item, int userId)
+        public ObjectUpdateComposer(Item item, string itemOwnerName)
             : base(ServerPacketHeader.ObjectUpdateMessageComposer)
         {
-            this.Item = item;
-            this.UserId = userId;
-            Compose(this);
-        }
+            Item = item;
+            UserId = item.UserID;
 
-        public void Compose(ServerPacket packet)
-        {
-            packet.WriteInteger(Item.Id);
-            packet.WriteInteger(Item.GetBaseItem().SpriteId);
-            packet.WriteInteger(Item.GetX);
-            packet.WriteInteger(Item.GetY);
-            packet.WriteInteger(Item.Rotation);
-            packet.WriteString(Item.GetZ.ToString("G", System.Globalization.CultureInfo.InvariantCulture));
+            itemOwnerName ??= string.Empty;
 
-            if (Item.Data.InteractionType == InteractionType.TROPHY ||
-                Item.Data.InteractionType == InteractionType.CRACKABLE ||
-                Item.GetBaseItem().ItemName == "gnome_box")
-                packet.WriteString("1.0");
-            else if (Item.Data.Walkable || Item.Data.IsSeat)
-                packet.WriteString(Item.GetZ.ToString("G", System.Globalization.CultureInfo.InvariantCulture));
-            else
-                packet.WriteString(String.Empty);
+            var interactionType = item.Data.InteractionType;
+            string zStr = item.GetZ.ToString("G", System.Globalization.CultureInfo.InvariantCulture);
 
-            // _extra
-            if (Item.Data.InteractionType == InteractionType.GIFT)
+            WriteInteger(item.Id);
+            WriteInteger(item.GetBaseItem().SpriteId);
+            WriteInteger(item.GetX);
+            WriteInteger(item.GetY);
+            WriteInteger(item.Rotation);
+            WriteString(GetStackHeight(item, interactionType, zStr));
+
+            // ✅ stackHeight con AdjustableHeights
+            WriteString(GetStackHeight(item, interactionType, zStr));
+
+            if (interactionType == InteractionType.GIFT)
             {
-                string[] giftData = Item.ExtraData?.Split((char)5) ?? Array.Empty<string>();
-                if (giftData.Length >= 7 && int.TryParse(giftData[6], out int giftStyle))
-                    packet.WriteInteger(giftStyle * 1000 + giftStyle);
+                string[] parts = item.ExtraData?.Split((char)5) ?? Array.Empty<string>();
+                if (parts.Length >= 7 &&
+                    int.TryParse(parts[0], out int colorId) &&
+                    int.TryParse(parts[6], out int ribbonId))
+                    WriteInteger((colorId * 1000) + ribbonId);
                 else
-                    packet.WriteInteger(0);
+                    WriteInteger(1);
             }
-            else if (Item.Data.InteractionType == InteractionType.MUSIC_DISC)
-            {
-                if (int.TryParse(Item.ExtraData, out int songId))
-                    packet.WriteInteger(songId);
-                else
-                    packet.WriteInteger(0);
-            }
+            else if (interactionType == InteractionType.MUSIC_DISC)
+                WriteInteger(int.TryParse(item.ExtraData, out int songId) ? songId : 1);
             else
-            {
-                packet.WriteInteger(0); // default es 0 en FloorItemUpdate
-            }
+                WriteInteger(1);
 
-            // _data
             try
             {
-
-                if (Item.LimitedNo > 0)
-                {
-                    packet.WriteInteger(1);
-                    packet.WriteInteger(256);
-                    packet.WriteString(Item.ExtraData ?? "");
-                    packet.WriteInteger(Item.LimitedNo);
-                    packet.WriteInteger(Item.LimitedTot);
-                }
-                else if (Item.Data.InteractionType == InteractionType.INFO_TERMINAL)
-                {
-                    packet.WriteInteger(0);
-                    packet.WriteInteger(1);
-                    packet.WriteInteger(1);
-                    packet.WriteString("internalLink");
-                    packet.WriteString(Item.ExtraData ?? "");
-                }
-                else if (Item.Data.InteractionType == InteractionType.FX_PROVIDER)
-                {
-                    packet.WriteInteger(0);
-                    packet.WriteInteger(1);
-                    packet.WriteInteger(1);
-                    packet.WriteString("effectId");
-                    packet.WriteString(Item.ExtraData ?? "");
-                }
-                else if (Item.Data.InteractionType == InteractionType.PINATA)
-                {
-                    packet.WriteInteger(0);
-                    packet.WriteInteger(7);
-                    packet.WriteString("6");
-                    packet.WriteInteger(string.IsNullOrEmpty(Item.ExtraData) ? 0 : int.Parse(Item.ExtraData));
-                    packet.WriteInteger(100);
-                }
-                else if (Item.Data.InteractionType == InteractionType.PINATATRIGGERED)
-                {
-                    packet.WriteInteger(0);
-                    packet.WriteInteger(7);
-                    packet.WriteString("0");
-                    packet.WriteInteger(string.IsNullOrEmpty(Item.ExtraData) ? 0 : int.Parse(Item.ExtraData));
-                    packet.WriteInteger(1);
-                }
-                else if (Item.Data.InteractionType == InteractionType.MAGICEGG)
-                {
-                    packet.WriteInteger(0);
-                    packet.WriteInteger(7);
-                    packet.WriteString(Item.ExtraData ?? "");
-                    packet.WriteInteger(string.IsNullOrEmpty(Item.ExtraData) ? 0 : int.Parse(Item.ExtraData));
-                    packet.WriteInteger(23);
-                }
-                else if (Item.Data.InteractionType == InteractionType.MAGICCHEST)
-                {
-                    packet.WriteInteger(0);
-                    packet.WriteInteger(7);
-                    packet.WriteString(Item.ExtraData ?? "");
-                    packet.WriteInteger(string.IsNullOrEmpty(Item.ExtraData) ? 0 : int.Parse(Item.ExtraData));
-                    packet.WriteInteger(1);
-                }
-                else
-                {
-                    try
-                    {
-                        ItemBehaviourUtility.GenerateExtradata(Item, packet);
-                    }
-                    catch (Exception ex)
-                    {
-                        Logging.WriteLine($"[GenerateExtradata FAIL] Item {Item.Id} tipo {Item.Data.InteractionType} ExtraData='{Item.ExtraData}': {ex}", ConsoleColor.DarkGray);
-                        packet.WriteInteger(0);  // tipo legacy
-                        packet.WriteString("");  // string vacío
-                    }
-                }
-
+                ItemBehaviourUtility.GenerateExtradata(item, this);
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[ERROR _data] Item {Item.Id} tipo {Item.Data.InteractionType}: {ex.Message}");
-                // escribir data vacía para no corromper el paquete
-                packet.WriteInteger(0);
-                packet.WriteString("");
+                Logging.WriteLine(
+                    $"[GenerateExtradata FAIL] Item {item.Id} tipo {interactionType} ExtraData='{item.ExtraData}': {ex.Message}",
+                    ConsoleColor.DarkGray);
+                WriteInteger(0);
+                WriteString(string.Empty);
             }
 
-            packet.WriteInteger(-1);  // _expires
-            packet.WriteInteger(0);   // _usagePolicy siempre 0 en update
-            packet.WriteInteger(UserId);
-            packet.WriteInteger(Item.Data.Stackable ? 1 : 0);
-            packet.WriteInteger(Item.Data.IsSeat ? 1 : 0);
-            packet.WriteInteger(0);   // allowLay
-            packet.WriteInteger(Item.Data.Walkable ? 1 : 0);
-            packet.WriteInteger(Item.Data.Width);
-            packet.WriteInteger(Item.Data.Length);
-            packet.WriteInteger(0);   // teleportTargetId
-            // sin _username al final
+            WriteInteger(-1);
+
+            if (interactionType == InteractionType.TELEPORT ||
+                interactionType == InteractionType.SWITCH ||
+                interactionType == InteractionType.VENDING_MACHINE ||
+                interactionType == InteractionType.INFO_TERMINAL ||
+                interactionType == InteractionType.POSTIT ||
+                interactionType == InteractionType.PUZZLE_BOX)
+                WriteInteger(2);
+            else if (item.GetBaseItem().Modes > 1)
+                WriteInteger(1);
+            else
+                WriteInteger(0);
+
+            WriteInteger(item.UserID);
+            WriteInteger(item.Data.Stackable ? 1 : 0);
+            WriteInteger(item.Data.IsSeat ? 1 : 0);
+            WriteInteger(0);
+            WriteInteger(item.Data.Walkable ? 1 : 0);
+            WriteInteger(item.Data.Width);
+            WriteInteger(item.Data.Length);
+            WriteInteger(0);
+            WriteString(Convert.ToString(itemOwnerName));
+
+            if (item.GetBaseItem().SpriteId < 0)
+                WriteString(item.GetBaseItem().ItemName);
         }
+
+        // ✅ Helper compartido — usado por ObjectsComposer y ObjectAddComposer
+        internal static string GetStackHeight(Item item, InteractionType interactionType, string zStr)
+        {
+            if (interactionType == InteractionType.TROPHY ||
+                interactionType == InteractionType.CRACKABLE ||
+                item.GetBaseItem().ItemName == "gnome_box")
+                return "1.0";
+
+            // ✅ AdjustableHeights: Z + altura del estado actual
+            if (item.GetBaseItem().AdjustableHeights != null &&
+                item.GetBaseItem().AdjustableHeights.Count > 1 &&
+                item.GetBaseItem().AdjustableHeights.TryGetValue(item.ExtraData, out double adjH))
+            {
+                double stackH = item.GetZ + adjH;
+                return stackH.ToString("G", System.Globalization.CultureInfo.InvariantCulture);
+            }
+
+            if (item.Data.Walkable || item.Data.IsSeat)
+                return zStr;
+
+            return string.Empty;
+        }
+
+        public ObjectUpdateComposer(Item item, int userId)
+            : this(item, PolarEnvironment.GetUserInfoBy("username", "id", item.UserID.ToString()))
+        { }
     }
 }

@@ -1,4 +1,4 @@
-﻿using MySqlConnector;
+using MySqlConnector;
 using Polar.Communication.Interfaces;
 using Polar.Communication.Packets.Outgoing;
 using Polar.Communication.Packets.Outgoing.Inventory.Furni;
@@ -248,16 +248,13 @@ namespace Polar.HabboHotel.Rooms
                     if (_room.TonerData == null)
                         _room.TonerData = new TonerData(floorItem.Id);
                 }
-                else if (floorItem.IsWired)
-                {
-                    if (_room?.GetWired() == null) continue;
-                    _room.GetWired().LoadWiredBox(floorItem);
-                }
+
                 else if (floorItem.GetBaseItem().InteractionType == InteractionType.HOPPER)
                     HopperCount++;
                 else if (floorItem.GetBaseItem().InteractionType == InteractionType.JUKEBOX)
                     JukeboxCount++;
             }
+            _room?.GetWired()?.LoadWiredBoxes(_floorItems.Values);
         }
 
         // ────────────────────────────────────────────────

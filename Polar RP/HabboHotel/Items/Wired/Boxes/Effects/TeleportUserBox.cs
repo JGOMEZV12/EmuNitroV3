@@ -1,178 +1,202 @@
-using Polar.Communication.Packets.Outgoing;
 using System;
-using System.Linq;
-using System.Text;
-using System.Collections;
 using System.Collections.Generic;
 using System.Collections.Concurrent;
-
+using System.Linq;
 using Polar.Communication.Packets.Incoming;
+using Polar.Communication.Packets.Outgoing;
 using Polar.HabboHotel.Rooms;
 using Polar.HabboHotel.Users;
-using Polar.Communication.Packets.Outgoing.Rooms.Chat;
 using Polar.HabboHotel.Users.Effects;
 
 namespace Polar.HabboHotel.Items.Wired.Boxes.Effects
 {
     class TeleportUserBox : IWiredItem, IWiredCycle
     {
+        // ── Constantes (equivalentes a WiredManager en Java) ─────────────────────
+        private const int MAXIMUM_FURNI_SELECTION = 5;
+        private const int TELEPORT_DELAY = 500;  // ms — ajustar según config
+        private const int SOURCE_TRIGGER = 0;
+        private const int SOURCE_SELECTED = 1;
+
+        // ── IWiredItem ───────────────────────────────────────────────────────────
         public Room Instance { get; set; }
         public Item Item { get; set; }
-        public WiredBoxType Type { get { return WiredBoxType.EffectTeleportToFurni; } }
+        public WiredBoxType Type => WiredBoxType.EffectTeleportToFurni;
         public ConcurrentDictionary<int, Item> SetItems { get; set; }
         public string StringData { get; set; }
         public bool BoolData { get; set; }
-        public int Delay { get { return this._delay; } set { this._delay = value; this.TickCount = value + 1; } }
-        public int TickCount { get; set; }
         public string ItemsData { get; set; }
 
-        private Queue _queue;
+        // ── IWiredCycle ──────────────────────────────────────────────────────────
+        public int Delay
+        {
+            get => _delay;
+            set { _delay = value; TickCount = value + 1; }
+        }
+        public int TickCount { get; set; }
+
+        // ── Campos privados ──────────────────────────────────────────────────────
+        private readonly Queue<RoomUser> _queue;
         private int _delay;
+        private bool _fastTeleport = false;
+        private int _furniSource = SOURCE_TRIGGER;
+        private int _userSource = SOURCE_TRIGGER;
 
         public TeleportUserBox(Room instance, Item item)
         {
-            this.Instance = instance;
-            this.Item = item;
-            this.SetItems = new ConcurrentDictionary<int, Item>();
-            this._queue = new Queue();
-            this.TickCount = Delay;
+            Instance = instance;
+            Item = item;
+            SetItems = new ConcurrentDictionary<int, Item>();
+            _queue = new Queue<RoomUser>();
+            TickCount = Delay;
         }
 
-        public void HandleSave(ClientPacket Packet)
+        // ── HandleSave ───────────────────────────────────────────────────────────
+        // Java: lee fastTeleport, furniSource, userSource desde intParams
+        public void HandleSave(ClientPacket packet)
         {
-            int Unknown = Packet.PopInt();
-            string Unknown2 = Packet.PopString();
+            int paramsCount = packet.PopInt();   // cantidad de int params
+            string strParam = packet.PopString(); // string param (vacío)
 
-            if (this.SetItems.Count > 0)
-                this.SetItems.Clear();
+            // Leer parámetros int (Java: params[0]=fastTeleport, [1]=furniSource, [2]=userSource)
+            bool fastTeleport = false;
+            int furniSource = SOURCE_TRIGGER;
+            int userSource = SOURCE_TRIGGER;
 
-            int FurniCount = Packet.PopInt();
-            for (int i = 0; i < FurniCount; i++)
+            if (paramsCount >= 1) fastTeleport = packet.PopInt() == 1;
+            if (paramsCount >= 2) furniSource = packet.PopInt();
+            if (paramsCount >= 3) userSource = packet.PopInt();
+
+            // Leer furni seleccionados
+            SetItems.Clear();
+            int furniCount = packet.PopInt();
+            for (int i = 0; i < furniCount; i++)
             {
-                Item SelectedItem = Instance.GetRoomItemHandler().GetItem(Packet.PopInt());
-                if (SelectedItem != null)
-                    SetItems.TryAdd(SelectedItem.Id, SelectedItem);
+                Item selectedItem = Instance.GetRoomItemHandler().GetItem(packet.PopInt());
+                if (selectedItem != null)
+                    SetItems.TryAdd(selectedItem.Id, selectedItem);
             }
 
-            Delay = Packet.PopInt();
+            // Java: si hay items y furniSource es TRIGGER, cambiar a SELECTED
+            if (SetItems.Count > 0 && furniSource == SOURCE_TRIGGER)
+                furniSource = SOURCE_SELECTED;
+
+            _fastTeleport = fastTeleport;
+            _furniSource = furniSource;
+            _userSource = userSource;
+            Delay = packet.PopInt();
         }
 
+        // ── Serialize ─────────────────────────────────────────────────────────────
+        // Java: bool + maxFurni + itemCount + items[] + spriteId + id + string +
+        //       int(3) + fastTeleport + furniSource + userSource + int(0) +
+        //       typeCode + delay + invalidTriggers
+        public void Serialize(ServerPacket packet)
+        {
+            var itemsList = SetItems.Values.ToList();
+
+            packet.WriteBoolean(false);
+            packet.WriteInteger(MAXIMUM_FURNI_SELECTION);
+            packet.WriteInteger(itemsList.Count);
+            foreach (Item item in itemsList)
+                packet.WriteInteger(item.Id);
+
+            packet.WriteInteger(Item.GetBaseItem().SpriteId);
+            packet.WriteInteger(Item.Id);
+            packet.WriteString(StringData ?? string.Empty);
+
+            // 3 parámetros int: fastTeleport, furniSource, userSource
+            packet.WriteInteger(3);
+            packet.WriteInteger(_fastTeleport ? 1 : 0);
+            packet.WriteInteger(_furniSource);
+            packet.WriteInteger(_userSource);
+
+            packet.WriteInteger(0);
+            packet.WriteInteger(WiredBoxTypeUtility.GetWiredId(Type));
+            packet.WriteInteger(Delay);
+
+            // invalidTriggers (si userSource == SOURCE_TRIGGER necesita usuario)
+            if (_userSource == SOURCE_TRIGGER)
+            {
+                // TODO: filtrar triggers que no son triggered by room unit
+                // Por ahora enviamos 0 triggers inválidos
+                packet.WriteInteger(0);
+            }
+            else
+            {
+                packet.WriteInteger(0);
+            }
+        }
+
+        // ── Execute ───────────────────────────────────────────────────────────────
+        public bool Execute(params object[] Params)
+        {
+            if (Params == null || Params.Length == 0) return false;
+
+            Habbo player = Params[0] as Habbo;
+            if (player == null) return false;
+
+            RoomUser user = Instance.GetRoomUserManager().GetRoomUserByHabbo(player.Id);
+            if (user == null) return false;
+
+            // Efecto visual de teleport (Java: RoomUserEffectComposer con effect 4)
+            player.Effects()?.ApplyEffect(EffectsList.Twinkle);
+
+            _queue.Enqueue(user);
+            return true;
+        }
+
+        // ── OnCycle ───────────────────────────────────────────────────────────────
         public bool OnCycle()
         {
             if (_queue.Count == 0 || SetItems.Count == 0)
             {
-                this._queue.Clear();
-                this.TickCount = Delay;
+                _queue.Clear();
+                TickCount = Delay;
                 return true;
             }
 
             while (_queue.Count > 0)
             {
-                Habbo Player = (Habbo)_queue.Dequeue();
-                if (Player == null || Player.CurrentRoom != Instance)
+                RoomUser user = _queue.Dequeue();
+                if (user == null || user.GetClient()?.GetHabbo()?.CurrentRoom != Instance)
                     continue;
 
-                this.TeleportUser(Player);
+                TeleportUser(user);
             }
 
-            this.TickCount = Delay;
+            TickCount = Delay;
             return true;
         }
 
-        
-        public void Serialize(ServerPacket Packet)
+        // ── TeleportUser ──────────────────────────────────────────────────────────
+        private void TeleportUser(RoomUser user)
         {
-            Packet.WriteBoolean(false);
-            Packet.WriteInteger(100);
-            Packet.WriteInteger(SetItems.Count);
-            foreach (Item Item in SetItems.Values.ToList())
-            {
-                Packet.WriteInteger(Item.Id);
-            }
-            Packet.WriteInteger(Item.GetBaseItem().SpriteId);
-            Packet.WriteInteger(Item.Id);
-            Packet.WriteString(StringData);
-            Packet.WriteInteger(0);
-            if (this is IWiredCycle)
-            {
-                Packet.WriteInteger(WiredBoxTypeUtility.GetWiredId(Type));
-                Packet.WriteInteger(0);
-                Packet.WriteInteger(((IWiredCycle)this).Delay);
-            }
-            else
-            {
-                Packet.WriteInteger(0);
-                Packet.WriteInteger(WiredBoxTypeUtility.GetWiredId(Type));
-                Packet.WriteInteger(0);
-            }
-        }
-        public bool Execute(params object[] Params)
-        {
-            if (Params == null || Params.Length == 0)
-                return false;
+            if (user == null || Instance?.GetGameMap() == null) return;
 
-            Habbo Player = (Habbo)Params[0];
-            if (Player == null)
-                return false;
+            // Limpiar items inválidos (Java: removeIf)
+            var invalidIds = SetItems
+                .Where(kv => !Instance.GetRoomItemHandler().GetFloor.Contains(kv.Value))
+                .Select(kv => kv.Key)
+                .ToList();
+            foreach (int id in invalidIds)
+                SetItems.TryRemove(id, out _);
 
-            if (Player.Effects() != null)
-                Player.Effects().ApplyEffect(EffectsList.Twinkle);
+            if (SetItems.Count == 0) return;
 
-            this._queue.Enqueue(Player);
-            return true;
-        }
+            // Java: selección aleatoria con nextInt
+            var items = SetItems.Values.ToList();
+            Item target = items[PolarEnvironment.GetRandomNumber(0, items.Count - 1)];
+            if (target == null) return;
 
-        private void TeleportUser(Habbo Player)
-        {
-            if (Player == null)
-                return;
+            // Java: getTile + buscar tile alternativo si está bloqueado
+            var tile = new System.Drawing.Point(target.GetX, target.GetY);
 
-            Room Room = Player.CurrentRoom;
-            if (Room == null)
-                return;
+            Instance.GetGameMap().TeleportToItem(user, target);
+            Instance.GetRoomUserManager().UpdateUserStatusses();
 
-            RoomUser User = Player.CurrentRoom.GetRoomUserManager().GetRoomUserByHabbo(Player.Id);
-            if (User == null)
-                return;
-
-            if (Player.IsTeleporting || Player.IsHopping || Player.TeleporterId != 0)
-                return;
-
-            Random rand = new Random();
-            List<Item> Items = SetItems.Values.ToList();
-            Items = Items.OrderBy(x => rand.Next()).ToList();
-
-            if (Items.Count == 0)
-                return;
-
-            Item Item = Items.First();
-            if (Item == null)
-                return;
-
-            if (!Instance.GetRoomItemHandler().GetFloor.Contains(Item))
-            {
-                SetItems.TryRemove(Item.Id, out Item);
-
-                // FIX: Indentación corregida
-                if (Items.Contains(Item))
-                    Items.Remove(Item);
-
-                if (SetItems.Count == 0 || Items.Count == 0)
-                    return;
-
-                Item = Items.First();
-                if (Item == null)
-                    return;
-            }
-
-            if (Room.GetGameMap() == null)
-                return;
-
-            Room.GetGameMap().TeleportToItem(User, Item);
-            Room.GetRoomUserManager().UpdateUserStatusses();
-
-            if (Player.Effects() != null)
-                Player.Effects().ApplyEffect(0);
+            // Quitar efecto tras teleport
+            user.GetClient()?.GetHabbo()?.Effects()?.ApplyEffect(0);
         }
     }
 }

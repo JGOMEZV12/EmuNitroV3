@@ -75,14 +75,17 @@ namespace Polar.HabboHotel.Items
                                 string vendingIDS = Row.Table.Columns.Contains(DatabaseCompatibility.FurniVendingIdsColumn) ? Convert.ToString(Row[DatabaseCompatibility.FurniVendingIdsColumn]) : "";
 
                                 List<double> heightAdjustable = new List<double>();
-                                if (Row.Table.Columns.Contains(DatabaseCompatibility.FurniHeightAdjustableColumn) && !string.IsNullOrEmpty(Row[DatabaseCompatibility.FurniHeightAdjustableColumn].ToString()))
+                                if (Row.Table.Columns.Contains(DatabaseCompatibility.FurniHeightAdjustableColumn) &&
+                                    !string.IsNullOrEmpty(Row[DatabaseCompatibility.FurniHeightAdjustableColumn].ToString()))
                                 {
                                     foreach (string val in Row[DatabaseCompatibility.FurniHeightAdjustableColumn].ToString().Split(','))
                                     {
-                                        if (double.TryParse(val, out double h)) heightAdjustable.Add(h);
+                                        // ✅ InvariantCulture para que "0.5" parsee correctamente en cualquier sistema
+                                        if (double.TryParse(val.Trim(), System.Globalization.NumberStyles.Any,
+                                            System.Globalization.CultureInfo.InvariantCulture, out double h))
+                                            heightAdjustable.Add(h);
                                     }
                                 }
-
                                 int EffectId = Row.Table.Columns.Contains(DatabaseCompatibility.FurniEffectIdColumn) ? Convert.ToInt32(Row[DatabaseCompatibility.FurniEffectIdColumn]) : 0;
                                 bool IsRare = Row.Table.Columns.Contains(DatabaseCompatibility.FurniIsRareColumn) ? PolarEnvironment.EnumToBool(Row[DatabaseCompatibility.FurniIsRareColumn].ToString()) : false;
                                 int ClothingId = Row.Table.Columns.Contains(DatabaseCompatibility.FurniClothingIdColumn) ? Convert.ToInt32(Row[DatabaseCompatibility.FurniClothingIdColumn]) : 0;

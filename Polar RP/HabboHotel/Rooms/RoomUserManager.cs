@@ -376,6 +376,7 @@ namespace Polar.HabboHotel.Rooms
                 User.SetStatus("flatctrl", "useradmin");
                 Session.SendMessage(new YouAreOwnerComposer());
                 Session.SendMessage(new YouAreControllerComposer(5));
+                _room.PushWiredSettingsToCurrentHabbos();
             }
             else if (_room.CheckRights(Session, false) && _room.Group == null)
             {

@@ -12,10 +12,7 @@ namespace Polar.HabboHotel.Rooms
         public int DoorOrientation { get; private set; }
         public int DoorX { get; set; }
         public int DoorY { get; set; }
-
-        // FIX: DoorZ se mantenía como double — en el original se casteaba a int perdiendo decimales
         public double DoorZ { get; set; }
-
         public string Heightmap { get; private set; }
         public int MapSizeX { get; private set; }
         public int MapSizeY { get; private set; }
@@ -25,9 +22,6 @@ namespace Polar.HabboHotel.Rooms
         public SquareState[,] SqState { get; private set; }
 
         private RoomModel _staticModel;
-
-        // FIX: heightmap relativo ahora se recalcula bajo demanda en lugar de cachearse
-        // en el constructor — así refleja cambios de OpenSquare/AddX/AddY correctamente
         private bool _heightmapDirty = true;
         private string _cachedHeightmap = null;
 
@@ -42,7 +36,7 @@ namespace Polar.HabboHotel.Rooms
             _staticModel = model;
             DoorX = _staticModel.DoorX;
             DoorY = _staticModel.DoorY;
-            DoorZ = _staticModel.DoorZ;   // FIX: ya no se castea a int
+            DoorZ = _staticModel.DoorZ;
             DoorOrientation = _staticModel.DoorOrientation;
             Heightmap = _staticModel.Heightmap;
             MapSizeX = _staticModel.MapSizeX;
@@ -81,7 +75,6 @@ namespace Polar.HabboHotel.Rooms
 
         // ─────────────────────────────────────
         //  RefreshArrays
-        //  FIX: arrays con tamaño exacto MapSizeX/Y — antes era MapSizeX+1/MapSizeY+1 (incorrecto)
         // ─────────────────────────────────────
         public void RefreshArrays()
         {
@@ -96,7 +89,6 @@ namespace Polar.HabboHotel.Rooms
             {
                 for (int x = 0; x < MapSizeX; x++)
                 {
-                    // Si la celda estaba fuera del array anterior, la inicializamos como BLOCKED
                     if (x >= prevX || y >= prevY)
                     {
                         newSqState[x, y] = SquareState.BLOCKED;
@@ -104,7 +96,9 @@ namespace Polar.HabboHotel.Rooms
                     }
 
                     if (x > _staticModel.MapSizeX - 1 || y > _staticModel.MapSizeY - 1)
+                    {
                         newSqState[x, y] = SquareState.BLOCKED;
+                    }
                     else
                     {
                         newSqState[x, y] = SqState[x, y];
@@ -122,7 +116,10 @@ namespace Polar.HabboHotel.Rooms
         }
 
         // ─────────────────────────────────────
-        //  Heightmap relativo — recalculado solo si hay cambios
+        //  GetRelativeHeightmap
+        //  FIX: alturas > 9 ahora usan mayúsculas A-Z (igual que Java)
+        //       Java: A=10, B=11 ... Z=35  →  char = 55 + height
+        //       Antes usaba 87 + height → minúsculas (a-z), incorrecto
         // ─────────────────────────────────────
         public string GetRelativeHeightmap()
         {
@@ -135,24 +132,21 @@ namespace Polar.HabboHotel.Rooms
             {
                 for (int x = 0; x < MapSizeX; x++)
                 {
+                    // Puerta
                     if (x == DoorX && y == DoorY)
                     {
-                        sb.Append(DoorZ > 9
-                            ? ((char)(87 + DoorZ)).ToString()
-                            : ((int)DoorZ).ToString());
+                        sb.Append(EncodeHeight((short)DoorZ));
                         continue;
                     }
 
+                    // Tile bloqueado
                     if (SqState[x, y] == SquareState.BLOCKED)
                     {
                         sb.Append('x');
                         continue;
                     }
 
-                    short height = SqFloorHeight[x, y];
-                    sb.Append(height > 9
-                        ? ((char)(87 + height)).ToString()
-                        : height.ToString());
+                    sb.Append(EncodeHeight(SqFloorHeight[x, y]));
                 }
                 sb.Append('\r');
             }
@@ -160,6 +154,18 @@ namespace Polar.HabboHotel.Rooms
             _cachedHeightmap = sb.ToString();
             _heightmapDirty = false;
             return _cachedHeightmap;
+        }
+
+        /// <summary>
+        /// Codifica una altura igual que el Java:
+        ///   0-9  → carácter numérico '0'-'9'
+        ///   10+  → letra mayúscula A-Z  (10='A', 11='B' ... 35='Z')
+        /// </summary>
+        private static string EncodeHeight(short height)
+        {
+            if (height > 9)
+                return ((char)(55 + height)).ToString(); // 55+10=65='A'
+            return height.ToString();
         }
 
         // ─────────────────────────────────────
@@ -186,11 +192,11 @@ namespace Polar.HabboHotel.Rooms
 
         // ─────────────────────────────────────
         //  OpenSquare
-        //  FIX: clamp corregido — el límite real es 35 (char 'z'), no 9
+        //  Clamp correcto: 0–35 (Z=35 → 'Z')
         // ─────────────────────────────────────
         public void OpenSquare(int x, int y, double z)
         {
-            z = Math.Max(0, Math.Min(z, 35));   // FIX: era Math.Min(z, 9) — incorrecto
+            z = Math.Max(0, Math.Min(z, 35));
             SqFloorHeight[x, y] = (short)z;
             SqState[x, y] = SquareState.OPEN;
             _heightmapDirty = true;

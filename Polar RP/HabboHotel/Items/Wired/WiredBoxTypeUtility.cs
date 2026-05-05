@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Linq;
 using System.Text;
 using System.Collections.Generic;
@@ -89,8 +89,6 @@ namespace Polar.HabboHotel.Items.Wired
                     return WiredBoxType.TriggerGameEnds;
                 case 44:
                     return WiredBoxType.TriggerUserFurniCollision;
-                case 45:
-                    return WiredBoxType.EffectMoveFurniToNearestUser;
                 case 46:
                     return WiredBoxType.EffectExecuteWiredStacks;
                 case 47:
@@ -177,6 +175,24 @@ namespace Polar.HabboHotel.Items.Wired
                     return WiredBoxType.ConditionIsIdle;
                 case 88:
                     return WiredBoxType.ConditionIsDancing;
+                case 89:
+                    return WiredBoxType.EffectSetVariable;
+                case 90:
+                    return WiredBoxType.EffectVariableAdd;
+                case 91:
+                    return WiredBoxType.ConditionVariableIsEqual;
+                case 92:
+                    return WiredBoxType.EffectVariableSubtract;
+                case 93:
+                    return WiredBoxType.ConditionVariableIsGreaterThan;
+                case 94:
+                    return WiredBoxType.ConditionVariableIsLessThan;
+                case 95:
+                    return WiredBoxType.EffectMoveFurniXYZ;
+                case 96:
+                    return WiredBoxType.EffectGiveHanditem;
+                case 97:
+                    return WiredBoxType.EffectTeleportToRoom;
             }
         }
 
@@ -184,7 +200,6 @@ namespace Polar.HabboHotel.Items.Wired
         {
             switch (type.ToLower())
             {
-                // Triggers
                 case "wf_trg_enter_room": return WiredBoxType.TriggerRoomEnter;
                 case "wf_trg_leave_room":
                 case "wf_trg_exit_room":
@@ -225,14 +240,12 @@ namespace Polar.HabboHotel.Items.Wired
                 case "wf_trg_chat_cmd_other":
                     return WiredBoxType.TriggerUserSaysCommand;
 
-                // Effects — messaging
                 case "wf_act_show_message":
                 case "wf_act_show_message_room":
                 case "wf_act_deux_message":
                 case "wf_act_alertbuble":
                     return WiredBoxType.EffectShowMessage;
 
-                // Effects — teleport
                 case "wf_act_teleport_to":
                 case "wf_act_teleport_to_furni_habbo":
                 case "wf_act_tp_furni_to_habbo":
@@ -245,12 +258,10 @@ namespace Polar.HabboHotel.Items.Wired
                 case "wf_act_teleport_green":
                     return WiredBoxType.EffectTeleportToFurni;
 
-                // Effects — furni-to-furni / furni-to-user (map to teleport as closest available)
                 case "wf_act_furni_to_furni":
                 case "wf_act_furni_to_user":
                     return WiredBoxType.EffectTeleportToFurni;
 
-                // Effects — toggle
                 case "wf_act_toggle_state":
                 case "wf_act_toggle_state_down":
                 case "wf_act_toggle_to_rnd":
@@ -262,29 +273,24 @@ namespace Polar.HabboHotel.Items.Wired
                     return WiredBoxType.EffectToggleFurniState;
                 case "wf_act_toggle_state_random":
                 case "wf_act_toggle_random":
-                    return WiredBoxType.EffectToggleFurniState; // ToggleFurniBox handles both
+                    return WiredBoxType.EffectToggleFurniState;
 
                 case "wf_act_kick_user": return WiredBoxType.EffectKickUser;
 
-                // Effects — match position
                 case "wf_act_match_to_sshot":
                 case "wf_act_match_to_sshot_xyz":
                 case "wf_act_plus_match_furni_state":
                     return WiredBoxType.EffectMatchPosition;
 
-                // Effects — move/rotate furni
                 case "wf_act_move_rotate":
                 case "wf_act_move_rotate_instant":
                 case "wf_act_effect_mpu":
                     return WiredBoxType.EffectMoveAndRotate;
 
-                // Effects — move furni to direction (MoveFurniToBox)
                 case "wf_act_move_to_dir":
-                case "wf_act_move_furni_xyz":
                 case "wf_act_move_furni_xyz_slide":
-                    return WiredBoxType.EffectMoveAndRotate; // remap until dedicated type added
+                    return WiredBoxType.EffectMoveAndRotate;
 
-                // Effects — chase / flee
                 case "wf_act_chase":
                 case "wf_act_super_chase":
                 case "wf_act_furni_super_chase":
@@ -292,11 +298,9 @@ namespace Polar.HabboHotel.Items.Wired
                 case "wf_act_flee":
                     return WiredBoxType.EffectMoveFurniFromNearestUser;
 
-                // Effects — mute
                 case "wf_act_mute_triggerer":
                     return WiredBoxType.EffectMuteTriggerer;
 
-                // Effects — rewards / score
                 case "wf_act_give_reward":
                     return WiredBoxType.EffectGiveReward;
                 case "wf_act_give_score":
@@ -309,7 +313,6 @@ namespace Polar.HabboHotel.Items.Wired
                 case "wf_act_add_tag":
                     return WiredBoxType.EffectAddScore;
 
-                // Effects — execute stacks
                 case "wf_act_call_stacks":
                 case "wf_act_call_stk_wc":
                 case "wf_act_exe_condicion":
@@ -320,7 +323,6 @@ namespace Polar.HabboHotel.Items.Wired
                 case "wf_act_neg_call_stacks":
                     return WiredBoxType.EffectExecuteWiredStacks;
 
-                // Effects — teams
                 case "wf_act_dont_chase_top":
                 case "wf_act_collisioncase":
                     return WiredBoxType.EffectCollisionCase;
@@ -328,7 +330,6 @@ namespace Polar.HabboHotel.Items.Wired
                     return WiredBoxType.EffectAddActorToTeam;
                 case "wf_act_leave_team": return WiredBoxType.EffectRemoveActorFromTeam;
 
-                // Effects — roller
                 case "wf_act_roller":
                 case "wf_act_roller_speed":
                 case "wf_act_set_roller_spd":
@@ -336,26 +337,21 @@ namespace Polar.HabboHotel.Items.Wired
 
                 case "wf_act_regenerate_map": return WiredBoxType.EffectRegenerateMaps;
 
-                // Effects — badges
                 case "wf_act_give_userbadge":
                 case "wf_act_give_badge":
                     return WiredBoxType.EffectGiveUserBadge;
 
-                // Effects — commands
                 case "wf_act_execute_command": return WiredBoxType.EffectExecuteCommand;
                 case "wf_act_progress_achievement": return WiredBoxType.EffectGiveExperience;
 
-                // Effects — move/rotate user (MoveRotateUserBox)
                 case "wf_act_rotationhabbo":
                 case "wf_act_rotate_user":
                 case "wf_act_tour_ne_ava":
                 case "wf_act_move_rotate_user":
                     return WiredBoxType.EffectSetRotation;
 
-                // Effects — currency
                 case "wf_act_give_currency": return WiredBoxType.EffectGiveCurrency;
 
-                // Conditions
                 case "wf_cnd_furnis_hv_avtrs": return WiredBoxType.ConditionFurniHasUsers;
                 case "wf_cnd_has_furni_on": return WiredBoxType.ConditionFurniHasFurni;
                 case "wf_cnd_trggrer_on_frn": return WiredBoxType.ConditionTriggererOnFurni;
@@ -396,7 +392,6 @@ namespace Polar.HabboHotel.Items.Wired
                 case "wf_cnd_super_wiredequipo":
                     return WiredBoxType.ConditionActorIsInTeamBox;
 
-                // RP Conditions
                 case "wf_cnd_has_job": return WiredBoxType.ConditionHasJob;
                 case "wf_cnd_is_night": return WiredBoxType.ConditionIsNight;
                 case "wf_cnd_is_day": return WiredBoxType.ConditionIsDay;
@@ -413,7 +408,6 @@ namespace Polar.HabboHotel.Items.Wired
                 case "wf_cnd_is_dancingbb": return WiredBoxType.ConditionIsDancing;
                 case "wf_cnd_is_driving": return WiredBoxType.ConditionIsDriving;
 
-                // RP Effects
                 case "wf_act_enable_cstm": return WiredBoxType.EffectApplyEffect;
                 case "wf_act_damage_user": return WiredBoxType.EffectDamageUser;
                 case "wf_act_heal_user": return WiredBoxType.EffectHealUser;
@@ -433,7 +427,6 @@ namespace Polar.HabboHotel.Items.Wired
                 case "wf_act_give_armor": return WiredBoxType.EffectGiveArmor;
                 case "wf_act_give_rp_item": return WiredBoxType.EffectGiveRPItem;
 
-                // Add-ons
                 case "wf_xtra_random": return WiredBoxType.AddonRandom;
                 case "wf_xtra_unseen": return WiredBoxType.AddonUnseen;
                 case "wf_xtra_animation_time": return WiredBoxType.AddonAnimationTime;
@@ -476,7 +469,13 @@ namespace Polar.HabboHotel.Items.Wired
 
                 case "wf_highscore": return WiredBoxType.SpecialHighscore;
 
-                // Bot Effects
+                case "wf_act_set_variable": return WiredBoxType.EffectSetVariable;
+                case "wf_act_variable_add": return WiredBoxType.EffectVariableAdd;
+                case "wf_cnd_variable_is_equal": return WiredBoxType.ConditionVariableIsEqual;
+                case "wf_act_variable_sub": return WiredBoxType.EffectVariableSubtract;
+                case "wf_cnd_variable_gt": return WiredBoxType.ConditionVariableIsGreaterThan;
+                case "wf_cnd_variable_lt": return WiredBoxType.ConditionVariableIsLessThan;
+
                 case "wf_act_bot_teleport": return WiredBoxType.EffectTeleportBotToFurniBox;
                 case "wf_act_bot_clothes": return WiredBoxType.EffectBotChangesClothesBox;
                 case "wf_act_bot_move": return WiredBoxType.EffectBotMovesToFurniBox;
@@ -484,6 +483,9 @@ namespace Polar.HabboHotel.Items.Wired
                 case "wf_act_bot_talk_to_avatar": return WiredBoxType.EffectBotCommunicatesToUserBox;
                 case "wf_act_bot_follow_avatar": return WiredBoxType.EffectBotFollowsUserBox;
                 case "wf_act_bot_give_handitem": return WiredBoxType.EffectBotGivesHanditemBox;
+                case "wf_act_move_furni_xyz": return WiredBoxType.EffectMoveFurniXYZ;
+                case "wf_act_give_handitem": return WiredBoxType.EffectGiveHanditem;
+                case "wf_act_teleport_to_room": return WiredBoxType.EffectTeleportToRoom;
 
                 default: return WiredBoxType.None;
             }
@@ -493,146 +495,142 @@ namespace Polar.HabboHotel.Items.Wired
         {
             switch (Type)
             {
-                // ── TRIGGERS (WiredTriggerLayout) ──────────────────────────────
                 case WiredBoxType.TriggerUserSays:
                 case WiredBoxType.TriggerUserSaysCommand:
-                    return 0;  // AVATAR_SAYS_SOMETHING = 0
+                    return 0;
                 case WiredBoxType.TriggerWalkOnFurni:
-                    return 1;  // AVATAR_WALKS_ON_FURNI = 1
+                    return 1;
                 case WiredBoxType.TriggerWalkOffFurni:
-                    return 2;  // AVATAR_WALKS_OFF_FURNI = 2
+                    return 2;
                 case WiredBoxType.TriggerStateChanges:
-                    return 4;  // TOGGLE_FURNI = 4
+                    return 4;
                 case WiredBoxType.TriggerRepeat:
-                    return 6;  // EXECUTE_PERIODICALLY = 6
+                    return 6;
                 case WiredBoxType.TriggerRoomEnter:
-                    return 7;  // AVATAR_ENTERS_ROOM = 7
+                    return 7;
                 case WiredBoxType.TriggerGameStarts:
-                    return 8;  // GAME_STARTS = 8
+                    return 8;
                 case WiredBoxType.TriggerGameEnds:
-                    return 9;  // GAME_ENDS = 9
+                    return 9;
                 case WiredBoxType.TriggerUserFurniCollision:
-                    return 11; // COLLISION = 11
+                    return 11;
 
-                // ── EFFECTS (WiredActionLayoutCode) ───────────────────────────
                 case WiredBoxType.EffectToggleFurniState:
-                    return 0;  // TOGGLE_FURNI_STATE = 0
+                    return 0;
                 case WiredBoxType.EffectMatchPosition:
-                    return 3;  // SET_FURNI_STATE = 3
+                    return 3;
                 case WiredBoxType.EffectMoveAndRotate:
-                    return 4;  // MOVE_FURNI = 4
+                    return 4;
                 case WiredBoxType.EffectAddScore:
-                    return 6;  // GIVE_SCORE = 6
+                    return 6;
                 case WiredBoxType.EffectShowMessage:
                 case WiredBoxType.EffectGiveUserBadge:
                 case WiredBoxType.EffectRegenerateMaps:
                 case WiredBoxType.EffectSetRollerSpeed:
-                    return 7;  // CHAT = 7
+                    return 7;
                 case WiredBoxType.EffectTeleportToFurni:
-                    return 8;  // TELEPORT = 8
+                    return 8;
                 case WiredBoxType.EffectAddActorToTeam:
-                    return 9;  // JOIN_TEAM = 9
+                    return 9;
                 case WiredBoxType.EffectRemoveActorFromTeam:
-                    return 10; // LEAVE_TEAM = 10
+                    return 10;
                 case WiredBoxType.EffectMoveFurniToNearestUser:
-                    return 11; // CHASE = 11
+                    return 11;
                 case WiredBoxType.EffectMoveFurniFromNearestUser:
-                    return 12; // FLEE = 12
+                    return 12;
                 case WiredBoxType.EffectGiveReward:
-                    return 17; // GIVE_REWARD = 17
+                    return 17;
                 case WiredBoxType.EffectExecuteWiredStacks:
-                    return 18; // CALL_ANOTHER_STACK = 18
+                    return 18;
                 case WiredBoxType.EffectKickUser:
-                    return 19; // KICK_FROM_ROOM = 19
+                    return 19;
                 case WiredBoxType.EffectMuteTriggerer:
-                    return 20; // MUTE_USER = 20
+                    return 20;
                 case WiredBoxType.EffectTeleportBotToFurniBox:
-                    return 21; // BOT_TELEPORT = 21
+                    return 21;
                 case WiredBoxType.EffectBotMovesToFurniBox:
-                    return 22; // BOT_MOVE = 22
+                    return 22;
                 case WiredBoxType.EffectBotCommunicatesToAllBox:
-                    return 23; // BOT_TALK = 23
+                    return 23;
                 case WiredBoxType.EffectBotGivesHanditemBox:
-                    return 24; // BOT_GIVE_HAND_ITEM = 24
+                    return 24;
                 case WiredBoxType.EffectBotFollowsUserBox:
-                    return 25; // BOT_FOLLOW_AVATAR = 25
+                    return 25;
                 case WiredBoxType.EffectBotChangesClothesBox:
-                    return 26; // BOT_CHANGE_FIGURE = 26
+                    return 26;
                 case WiredBoxType.EffectBotCommunicatesToUserBox:
-                    return 27; // BOT_TALK_DIRECT_TO_AVTR = 27
+                    return 27;
                 case WiredBoxType.EffectGiveCurrency:
-                    return 28; // FURNI_AREA_SELECTOR = 28
+                    return 28;
                 case WiredBoxType.EffectExecuteCommand:
-                    return 31; // USERS_AREA_SELECTOR = 31
+                    return 31;
                 case WiredBoxType.EffectGiveExperience:
-                    return 32; // USERS_NEIGHBORHOOD_SELECTOR = 32
+                    return 32;
                 case WiredBoxType.EffectApplyEffect:
-                    return 34; // FREEZE = 34
+                    return 34;
                 case WiredBoxType.EffectDamageUser:
                 case WiredBoxType.EffectHealUser:
-                    return 36; // FURNI_TO_USER = 36
+                    return 36;
                 case WiredBoxType.EffectSetMotto:
-                    return 38; // FURNI_TO_FURNI = 38 (antes 38, sin cambio)
+                    return 38;
                 case WiredBoxType.EffectFreezeUser:
                 case WiredBoxType.EffectUnfreezeUser:
-                    return 39; // SET_ALTITUDE = 39
+                    return 39;
                 case WiredBoxType.EffectGiveHuntPoints:
-                    return 41; // CONTROL_CLOCK = 41
+                    return 41;
                 case WiredBoxType.EffectGiveEnergy:
                 case WiredBoxType.EffectGiveArmor:
-                    return 42; // ADJUST_CLOCK = 42
+                    return 42;
                 case WiredBoxType.EffectGiveRPItem:
-                    return 44; // FURNI_ALTITUDE_SELECTOR = 44
+                    return 44;
                 case WiredBoxType.EffectCollisionCase:
-                    return 45; // FURNI_ON_FURNI_SELECTOR = 45
+                    return 45;
                 case WiredBoxType.EffectSetRotation:
-                    return 46; // FURNI_PICKS_SELECTOR = 46
+                    return 46;
 
-                // ── CONDITIONS (WiredConditionlayout) ─────────────────────────
                 case WiredBoxType.ConditionMatchStateAndPosition:
-                    return 0;  // STATES_MATCH = 0
+                    return 0;
                 case WiredBoxType.ConditionFurniHasUsers:
-                    return 1;  // FURNIS_HAVE_AVATARS = 1
+                    return 1;
                 case WiredBoxType.ConditionTriggererOnFurni:
-                    return 2;  // ACTOR_IS_ON_FURNI = 2
+                    return 2;
                 case WiredBoxType.ConditionUserCountInRoom:
-                    return 5;  // USER_COUNT_IN = 5
+                    return 5;
                 case WiredBoxType.ConditionActorIsInTeamBox:
-                    return 6;  // ACTOR_IS_IN_TEAM = 6
+                    return 6;
                 case WiredBoxType.ConditionFurniHasFurni:
-                    return 7;  // HAS_STACKED_FURNIS = 7
+                    return 7;
                 case WiredBoxType.ConditionFurniTypeMatches:
-                    return 8;  // STUFF_TYPE_MATCHES = 8
+                    return 8;
                 case WiredBoxType.ConditionIsGroupMember:
-                    return 10; // ACTOR_IS_GROUP_MEMBER = 10
+                    return 10;
                 case WiredBoxType.ConditionIsWearingBadge:
-                    return 11; // ACTOR_IS_WEARING_BADGE = 11
+                    return 11;
                 case WiredBoxType.ConditionIsWearingFX:
-                    return 12; // ACTOR_IS_WEARING_EFFECT = 12
+                    return 12;
                 case WiredBoxType.ConditionDontMatchStateAndPosition:
-                    return 13; // NOT_STATES_MATCH = 13
+                    return 13;
                 case WiredBoxType.ConditionFurniHasNoUsers:
-                    return 14; // FURNI_NOT_HAVE_HABBO = 14
+                    return 14;
                 case WiredBoxType.ConditionTriggererNotOnFurni:
-                    return 15; // NOT_ACTOR_ON_FURNI = 15
+                    return 15;
                 case WiredBoxType.ConditionUserCountDoesntInRoom:
-                    return 16; // NOT_USER_COUNT_IN = 16
+                    return 16;
                 case WiredBoxType.ConditionFurniHasNoFurni:
-                    return 18; // NOT_HAS_STACKED_FURNIS = 18
+                    return 18;
                 case WiredBoxType.ConditionFurniTypeDoesntMatch:
-                    return 19; // NOT_FURNI_IS_OF_TYPE = 19
+                    return 19;
                 case WiredBoxType.ConditionIsNotGroupMember:
-                    return 21; // NOT_ACTOR_IN_GROUP = 21
+                    return 21;
                 case WiredBoxType.ConditionIsNotWearingBadge:
-                    return 22; // NOT_ACTOR_WEARS_BADGE = 22
+                    return 22;
                 case WiredBoxType.ConditionIsNotWearingFX:
-                    return 23; // NOT_ACTOR_WEARING_EFFECT = 23
+                    return 23;
                 case WiredBoxType.ConditionActorHasHandItemBox:
-                    return 25; // ACTOR_HAS_HANDITEM = 25
+                    return 25;
                 case WiredBoxType.ConditionNotActorHasHandItemBox:
-                    return 31; // NOT_ACTOR_HAS_HANDITEM = 31  ← era 69, corregido
+                    return 31;
 
-                // ── RP CONDITIONS (sin equivalente directo en cliente estándar) ─
                 case WiredBoxType.ConditionHasJob:
                     return 29;
                 case WiredBoxType.ConditionIsNight:
@@ -655,44 +653,60 @@ namespace Polar.HabboHotel.Items.Wired
                 case WiredBoxType.ConditionIsDancing:
                     return 47;
 
-                // ── ADDONS (WiredActionLayoutCode, IDs altos) ──────────────────
                 case WiredBoxType.SpecialHighscore:
                     return 48;
                 case WiredBoxType.AddonFilterFurni:
-                    return 56; // FILTER_FURNI_EXTRA = 56
+                    return 56;
                 case WiredBoxType.AddonFilterUser:
-                    return 57; // FILTER_USER_EXTRA = 57
+                    return 57;
                 case WiredBoxType.AddonMoveCarryUsers:
-                    return 58; // MOVE_CARRY_USERS_EXTRA = 58
+                    return 58;
                 case WiredBoxType.AddonMoveNoAnimation:
-                    return 59; // MOVE_NO_ANIMATION_EXTRA = 59
+                    return 59;
                 case WiredBoxType.AddonAnimationTime:
-                    return 60; // ANIMATION_TIME_EXTRA = 60
+                    return 60;
                 case WiredBoxType.AddonMovePhysics:
-                    return 61; // MOVE_PHYSICS_EXTRA = 61
+                    return 61;
                 case WiredBoxType.AddonUnseen:
-                    return 62; // UNSEEN_EXTRA = 62
+                    return 62;
                 case WiredBoxType.AddonRandom:
-                    return 63; // RANDOM_EXTRA = 63
+                    return 63;
                 case WiredBoxType.AddonExecuteInOrder:
-                    return 64; // EXEC_IN_ORDER_EXTRA = 64
+                    return 64;
                 case WiredBoxType.AddonExecutionLimit:
-                    return 65; // EXECUTION_LIMIT_EXTRA = 65
+                    return 65;
                 case WiredBoxType.AddonOrEval:
-                    return 66; // OR_EVAL_EXTRA = 66
+                    return 66;
                 case WiredBoxType.AddonTextOutputUsername:
-                    return 67; // TEXT_OUTPUT_USERNAME_EXTRA = 67
+                    return 67;
                 case WiredBoxType.AddonTextOutputFurniName:
-                    return 68; // TEXT_OUTPUT_FURNI_NAME_EXTRA = 68
-            }
+                    return 68;
 
+                case WiredBoxType.EffectSetVariable:
+                    return 89;
+                case WiredBoxType.EffectVariableAdd:
+                    return 90;
+                case WiredBoxType.ConditionVariableIsEqual:
+                    return 91;
+                case WiredBoxType.EffectVariableSubtract:
+                    return 92;
+                case WiredBoxType.ConditionVariableIsGreaterThan:
+                    return 93;
+                case WiredBoxType.ConditionVariableIsLessThan:
+                    return 94;
+                case WiredBoxType.EffectMoveFurniXYZ:
+                    return 95;
+                case WiredBoxType.EffectGiveHanditem:
+                    return 96;
+                case WiredBoxType.EffectTeleportToRoom:
+                    return 97;
+            }
             return 0;
         }
 
         public static List<int> ContainsBlockedTrigger(IWiredItem box, ICollection<IWiredItem> triggers)
         {
             List<int> blockedItems = new();
-
             if (box.Type != WiredBoxType.EffectShowMessage && box.Type != WiredBoxType.EffectMuteTriggerer && box.Type != WiredBoxType.EffectTeleportToFurni && box.Type != WiredBoxType.EffectKickUser && box.Type != WiredBoxType.ConditionTriggererOnFurni)
                 return blockedItems;
 
@@ -702,33 +716,24 @@ namespace Polar.HabboHotel.Items.Wired
                 {
                     if (!blockedItems.Contains(item.Item.GetBaseItem().SpriteId))
                         blockedItems.Add(item.Item.GetBaseItem().SpriteId);
-                    else continue;
                 }
-                else continue;
             }
-
             return blockedItems;
         }
-        public static bool IsTriggerType(WiredBoxType type) =>
-    type.ToString().StartsWith("Trigger");
 
-        public static bool IsEffectType(WiredBoxType type) =>
-            type.ToString().StartsWith("Effect");
+        public static bool IsTriggerType(WiredBoxType type) => type.ToString().StartsWith("Trigger");
+        public static bool IsEffectType(WiredBoxType type) => type.ToString().StartsWith("Effect");
+        public static bool IsConditionType(WiredBoxType type) => type.ToString().StartsWith("Condition");
+        public static bool IsAddonType(WiredBoxType type) => type.ToString().StartsWith("Addon");
 
-        public static bool IsConditionType(WiredBoxType type) =>
-            type.ToString().StartsWith("Condition");
-
-        public static bool IsAddonType(WiredBoxType type) =>
-            type.ToString().StartsWith("Addon");
         public static List<int> ContainsBlockedEffect(IWiredItem box, ICollection<IWiredItem> effects)
         {
             List<int> blockedItems = new();
-
             if (box.Type != WiredBoxType.TriggerRepeat)
                 return blockedItems;
 
-            bool hasMoveRotate = effects.Where(x => x.Type == WiredBoxType.EffectMoveAndRotate).ToList().Count > 0;
-            bool hasMoveNear = effects.Where(x => x.Type == WiredBoxType.EffectMoveFurniToNearestUser).ToList().Count > 0;
+            bool hasMoveRotate = effects.Any(x => x.Type == WiredBoxType.EffectMoveAndRotate);
+            bool hasMoveNear = effects.Any(x => x.Type == WiredBoxType.EffectMoveFurniToNearestUser);
 
             foreach (IWiredItem item in effects)
             {
@@ -736,16 +741,13 @@ namespace Polar.HabboHotel.Items.Wired
                 {
                     if (!blockedItems.Contains(item.Item.GetBaseItem().SpriteId))
                         blockedItems.Add(item.Item.GetBaseItem().SpriteId);
-                    else continue;
                 }
                 else if ((item.Type == WiredBoxType.EffectMoveFurniToNearestUser && hasMoveRotate) || (item.Type == WiredBoxType.EffectMoveAndRotate && hasMoveNear))
                 {
                     if (!blockedItems.Contains(item.Item.GetBaseItem().SpriteId))
                         blockedItems.Add(item.Item.GetBaseItem().SpriteId);
-                    else continue;
                 }
             }
-
             return blockedItems;
         }
     }

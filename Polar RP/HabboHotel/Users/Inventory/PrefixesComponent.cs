@@ -1,9 +1,10 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Data;
 using Polar.Core;
 using Polar.HabboHotel.Users;
 using Polar.Database.Interfaces;
+using Polar.Communication.Packets.Outgoing.Rooms.Engine;
 
 namespace Polar.HabboHotel.Users.Inventory
 {
@@ -38,6 +39,21 @@ namespace Polar.HabboHotel.Users.Inventory
             catch (Exception ex)
             {
                 Logging.LogException($"[PrefixesComponent] LoadPrefixes: {ex}");
+            }
+        }
+
+        public void UpdateDisplayName()
+        {
+            var active = GetActivePrefix();
+            _habbo.NamePrefix = active != null ? active.GetText() : "";
+
+            if (_habbo.InRoom)
+            {
+                var user = _habbo.CurrentRoom.GetRoomUserManager().GetRoomUserByHabbo(_habbo.Id);
+                if (user != null)
+                {
+                    _habbo.CurrentRoom.SendMessage(new UserChangeComposer(user, false));
+                }
             }
         }
 
@@ -93,6 +109,7 @@ namespace Polar.HabboHotel.Users.Inventory
                     }
                 }
             }
+            UpdateDisplayName();
         }
 
         public void DeactivateAll()
@@ -108,6 +125,7 @@ namespace Polar.HabboHotel.Users.Inventory
                     }
                 }
             }
+            UpdateDisplayName();
         }
 
         public void Dispose()

@@ -462,6 +462,7 @@ namespace Polar.Communication.Packets
             Register(ClientPacketHeader.ApplyDecorationMessageEvent, new ApplyDecorationEvent());
             Register(ClientPacketHeader.PlaceObjectMessageEvent, new PlaceObjectEvent());
             Register(ClientPacketHeader.UseFurnitureMessageEvent, new UseFurnitureEvent());
+            Register(ClientPacketHeader.ClickFurniMessageEvent, new ClickFurniEvent());
             Register(ClientPacketHeader.UseWallItemMessageEvent, new UseWallItemEvent());
         }
 
@@ -540,8 +541,8 @@ namespace Polar.Communication.Packets
 
         private void RegisterBattlePass()
         {
-            Register(ClientPacketHeader.GetBattlePassMessageEvent, new GetBattlePassEvent());
-            Register(ClientPacketHeader.ClaimBattlePassRewardMessageEvent, new ClaimBattlePassRewardEvent());
+            //Register(ClientPacketHeader.GetBattlePassMessageEvent, new GetBattlePassEvent());
+            //Register(ClientPacketHeader.ClaimBattlePassRewardMessageEvent, new ClaimBattlePassRewardEvent());
         }
 
         private void RegisterMisc()
@@ -657,6 +658,8 @@ namespace Polar.Communication.Packets
             Register(ClientPacketHeader.SaveWiredTriggerConfigMessageEvent, new SaveWiredConfigEvent());
             Register(ClientPacketHeader.SaveWiredEffectConfigMessageEvent, new SaveWiredConfigEvent());
             Register(ClientPacketHeader.SaveWiredConditionConfigMessageEvent, new SaveWiredConfigEvent());
+            Register(ClientPacketHeader.WiredRoomSettingsRequestEvent, new WiredRoomSettingsRequestEvent());
+            Register(ClientPacketHeader.WiredRoomSettingsSaveEvent, new WiredRoomSettingsSaveEvent());
             Register(ClientPacketHeader.SaveBrandingItemMessageEvent, new SaveBrandingItemEvent());
             Register(ClientPacketHeader.SetTonerMessageEvent, new SetTonerEvent());
             Register(ClientPacketHeader.DiceOffMessageEvent, new DiceOffEvent());
@@ -1046,8 +1049,8 @@ namespace Polar.Communication.Packets
             AddName(ClientPacketHeader.DeleteNavigatorSavedSearchMessageEvent, "DeleteNavigatorSavedSearchEvent");
             AddName(ClientPacketHeader.SetSoundSettingsMessageEvent, "SetSoundSettingsEvent");
             AddName(ClientPacketHeader.GetSongInfoMessageEvent, "GetSongInfoEvent");
-            AddName(ClientPacketHeader.GetBattlePassMessageEvent, "GetBattlePassEvent");
-            AddName(ClientPacketHeader.ClaimBattlePassRewardMessageEvent, "ClaimBattlePassRewardEvent");
+            //AddName(ClientPacketHeader.GetBattlePassMessageEvent, "GetBattlePassEvent");
+            //AddName(ClientPacketHeader.ClaimBattlePassRewardMessageEvent, "ClaimBattlePassRewardEvent");
            // Add
             AddName(ClientPacketHeader.FurniEditorBySpriteEvent, "FurniEditorBySpriteEvent");
             AddName(ClientPacketHeader.FurniEditorDeleteEvent, "FurniEditorDeleteEvent");
@@ -1069,6 +1072,9 @@ namespace Polar.Communication.Packets
             AddName(ClientPacketHeader.PurchasePrefixEvent, "PurchasePrefixEvent");
             AddName(ClientPacketHeader.RequestUserPrefixesEvent, "RequestUserPrefixesEvent");
             AddName(ClientPacketHeader.SetActivePrefixEvent, "SetActivePrefixEvent");
+            AddName(ClientPacketHeader.WiredRoomSettingsRequestEvent, "WiredRoomSettingsRequestEvent");
+            AddName(ClientPacketHeader.WiredRoomSettingsSaveEvent, "WiredRoomSettingsSaveEvent");
+            AddName(ClientPacketHeader.ClickFurniMessageEvent, "ClickFurniEvent");
         }
     }
 }
