@@ -112,7 +112,8 @@ namespace Polar.HabboHotel.Items
         public Item(int id, int roomId, int baseItem, string extraData, int x, int y, double z, int rot,
             int userid, int group, int limitedNumber, int limitedStack, string wallCoord,
             Room room = null, RentableSpaceData house = null, FarmingSpace farmingSpace = null,
-            TexasHoldEmItem texasHoldEmData = null, string wiredData = "")
+            TexasHoldEmItem texasHoldEmData = null, string wiredData = "",
+            DataRow dataRow = null)
         {
             ItemData data = null;
             if (!PolarEnvironment.GetGame().GetItemManager().GetItem(baseItem, out data))
@@ -155,12 +156,23 @@ namespace Polar.HabboHotel.Items
             if (baseItemData.InteractionType == InteractionType.HOUSE_SIGN)
                 RentableSpaceData = house != null
                     ? new RentableSpaceData(house, id)
-                    : new RentableSpaceData(id, roomId, x, y, z);
+                    : new RentableSpaceData(id, roomId, x, y, z, dataRow);
             else
                 RentableSpaceData = null;
 
             WhisperTileData = baseItemData.InteractionType == InteractionType.WHISPER_TILE
-                ? new WhisperTileData(id) : null;
+                ? new WhisperTileData(id, dataRow) : null;
+
+            if (baseItemData.InteractionType == InteractionType.MOODLIGHT)
+            {
+                if (_room != null && _room.MoodlightData == null)
+                    _room.MoodlightData = new Data.Moodlight.MoodlightData(id, dataRow);
+            }
+            else if (baseItemData.InteractionType == InteractionType.TONER)
+            {
+                if (_room != null && _room.TonerData == null)
+                    _room.TonerData = new Data.Toner.TonerData(id, dataRow);
+            }
 
             switch (baseItemData.InteractionType)
             {

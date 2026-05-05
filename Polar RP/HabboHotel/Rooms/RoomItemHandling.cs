@@ -238,16 +238,6 @@ namespace Polar.HabboHotel.Rooms
             {
                 if (floorItem.IsRoller)
                     mGotRollers = true;
-                else if (floorItem.GetBaseItem().InteractionType == InteractionType.MOODLIGHT)
-                {
-                    if (_room.MoodlightData == null)
-                        _room.MoodlightData = new MoodlightData(floorItem.Id);
-                }
-                else if (floorItem.GetBaseItem().InteractionType == InteractionType.TONER)
-                {
-                    if (_room.TonerData == null)
-                        _room.TonerData = new TonerData(floorItem.Id);
-                }
 
                 else if (floorItem.GetBaseItem().InteractionType == InteractionType.HOPPER)
                     HopperCount++;
