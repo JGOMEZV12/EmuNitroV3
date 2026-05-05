@@ -2,6 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Data;
+using Newtonsoft.Json;
 using Polar.HabboHotel.Items;
 using Polar.HabboHotel.Items.Wired;
 using Polar.HabboHotel.Items.Wired.Boxes;
@@ -297,13 +298,21 @@ public class WiredComponent
         // FIX: pattern matching en lugar de cast doble
         int delay = item is IWiredCycle c ? c.Delay : 0;
 
+        var data = new Dictionary<string, object>
+        {
+            { "delay", delay },
+            { "string", item.StringData ?? "" },
+            { "bool", item.BoolData },
+            { "items", items }
+        };
+
+        string json = JsonConvert.SerializeObject(data);
+        item.Item.WiredData = json;
+
         using var dbClient = PolarEnvironment.GetDatabaseManager().GetQueryReactor();
-        dbClient.SetQuery("REPLACE INTO `wired_items` VALUES (@id, @items, @delay, @string, @bool)");
+        dbClient.SetQuery("UPDATE `items` SET `wired_data` = @json WHERE `id` = @id");
         dbClient.AddParameter("id", item.Item.Id);
-        dbClient.AddParameter("items", items);
-        dbClient.AddParameter("delay", delay);
-        dbClient.AddParameter("string", item.StringData);
-        dbClient.AddParameter("bool", item.BoolData ? "1" : "0");
+        dbClient.AddParameter("json", json);
         dbClient.RunQuery();
     }
 
@@ -315,24 +324,14 @@ public class WiredComponent
         var wiredItems = items.Where(i => i.IsWired).ToList();
         if (wiredItems.Count == 0) return;
 
-        var ids = string.Join(",", wiredItems.Select(i => i.Id));
-        DataTable table;
-        using (var dbClient = PolarEnvironment.GetDatabaseManager().GetQueryReactor())
-        {
-            dbClient.SetQuery($"SELECT * FROM wired_items WHERE id IN ({ids})");
-            table = dbClient.getTable();
-        }
-
-        var rows = table?.Rows.Cast<DataRow>().ToDictionary(r => Convert.ToInt32(r["id"])) ?? new Dictionary<int, DataRow>();
-
         foreach (var item in wiredItems)
         {
             var newBox = GenerateNewBox(item);
             if (newBox == null) continue;
 
-            if (rows.TryGetValue(item.Id, out var row))
+            if (!string.IsNullOrEmpty(item.WiredData))
             {
-                ApplyRowToBox(newBox, row);
+                ApplyDataToBox(newBox, item.WiredData);
             }
             else
             {
@@ -350,38 +349,52 @@ public class WiredComponent
         }
     }
 
-    private void ApplyRowToBox(IWiredItem newBox, DataRow row)
+    private void ApplyDataToBox(IWiredItem newBox, string wiredData)
     {
-        string rawString = Convert.ToString(row["string"]);
-        newBox.StringData = string.IsNullOrEmpty(rawString)
-            ? newBox.Type switch
-            {
-                WiredBoxType.ConditionMatchStateAndPosition or
-                WiredBoxType.ConditionDontMatchStateAndPosition or
-                WiredBoxType.EffectMatchPosition => "0;0;0",
-                WiredBoxType.ConditionUserCountInRoom or
-                WiredBoxType.ConditionUserCountDoesntInRoom or
-                WiredBoxType.EffectMoveAndRotate => "0;0",
-                WiredBoxType.ConditionFurniHasNoFurni => "0",
-                _ => ""
-            }
-            : rawString;
-
-        newBox.BoolData = Convert.ToInt32(row["bool"]) == 1;
-        newBox.ItemsData = Convert.ToString(row["items"]);
-
-        if (newBox is IWiredCycle cycle)
-            cycle.Delay = Convert.ToInt32(row["delay"]);
-
-        foreach (var str in newBox.ItemsData.Split(';'))
+        try
         {
-            var sId = str.Contains(':') ? str.Split(':')[0] : str;
-            if (int.TryParse(sId, out int id))
+            var data = JsonConvert.DeserializeObject<Dictionary<string, object>>(wiredData);
+            if (data == null) return;
+
+            string rawString = data.ContainsKey("string") ? Convert.ToString(data["string"]) : "";
+            newBox.StringData = string.IsNullOrEmpty(rawString)
+                ? newBox.Type switch
+                {
+                    WiredBoxType.ConditionMatchStateAndPosition or
+                    WiredBoxType.ConditionDontMatchStateAndPosition or
+                    WiredBoxType.EffectMatchPosition => "0;0;0",
+                    WiredBoxType.ConditionUserCountInRoom or
+                    WiredBoxType.ConditionUserCountDoesntInRoom or
+                    WiredBoxType.EffectMoveAndRotate => "0;0",
+                    WiredBoxType.ConditionFurniHasNoFurni => "0",
+                    _ => ""
+                }
+                : rawString;
+
+            newBox.BoolData = data.ContainsKey("bool") && Convert.ToBoolean(data["bool"]);
+            newBox.ItemsData = data.ContainsKey("items") ? Convert.ToString(data["items"]) : "";
+
+            if (newBox is IWiredCycle cycle && data.ContainsKey("delay"))
+                cycle.Delay = Convert.ToInt32(data["delay"]);
+
+            if (!string.IsNullOrEmpty(newBox.ItemsData))
             {
-                var selectedItem = _room.GetRoomItemHandler().GetItem(id);
-                if (selectedItem != null)
-                    newBox.SetItems.TryAdd(selectedItem.Id, selectedItem);
+                foreach (var str in newBox.ItemsData.Split(';'))
+                {
+                    if (string.IsNullOrEmpty(str)) continue;
+                    var sId = str.Contains(':') ? str.Split(':')[0] : str;
+                    if (int.TryParse(sId, out int id))
+                    {
+                        var selectedItem = _room.GetRoomItemHandler().GetItem(id);
+                        if (selectedItem != null)
+                            newBox.SetItems.TryAdd(selectedItem.Id, selectedItem);
+                    }
+                }
             }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[WIRED] Error deserializing wired data for item {newBox.Item.Id}: {ex.Message}");
         }
     }
 

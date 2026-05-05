@@ -30,6 +30,7 @@ namespace Polar.HabboHotel.Items
             // Verificar columnas opcionales UNA sola vez, no por fila
             bool hasLimitedNumber = table.Columns.Contains("limited_number");
             bool hasLimitedStack = table.Columns.Contains("limited_stack");
+            bool hasWiredData = table.Columns.Contains("wired_data");
             string baseItemCol = Polar.Core.DatabaseCompatibility.ItemsBaseItemColumn;
             var itemManager = PolarEnvironment.GetGame().GetItemManager();
 
@@ -57,7 +58,9 @@ namespace Polar.HabboHotel.Items
                     hasLimitedNumber ? Convert.ToInt32(row["limited_number"]) : 0,
                     hasLimitedStack ? Convert.ToInt32(row["limited_stack"]) : 0,
                     Convert.ToString(row["wall_pos"]),
-                    room));
+                    room,
+                    null, null, null,
+                    hasWiredData ? Convert.ToString(row["wired_data"]) : ""));
             }
 
             return items;
@@ -82,6 +85,7 @@ namespace Polar.HabboHotel.Items
 
             bool hasLimitedNumber = table.Columns.Contains("limited_number");
             bool hasLimitedStack = table.Columns.Contains("limited_stack");
+            bool hasWiredData = table.Columns.Contains("wired_data");
             string baseItemCol = Polar.Core.DatabaseCompatibility.ItemsBaseItemColumn;
             var itemManager = PolarEnvironment.GetGame().GetItemManager();
 
@@ -107,7 +111,9 @@ namespace Polar.HabboHotel.Items
                     Convert.ToInt32(row["group_id"]),
                     hasLimitedNumber ? Convert.ToInt32(row["limited_number"]) : 0,
                     hasLimitedStack ? Convert.ToInt32(row["limited_stack"]) : 0,
-                    Convert.ToString(row["wall_pos"])));
+                    Convert.ToString(row["wall_pos"]),
+                    null, null, null, null,
+                    hasWiredData ? Convert.ToString(row["wired_data"]) : ""));
             }
 
             return items;

@@ -209,8 +209,7 @@ namespace Polar.HabboHotel.Users.Inventory
             {
                 string table = Polar.Core.DatabaseCompatibility.ItemsTable;
                 dbClient.runFastQuery(
-                    $"DELETE i, wired_items, user_presents, room_items_moodlight, room_items_tele_links, room_items_toner, items_groups FROM `{table}` i " +
-                    "LEFT JOIN wired_items              ON (wired_items.id = i.id) " +
+                    $"DELETE i, user_presents, room_items_moodlight, room_items_tele_links, room_items_toner, items_groups FROM `{table}` i " +
                     "LEFT JOIN user_presents            ON (user_presents.item_id = i.id) " +
                     "LEFT JOIN room_items_moodlight     ON (room_items_moodlight.item_id = i.id) " +
                     "LEFT JOIN room_items_tele_links    ON (room_items_tele_links.tele_one_id = i.id OR room_items_tele_links.tele_two_id = i.id) " +
