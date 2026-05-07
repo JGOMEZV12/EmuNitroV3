@@ -1,18 +1,23 @@
-using Polar.Communication.Packets.Outgoing;
 using System;
-using System.Linq;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Linq;
+using Newtonsoft.Json;
 using Polar.Communication.Packets.Incoming;
+using Polar.Communication.Packets.Outgoing;
 using Polar.HabboHotel.Rooms;
 using Polar.HabboHotel.Users;
 
 namespace Polar.HabboHotel.Items.Wired.Boxes.Effects
 {
-    class ToggleFurniBox : IWiredItem, IWiredCycle
+    class ToggleFurniBox : IWiredItem, IWiredCycle, IWiredCustomData
     {
+        private const int TOGGLE_TYPE_NEXT = 0;
+        private const int TOGGLE_TYPE_PREVIOUS = 1;
+
         public Room Instance { get; set; }
         public Item Item { get; set; }
-        public WiredBoxType Type { get { return WiredBoxType.EffectToggleFurniState; } }
+        public WiredBoxType Type => WiredBoxType.EffectToggleFurniState;
         public ConcurrentDictionary<int, Item> SetItems { get; set; }
         public int TickCount { get; set; }
         public string StringData { get; set; }
@@ -21,108 +26,161 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Effects
 
         public int Delay
         {
-            get { return _delay; }
-            set { _delay = value; this.TickCount = value + 1; }
+            get => _delay;
+            set { _delay = value; TickCount = value + 1; }
         }
 
         private int _delay = 0;
         private long _next = 0;
         private bool _requested = false;
-
-        // ✅ Campos nuevos igual que Java
-        private int _toggleType = 0; // TOGGLE_TYPE_NEXT = 0
-        private int _furniSource = 0; // SOURCE_TRIGGER   = 0
-
-        private const int TOGGLE_TYPE_NEXT = 0;
-        private const int TOGGLE_TYPE_PREVIOUS = 1;
+        private int _toggleType = TOGGLE_TYPE_NEXT;
+        private int _furniSource = WiredBoxTypeUtility.SOURCE_TRIGGER;
 
         public ToggleFurniBox(Room instance, Item item)
         {
-            this.Instance = instance;
-            this.Item = item;
-            this.SetItems = new ConcurrentDictionary<int, Item>();
+            Instance = instance;
+            Item = item;
+            SetItems = new ConcurrentDictionary<int, Item>();
         }
 
-        public void HandleSave(ClientPacket Packet)
+        public void HandleSave(ClientPacket packet)
         {
-            this.SetItems.Clear();
+            SetItems.Clear();
 
-            // ── Mismo patrón que CollisionCaseBox ─────────────────────────────
-            // 1. IntCount → consumir ints (aquí vienen toggleType y furniSource)
-            int IntCount = Packet.PopInt();
-            if (IntCount > 0) _toggleType = Packet.PopInt(); // intParams[0]
-            if (IntCount > 1) _furniSource = Packet.PopInt(); // intParams[1]
-            // consumir el resto si hubiera más
-            for (int i = 2; i < IntCount; i++) Packet.PopInt();
+            int intCount = packet.PopInt();
+            if (intCount > 0) _toggleType = NormalizeToggleType(packet.PopInt());
+            if (intCount > 1) _furniSource = packet.PopInt();
+            for (int i = 2; i < intCount; i++) packet.PopInt();
 
-            // 2. StringParam (vacío en este wired)
-            string Unknown2 = Packet.PopString();
+            packet.PopString();
 
-            // 3. FurniCount → items seleccionados
-            int FurniCount = Packet.PopInt();
-            for (int i = 0; i < FurniCount; i++)
+            int furniCount = packet.PopInt();
+            for (int i = 0; i < furniCount; i++)
             {
-                Item selected = Instance.GetRoomItemHandler().GetItem(Packet.PopInt());
+                Item selected = Instance.GetRoomItemHandler().GetItem(packet.PopInt());
                 if (selected != null && !Instance.GetWired().OtherBoxHasItem(this, selected.Id))
                     SetItems.TryAdd(selected.Id, selected);
             }
 
-            // 4. Delay
-            this.Delay = Packet.PopInt();
+            Delay = packet.PopInt();
 
-            // ✅ Si hay furnis seleccionados y furniSource = SOURCE_TRIGGER, cambiar a SOURCE_SELECTED
-            if (SetItems.Count > 0 && _furniSource == 0)
-                _furniSource = 1; // SOURCE_SELECTED = 1
-
-            // Persistencia
-            this.StringData = _toggleType + ";" + _furniSource;
+            if (SetItems.Count > 0 && _furniSource == WiredBoxTypeUtility.SOURCE_TRIGGER)
+                _furniSource = WiredBoxTypeUtility.SOURCE_SELECTED;
         }
 
-        public void Serialize(ServerPacket Packet)
+        public string GetWiredData()
         {
-            Packet.WriteBoolean(false);
-            Packet.WriteInteger(100);
-            Packet.WriteInteger(SetItems.Count);
-            foreach (Item item in SetItems.Values.ToList())
-                Packet.WriteInteger(item.Id);
+            return JsonConvert.SerializeObject(new JsonData
+            {
+                delay = Delay,
+                itemIds = SetItems.Keys.ToList(),
+                toggleType = _toggleType,
+                furniSource = _furniSource
+            });
+        }
 
-            Packet.WriteInteger(Item.GetBaseItem().SpriteId);
-            Packet.WriteInteger(Item.Id);
+        public void LoadWiredData(string wiredData)
+        {
+            SetItems.Clear();
+            _toggleType = TOGGLE_TYPE_NEXT;
+            _furniSource = WiredBoxTypeUtility.SOURCE_TRIGGER;
+            Delay = 0;
 
-            // ✅ String vacío igual que Java
-            Packet.WriteString("");
+            if (string.IsNullOrEmpty(wiredData)) return;
 
-            // ✅ 2 intParams: toggleType + furniSource (igual que Java appendInt(2))
-            Packet.WriteInteger(2);
-            Packet.WriteInteger(_toggleType);
-            Packet.WriteInteger(_furniSource);
+            if (wiredData.StartsWith("{"))
+            {
+                var data = JsonConvert.DeserializeObject<JsonData>(wiredData);
+                if (data == null) return;
 
-            // ✅ Orden correcto con delay
-            Packet.WriteInteger(0);
-            Packet.WriteInteger(WiredBoxTypeUtility.GetWiredId(Type));
-            Packet.WriteInteger(this.Delay);
-            Packet.WriteInteger(0);
+                Delay = data.delay;
+                _toggleType = NormalizeToggleType(data.toggleType);
+                _furniSource = data.furniSource;
+
+                foreach (int id in data.itemIds ?? new List<int>())
+                {
+                    var item = Instance.GetRoomItemHandler().GetItem(id);
+                    if (item != null)
+                        SetItems.TryAdd(item.Id, item);
+                }
+
+                if (SetItems.Count > 0 && _furniSource == WiredBoxTypeUtility.SOURCE_TRIGGER)
+                    _furniSource = WiredBoxTypeUtility.SOURCE_SELECTED;
+            }
+            else
+            {
+                // Retrocompatibilidad: formato viejo "delay\tid1;id2;"
+                var parts = wiredData.Split('\t');
+                if (parts.Length >= 1 && int.TryParse(parts[0], out int delay))
+                    Delay = delay;
+
+                if (parts.Length == 2 && parts[1].Contains(";"))
+                {
+                    foreach (var s in parts[1].Split(';'))
+                    {
+                        if (string.IsNullOrEmpty(s)) continue;
+                        if (!int.TryParse(s, out int id)) continue;
+
+                        var item = Instance.GetRoomItemHandler().GetItem(id);
+                        if (item != null)
+                            SetItems.TryAdd(item.Id, item);
+                    }
+                }
+
+                _toggleType = TOGGLE_TYPE_NEXT;
+                _furniSource = SetItems.Count == 0
+                    ? WiredBoxTypeUtility.SOURCE_TRIGGER
+                    : WiredBoxTypeUtility.SOURCE_SELECTED;
+            }
+
+            ItemsData = string.Join(";", SetItems.Keys);
+            TickCount = Delay;
+        }
+
+        public void Serialize(ServerPacket packet)
+        {
+            var toRemove = SetItems.Keys
+                .Where(id => Instance.GetRoomItemHandler().GetItem(id) == null)
+                .ToList();
+            foreach (var id in toRemove)
+                SetItems.TryRemove(id, out _);
+
+            packet.WriteBoolean(false);
+            packet.WriteInteger(5); // MAXIMUM_FURNI_SELECTION
+            packet.WriteInteger(SetItems.Count);
+            foreach (var id in SetItems.Keys)
+                packet.WriteInteger(id);
+
+            packet.WriteInteger(Item.GetBaseItem().SpriteId);
+            packet.WriteInteger(Item.Id);
+            packet.WriteString("");
+            packet.WriteInteger(2);
+            packet.WriteInteger(_toggleType);
+            packet.WriteInteger(_furniSource);
+            packet.WriteInteger(0);
+            packet.WriteInteger(WiredBoxTypeUtility.GetWiredId(Type));
+            packet.WriteInteger(Delay);
+            packet.WriteInteger(0);
         }
 
         public bool Execute(params object[] Params)
         {
-            if (this._next == 0 || this._next < PolarEnvironment.Now())
-                this._next = PolarEnvironment.Now() + this.Delay;
+            if (_next == 0 || _next < PolarEnvironment.Now())
+                _next = PolarEnvironment.Now() + Delay;
 
-            this._requested = true;
-            this.TickCount = Delay;
+            _requested = true;
+            TickCount = Delay;
             return true;
         }
 
         public bool OnCycle()
         {
-            if (this.SetItems.Count == 0 || !_requested)
+            if (SetItems.Count == 0 || !_requested)
                 return false;
 
-            long now = PolarEnvironment.Now();
-            if (_next < now)
+            if (_next < PolarEnvironment.Now())
             {
-                foreach (Item item in this.SetItems.Values.ToList())
+                foreach (Item item in SetItems.Values.ToList())
                 {
                     if (item == null) continue;
 
@@ -132,13 +190,12 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Effects
                         continue;
                     }
 
-                    // ✅ Toggle correcto igual que Java: calcular nextState según toggleType
                     ToggleItemState(item);
                 }
 
                 _requested = false;
-                this._next = 0;
-                this.TickCount = Delay;
+                _next = 0;
+                TickCount = Delay;
             }
 
             return true;
@@ -156,7 +213,6 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Effects
                 {
                     if (!int.TryParse(item.ExtraData, out currentState))
                     {
-                        // ExtraData no es numérico — usar interactor directamente
                         item.Interactor.OnWiredTrigger(item);
                         return;
                     }
@@ -170,12 +226,25 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Effects
 
                 item.ExtraData = nextState.ToString();
                 item.UpdateNeeded = true;
-                Instance.GetRoomItemHandler().UpdateItem(item);
+                Instance.GetRoomItemHandler().UpdateItem(item);      // DB
+                Instance.GetGameMap().UpdateMapForItem(item);         // mapa/walkable
+                item.UpdateState(false, true);                        // packet al cliente
             }
             catch (Exception ex)
             {
                 Polar.Core.Logging.LogException("[ToggleFurniBox] " + ex);
             }
+        }
+
+        private int NormalizeToggleType(int value) =>
+            value == TOGGLE_TYPE_PREVIOUS ? TOGGLE_TYPE_PREVIOUS : TOGGLE_TYPE_NEXT;
+
+        private class JsonData
+        {
+            public int delay { get; set; }
+            public List<int> itemIds { get; set; }
+            public int toggleType { get; set; }
+            public int furniSource { get; set; }
         }
     }
 }

@@ -17,29 +17,33 @@ namespace Polar.HabboHotel.Items.Data.Moodlight
 
         public List<MoodlightPreset> Presets;
 
-        public MoodlightData(int ItemId)
+        public MoodlightData(int ItemId, DataRow row = null)
         {
             this.ItemId = ItemId;
 
-            DataRow Row = null;
+            DataRow Row = row;
 
-            using (IQueryAdapter dbClient = PolarEnvironment.GetDatabaseManager().GetQueryReactor())
-            {
-                dbClient.SetQuery("SELECT enabled,current_preset,preset_one,preset_two,preset_three FROM room_items_moodlight WHERE item_id = '" + ItemId + "' LIMIT 1");
-                Row = dbClient.getRow();
-            }
-
-            if (Row == null)
+            if (Row == null || !Row.Table.Columns.Contains("mood_enabled"))
             {
                 using (IQueryAdapter dbClient = PolarEnvironment.GetDatabaseManager().GetQueryReactor())
                 {
-                    dbClient.RunQuery("INSERT INTO `room_items_moodlight` (item_id,enabled,current_preset,preset_one,preset_two,preset_three) VALUES (" + ItemId + ",'0',1,'#000000,255,0','#000000,255,0','#000000,255,0')");
-                    dbClient.SetQuery("SELECT enabled,current_preset,preset_one,preset_two,preset_three FROM room_items_moodlight WHERE item_id=" + ItemId + " LIMIT 1");
+                    dbClient.SetQuery("SELECT enabled AS mood_enabled,current_preset,preset_one,preset_two,preset_three FROM room_items_moodlight WHERE item_id = @id LIMIT 1");
+                    dbClient.AddParameter("id", ItemId);
                     Row = dbClient.getRow();
                 }
             }
 
-            Enabled = PolarEnvironment.EnumToBool(Row["enabled"].ToString());
+            if (Row == null || Row["mood_enabled"] == DBNull.Value)
+            {
+                using (IQueryAdapter dbClient = PolarEnvironment.GetDatabaseManager().GetQueryReactor())
+                {
+                    dbClient.RunQuery("INSERT INTO `room_items_moodlight` (item_id,enabled,current_preset,preset_one,preset_two,preset_three) VALUES (" + ItemId + ",'0',1,'#000000,255,0','#000000,255,0','#000000,255,0')");
+                    dbClient.SetQuery("SELECT enabled AS mood_enabled,current_preset,preset_one,preset_two,preset_three FROM room_items_moodlight WHERE item_id=" + ItemId + " LIMIT 1"); 
+                    Row = dbClient.getRow();
+                }
+            }
+
+            Enabled = PolarEnvironment.EnumToBool(Row["mood_enabled"].ToString());
             CurrentPreset = Convert.ToInt32(Row["current_preset"]);
             Presets = new List<MoodlightPreset>();
 

@@ -10,6 +10,7 @@ namespace Polar.HabboHotel.Items.Wired
     {
         None,
         TriggerRoomEnter,
+        TriggerLeaveRoom,
         TriggerUserSays,
         TriggerRepeat,
         TriggerStateChanges,
@@ -20,6 +21,7 @@ namespace Polar.HabboHotel.Items.Wired
         TriggerUserFurniCollision,
         TriggerUserSaysCommand,
 
+        EffectResetTimers,
         EffectCollisionCase,
         EffectShowMessage,
         EffectTeleportToFurni,
@@ -32,6 +34,7 @@ namespace Polar.HabboHotel.Items.Wired
         EffectMuteTriggerer,
         EffectGiveReward,
         EffectExecuteWiredStacks,
+        EffectNegativeExecuteWiredStacks,
         EffectAddScore,
 
         EffectTeleportBotToFurniBox,
@@ -97,6 +100,7 @@ namespace Polar.HabboHotel.Items.Wired
         ConditionIsDancing,
 
         AddonRandomEffect,
+        AddonSetVariable,
         AddonAnimationTime,
         AddonExecuteInOrder,
         AddonExecutionLimit,
@@ -110,6 +114,8 @@ namespace Polar.HabboHotel.Items.Wired
         AddonTextOutputFurniName,
         AddonTextOutputUsername,
         AddonUnseen,
+        AddonVariableReference,
+        AddonVariableLevelUpSystem,
         SpecialHighscore,
 
         // Variable Wireds (from AM Extended)

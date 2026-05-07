@@ -1,126 +1,30 @@
+using Polar.Communication.Packets.Incoming;
 using Polar.Communication.Packets.Outgoing;
+using Polar.HabboHotel.Rooms;
+using Polar.Properties;
 using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Linq;
 using System.Text;
-using System.Collections.Generic;
-using System.Collections.Concurrent;
 
-using Polar.Communication.Packets.Incoming;
-using Polar.HabboHotel.Rooms;
-
+// FurniDoesntMatchStateAndPositionBox.cs
 namespace Polar.HabboHotel.Items.Wired.Boxes.Conditions
 {
-    class FurniDoesntMatchStateAndPositionBox : IWiredItem
+    internal class FurniDoesntMatchStateAndPositionBox : FurniMatchStateAndPositionBox
     {
-        public Room Instance { get; set; }
-        public Item Item { get; set; }
-        public WiredBoxType Type { get { return WiredBoxType.ConditionDontMatchStateAndPosition; } }
-        public ConcurrentDictionary<int, Item> SetItems { get; set; }
-        public string StringData { get; set; }
-        public bool BoolData { get; set; }
-        public string ItemsData { get; set; }
+        public override WiredBoxType Type => WiredBoxType.ConditionDontMatchStateAndPosition;
 
-        public FurniDoesntMatchStateAndPositionBox(Room Instance, Item Item)
+        public FurniDoesntMatchStateAndPositionBox(Room instance, Item item)
+            : base(instance, item) { }
+
+        public override bool Execute(params object[] Params)
         {
-            this.Instance = Instance;
-            this.Item = Item;
-            this.SetItems = new ConcurrentDictionary<int, Item>();
-        }
+            Refresh();
+            // Java NOT: empty settings → false (al contrario que el positivo)
+            if (settings.Count == 0) return false;
 
-        public void HandleSave(ClientPacket Packet)
-        {
-            if (this.SetItems.Count > 0)
-                this.SetItems.Clear();
-
-            int Unknown = Packet.PopInt();
-            int State = Packet.PopInt();
-            int Direction = Packet.PopInt();
-            int Placement = Packet.PopInt();
-            string Unknown2 = Packet.PopString();
-
-            int FurniCount = Packet.PopInt();
-            for (int i = 0; i < FurniCount; i++)
-            {
-                Item SelectedItem = Instance.GetRoomItemHandler().GetItem(Packet.PopInt());
-                if (SelectedItem != null)
-                    SetItems.TryAdd(SelectedItem.Id, SelectedItem);
-            }
-
-            this.StringData = State + ";" + Direction + ";" + Placement;
-        }
-
-        
-        public void Serialize(ServerPacket Packet)
-        {
-            Packet.WriteBoolean(false);
-            Packet.WriteInteger(100);
-            Packet.WriteInteger(SetItems.Count);
-            foreach (Item Item in SetItems.Values.ToList())
-            {
-                Packet.WriteInteger(Item.Id);
-            }
-            Packet.WriteInteger(Item.GetBaseItem().SpriteId);
-            Packet.WriteInteger(Item.Id);
-            Packet.WriteString(StringData);
-            if (String.IsNullOrEmpty(StringData)) StringData = "0;0;0";
-            Packet.WriteInteger(3);
-            Packet.WriteInteger(int.Parse(StringData.Split(';')[0]));
-            Packet.WriteInteger(int.Parse(StringData.Split(';')[1]));
-            Packet.WriteInteger(int.Parse(StringData.Split(';')[2]));
-            Packet.WriteInteger(0);
-            Packet.WriteInteger(WiredBoxTypeUtility.GetWiredId(Type));
-        }
-        public bool Execute(params object[] Params)
-        {
-            if (Params.Length == 0)
-                return false;
-
-            if (string.IsNullOrEmpty(this.StringData) || this.StringData == "0;0;0" || this.SetItems.Count == 0)
-                return false;
-
-            // FIX: Null-check de ItemsData antes de Split
-            if (string.IsNullOrEmpty(this.ItemsData))
-                return false;
-
-            foreach (Item Item in this.SetItems.Values.ToList())
-            {
-                // FIX: Null-check de Item antes de usarlo en Contains
-                if (Item == null || !Instance.GetRoomItemHandler().GetFloor.Contains(Item))
-                    continue;
-
-                foreach (string I in this.ItemsData.Split(';'))
-                {
-                    if (string.IsNullOrEmpty(I))
-                        continue;
-
-                    Item II = Instance.GetRoomItemHandler().GetItem(Convert.ToInt32(I.Split(':')[0]));
-                    if (II == null)
-                        continue;
-
-                    string[] partsString = I.Split(':');
-                    string[] part = partsString[1].Split(',');
-
-                    if (int.Parse(this.StringData.Split(';')[0]) == 1) // State
-                    {
-                        if (II.ExtraData == part[4].ToString())
-                            return false;
-                    }
-
-                    if (int.Parse(this.StringData.Split(';')[1]) == 1) // Direction
-                    {
-                        if (II.Rotation == Convert.ToInt32(part[3]))
-                            return false;
-                    }
-
-                    if (int.Parse(this.StringData.Split(';')[2]) == 1) // Position
-                    {
-                        if (II.GetX == Convert.ToInt32(part[0]) && II.GetY == Convert.ToInt32(part[1]) &&
-                            II.GetZ == Convert.ToDouble(part[2]))
-                            return false;
-                    }
-                }
-            }
-            return true;
+            return quantifier == QUANTIFIER_ANY ? !EvaluateAny() : !EvaluateAll();
         }
     }
 }

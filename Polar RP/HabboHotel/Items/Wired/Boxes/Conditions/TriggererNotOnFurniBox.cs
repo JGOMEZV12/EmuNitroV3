@@ -12,76 +12,29 @@ using Polar.HabboHotel.Items;
 
 namespace Polar.HabboHotel.Items.Wired.Boxes.Conditions
 {
-    internal class TriggererNotOnFurniBox : IWiredItem
+    internal class TriggererNotOnFurniBox : TriggererOnFurniBox
     {
-        public Room Instance { get; set; }
-        public Item Item { get; set; }
-        public WiredBoxType Type => WiredBoxType.ConditionTriggererNotOnFurni;
-        public ConcurrentDictionary<int, Item> SetItems { get; set; }
-        public string StringData { get; set; }
-        public bool BoolData { get; set; }
-        public string ItemsData { get; set; }
-
         public TriggererNotOnFurniBox(Room instance, Item item)
+            : base(instance, item) { }
+
+        public override WiredBoxType Type => WiredBoxType.ConditionTriggererNotOnFurni;
+
+        public override bool Execute(params object[] Params)
         {
-            Instance = instance;
-            Item = item;
-            SetItems = new ConcurrentDictionary<int, Item>();
-        }
+            Habbo player = Params.Length > 0 ? Params[0] as Habbo : null;
+            if (player == null) return false;
 
-        public void HandleSave(ClientPacket packet)
-        {
-            int unknown = packet.PopInt();
-            string unknown2 = packet.PopString();
+            RoomUser user = player.CurrentRoom?.GetRoomUserManager().GetRoomUserByHabbo(player.Username);
+            if (user == null) return false;
 
-            if (SetItems.Count > 0)
-                SetItems.Clear();
+            if (SetItems.Count == 0) return true;
 
-            int furniCount = packet.PopInt();
-            for (int i = 0; i < furniCount; i++)
-            {
-                Item selectedItem = Instance.GetRoomItemHandler().GetItem(packet.PopInt());
-                if (selectedItem != null)
-                    SetItems.TryAdd(selectedItem.Id, selectedItem);
-            }
-        }
+            var itemsOnSquare = Instance.GetGameMap().GetAllRoomItemForSquare(user.X, user.Y);
 
-        
-        public void Serialize(ServerPacket Packet)
-        {
-            Packet.WriteBoolean(false);
-            Packet.WriteInteger(100);
-            Packet.WriteInteger(SetItems.Count);
-            foreach (Item Item in SetItems.Values.ToList())
-            {
-                Packet.WriteInteger(Item.Id);
-            }
-            Packet.WriteInteger(Item.GetBaseItem().SpriteId);
-            Packet.WriteInteger(Item.Id);
-            Packet.WriteString(StringData);
-            Packet.WriteInteger(0);
-            Packet.WriteInteger(0);
-            Packet.WriteInteger(WiredBoxTypeUtility.GetWiredId(Type));
-        }
-        public bool Execute(params object[] @params)
-        {
-            if (@params.Length == 0)
-                return false;
+            if (Quantifier == QUANTIFIER_ANY)
+                return !itemsOnSquare.Any(i => SetItems.ContainsKey(i.Id));
 
-            Habbo player = (Habbo)@params[0];
-
-            RoomUser user = player?.CurrentRoom?.GetRoomUserManager().GetRoomUserByHabbo(player.Username);
-            if (user == null)
-                return false;
-
-            List<Item> itemsOnSquare = Instance.GetGameMap().GetAllRoomItemForSquare(user.X, user.Y);
-            foreach (Item item in itemsOnSquare.ToList())
-            {
-                if (SetItems.ContainsKey(item.Id))
-                    return false;
-            }
-
-            return true;
+            return !SetItems.Keys.All(id => itemsOnSquare.Any(i => i.Id == id));
         }
     }
 }

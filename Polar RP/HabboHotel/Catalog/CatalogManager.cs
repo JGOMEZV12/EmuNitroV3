@@ -23,6 +23,8 @@ namespace Polar.HabboHotel.Catalog
         private readonly PetRaceManager _petRaceManager;
         private readonly VoucherManager _voucherManager;
         private readonly ClothingManager _clothingManager;
+        private readonly Dictionary<int, List<CatalogPage>> _childIndex; // ParentId -> hijos
+
 
         private Dictionary<int, int> _itemOffers; // OfferId -> PageId
         private readonly Dictionary<int, CatalogPage> _pages;
@@ -40,7 +42,8 @@ namespace Polar.HabboHotel.Catalog
             this._petRaceManager = new PetRaceManager();
             this._voucherManager = new VoucherManager();
             this._clothingManager = new ClothingManager();
-
+            // En el constructor, inicializarlo:
+            this._childIndex = new Dictionary<int, List<CatalogPage>>();
             this._itemOffers = new Dictionary<int, int>();
             this._itemsPage = new Dictionary<int, int>();
             this._pages = new Dictionary<int, CatalogPage>();
@@ -82,12 +85,12 @@ namespace Polar.HabboHotel.Catalog
         /// </summary>
         public void RemoveCatalogPage(int pageId, string pageType)
         {
-            // Si en el futuro tienes _pagesBC:
-            // if (pageType?.ToUpper() == "BUILDER") { _pagesBC.Remove(pageId); return; }
-
-            _pages.Remove(pageId);
-
-            // Limpiar items huérfanos de esa página
+            if (_pages.TryGetValue(pageId, out var page))
+            {
+                if (_childIndex.TryGetValue(page.ParentId, out var siblings))
+                    siblings.RemoveAll(p => p.Id == pageId);
+                _pages.Remove(pageId);
+            }
             if (_items.ContainsKey(pageId))
                 _items.Remove(pageId);
         }
@@ -171,6 +174,7 @@ namespace Polar.HabboHotel.Catalog
 
         public async Task InitAsync(ItemDataManager ItemDataManager)
         {
+            if (_childIndex.Count > 0) _childIndex.Clear();
             if (_pages.Count > 0)
                 _pages.Clear();
             if (_botPresets.Count > 0)
@@ -246,7 +250,7 @@ namespace Polar.HabboHotel.Catalog
                                 // Agregar a las ofertas
                                 if (!_itemOffers.ContainsKey(OfferId))
                                     _itemOffers.Add(OfferId, PageId);
-                                
+
                                 // Agregar al diccionario de ofertas directo
                                 if (!_offerItems.ContainsKey(OfferId))
                                     _offerItems.Add(OfferId, catalogItem);
@@ -271,17 +275,17 @@ namespace Polar.HabboHotel.Catalog
                             try
                             {
                                 int pageId = Convert.ToInt32(Row["id"]);
-                                
+
                                 // Obtener items para esta página
-                                var pageItems = _items.ContainsKey(pageId) 
-                                    ? _items[pageId] 
+                                var pageItems = _items.ContainsKey(pageId)
+                                    ? _items[pageId]
                                     : new Dictionary<int, CatalogItem>();
-                                
+
                                 // Filtrar solo items con oferta activa para ItemOffers de la página
                                 var pageItemOffers = pageItems
                                     .Where(x => x.Value.OfferId > 0 && x.Value.OfferActive)
                                     .ToDictionary(x => x.Value.OfferId, x => x.Value);
-                                
+
                                 // Handle column name variations for pages
                                 string layout = Row.Table.Columns.Contains(DatabaseCompatibility.CatalogPageLayoutColumn) ? Convert.ToString(Row[DatabaseCompatibility.CatalogPageLayoutColumn]) : "default_3x3";
                                 string strings1 = Row.Table.Columns.Contains(DatabaseCompatibility.CatalogPageStrings1Column) ? Convert.ToString(Row[DatabaseCompatibility.CatalogPageStrings1Column]) : "";
@@ -303,13 +307,17 @@ namespace Polar.HabboHotel.Catalog
                                     Row.Table.Columns.Contains(DatabaseCompatibility.CatalogPageVisibleColumn) ? Row[DatabaseCompatibility.CatalogPageVisibleColumn].ToString() : "1",
                                     layout,
                                     strings1 + "|" + strings2,
-                                    text1 + "|" + text2 +"|"+textDetails +"|" + text3,
+                                    text1 + "|" + text2 + "|" + textDetails + "|" + text3,
                                     textDetails,
                                     pageItems,
                                     pageItemOffers
                                 );
-                                
+
                                 _pages[pageId] = page;
+                                int parentId = Convert.ToInt32(Row["parent_id"]);
+                                if (!_childIndex.ContainsKey(parentId))
+                                    _childIndex[parentId] = new List<CatalogPage>();
+                                _childIndex[parentId].Add(page);
                             }
                             catch (Exception ex)
                             {
@@ -408,9 +416,19 @@ namespace Polar.HabboHotel.Catalog
             return _pages.TryGetValue(pageId, out page);
         }
 
-        public ICollection<CatalogPage> GetPages()
+        public ICollection<CatalogPage> GetPages(GameClient session, int pageId)
         {
-            return _pages.Values;
+            if (!_childIndex.TryGetValue(pageId, out var children))
+                return Array.Empty<CatalogPage>();
+
+            int rank = session.GetHabbo().Rank;
+            var result = new List<CatalogPage>(children.Count);
+            foreach (var page in children)
+            {
+                if (page.MinimumRank <= rank)
+                    result.Add(page);
+            }
+            return result;
         }
 
         public MarketplaceManager GetMarketplace()
@@ -453,18 +471,9 @@ namespace Polar.HabboHotel.Catalog
             return _pages.Values.Where(x => x.ParentId == PageId).ToList();
         }
 
-        public ICollection<CatalogPage> GetPages(GameClient session, int pageId)
+        public ICollection<CatalogPage> GetPages()
         {
-            List<CatalogPage> pages = new List<CatalogPage>();
-            foreach (CatalogPage page in this._pages.Values)
-            {
-                if (page.ParentId != pageId || page.MinimumRank > session.GetHabbo().Rank)
-                {
-                    continue;
-                }
-                pages.Add(page);
-            }
-            return pages;
+            return _pages.Values;
         }
     }
 }

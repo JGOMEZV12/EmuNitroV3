@@ -1,18 +1,18 @@
-using Polar.Communication.Packets.Outgoing;
 using System;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using System.Collections.Generic;
 using System.Collections.Concurrent;
-
+using Newtonsoft.Json;
 using Polar.Communication.Packets.Incoming;
+using Polar.Communication.Packets.Outgoing;
 using Polar.HabboHotel.Rooms;
 
 namespace Polar.HabboHotel.Items.Wired.Boxes.Add_ons
 {
-    class AddonMoveCarryUsersBox : IWiredItem
+    class AddonMoveCarryUsersBox : IWiredItem, IWiredCustomData
     {
+        public const int MODE_DIRECTLY_ON_FURNI = 0;
+        public const int MODE_SAME_TILE = 1;
+        public const int SOURCE_ALL_ROOM_USERS = 900;
+
         public Room Instance { get; set; }
         public Item Item { get; set; }
         public WiredBoxType Type => WiredBoxType.AddonMoveCarryUsers;
@@ -21,40 +21,105 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Add_ons
         public bool BoolData { get; set; }
         public string ItemsData { get; set; }
 
+        private int carryMode = MODE_DIRECTLY_ON_FURNI;
+        private int userSource = WiredBoxTypeUtility.SOURCE_TRIGGER;
+
+        public int CarryMode => carryMode;
+        public int UserSource => userSource;
 
         public AddonMoveCarryUsersBox(Room instance, Item item)
         {
-            this.Instance = instance;
-            this.Item = item;
-            this.SetItems = new();
-            this.StringData = "";
+            Instance = instance;
+            Item = item;
+            SetItems = new ConcurrentDictionary<int, Item>();
+            StringData = "";
         }
 
-        public void HandleSave(ClientPacket Packet)
+        public void HandleSave(ClientPacket packet)
         {
+            int paramsCount = packet.PopInt();
+            int rawCarryMode = paramsCount > 0 ? packet.PopInt() : MODE_DIRECTLY_ON_FURNI;
+            int rawSource = paramsCount > 1 ? packet.PopInt() : WiredBoxTypeUtility.SOURCE_TRIGGER;
 
+            string strParam = packet.PopString();
+
+            Console.WriteLine($"[AddonMoveCarryUsersBox] HandleSave — carryMode={rawCarryMode}, userSource={rawSource}");
+
+            this.carryMode = NormalizeCarryMode(rawCarryMode);
+            this.userSource = NormalizeUserSource(rawSource);
+            this.StringData = $"{carryMode}\t{userSource}";
         }
 
-        
-        public void Serialize(ServerPacket Packet)
+        public string GetWiredData()
         {
-            Packet.WriteBoolean(false);
-            Packet.WriteInteger(100);
-            Packet.WriteInteger(SetItems.Count);
-            foreach (Item Item in SetItems.Values.ToList())
+            return JsonConvert.SerializeObject(new JsonData
             {
-                Packet.WriteInteger(Item.Id);
-            }
-            Packet.WriteInteger(Item.GetBaseItem().SpriteId);
-            Packet.WriteInteger(Item.Id);
-            Packet.WriteString(StringData);
-            Packet.WriteInteger(0);
-            Packet.WriteInteger(WiredBoxTypeUtility.GetWiredId(Type));
-            Packet.WriteInteger(0);
+                carryMode = this.carryMode,
+                userSource = this.userSource
+            });
         }
-        public bool Execute(params object[] @params)
+
+        public void LoadWiredData(string wiredData)
         {
-            return true; // Marker for Effects
+            this.carryMode = MODE_DIRECTLY_ON_FURNI;
+            this.userSource = WiredBoxTypeUtility.SOURCE_TRIGGER;
+
+            if (string.IsNullOrEmpty(wiredData)) return;
+
+            if (wiredData.StartsWith("{"))
+            {
+                var data = JsonConvert.DeserializeObject<JsonData>(wiredData);
+                if (data == null) return;
+
+                this.carryMode = NormalizeCarryMode(data.carryMode);
+                this.userSource = NormalizeUserSource(data.userSource);
+            }
+            else
+            {
+                // Retrocompatibilidad: "carryMode\tuserSource"
+                var parts = wiredData.Split('\t');
+                if (parts.Length > 0 && int.TryParse(parts[0], out int cm))
+                    this.carryMode = NormalizeCarryMode(cm);
+                if (parts.Length > 1 && int.TryParse(parts[1], out int us))
+                    this.userSource = NormalizeUserSource(us);
+            }
+
+            this.StringData = $"{carryMode}\t{userSource}";
+        }
+
+        public void Serialize(ServerPacket packet)
+        {
+            packet.WriteBoolean(false);
+            packet.WriteInteger(0);
+            packet.WriteInteger(0);
+            packet.WriteInteger(Item.GetBaseItem().SpriteId);
+            packet.WriteInteger(Item.Id);
+            packet.WriteString("");
+            packet.WriteInteger(2);
+            packet.WriteInteger(this.carryMode);
+            packet.WriteInteger(this.userSource);
+            packet.WriteInteger(0);
+            packet.WriteInteger(WiredBoxTypeUtility.GetWiredId(Type));
+            packet.WriteInteger(0);
+            packet.WriteInteger(0);
+        }
+
+        public bool Execute(params object[] @params) => true;
+
+        private static int NormalizeCarryMode(int value) =>
+            value == MODE_SAME_TILE ? MODE_SAME_TILE : MODE_DIRECTLY_ON_FURNI;
+
+        private static int NormalizeUserSource(int value) =>
+            value == SOURCE_ALL_ROOM_USERS ||
+            value == WiredBoxTypeUtility.SOURCE_SELECTOR ||
+            value == WiredBoxTypeUtility.SOURCE_TRIGGER
+                ? value
+                : WiredBoxTypeUtility.SOURCE_TRIGGER;
+
+        private class JsonData
+        {
+            public int carryMode { get; set; }
+            public int userSource { get; set; }
         }
     }
 }

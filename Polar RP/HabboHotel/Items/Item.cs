@@ -82,6 +82,7 @@ namespace Polar.HabboHotel.Items
         public FarmingData FarmingData;
         public TexasHoldEmItem TexasHoldEmData;
         public WiredComponent WiredComponent;
+        public string WiredData;
 
         public Dictionary<int, ThreeDCoord> GetAffectedTiles2 { get; private set; }
 
@@ -111,7 +112,7 @@ namespace Polar.HabboHotel.Items
         public Item(int id, int roomId, int baseItem, string extraData, int x, int y, double z, int rot,
             int userid, int group, int limitedNumber, int limitedStack, string wallCoord,
             Room room = null, RentableSpaceData house = null, FarmingSpace farmingSpace = null,
-            TexasHoldEmItem texasHoldEmData = null)
+            TexasHoldEmItem texasHoldEmData = null, string wiredData = "", DataRow dataRow = null)
         {
             ItemData data = null;
             if (!PolarEnvironment.GetGame().GetItemManager().GetItem(baseItem, out data))
@@ -139,10 +140,11 @@ namespace Polar.HabboHotel.Items
             interactionCount = 0;
             value = 0;
             UserID = userid;
-            Username = "??";
+            Username = PolarEnvironment.GetUserInfoBy("username", "id", UserID.ToString());
             LimitedNo = limitedNumber;
             LimitedTot = limitedStack;
             TexasHoldEmData = texasHoldEmData;
+            WiredData = wiredData;
 
             // FIX: cacheamos GetBaseItem() una sola vez en el constructor
             var baseItemData = GetBaseItem();
@@ -153,13 +155,23 @@ namespace Polar.HabboHotel.Items
             if (baseItemData.InteractionType == InteractionType.HOUSE_SIGN)
                 RentableSpaceData = house != null
                     ? new RentableSpaceData(house, id)
-                    : new RentableSpaceData(id, roomId, x, y, z);
+                    : new RentableSpaceData(id, roomId, x, y, z, dataRow);
             else
                 RentableSpaceData = null;
 
             WhisperTileData = baseItemData.InteractionType == InteractionType.WHISPER_TILE
-                ? new WhisperTileData(id) : null;
+                ? new WhisperTileData(id, dataRow) : null;
 
+            if (baseItemData.InteractionType == InteractionType.MOODLIGHT)
+            {
+                if (_room != null && _room.MoodlightData == null)
+                    _room.MoodlightData = new Data.Moodlight.MoodlightData(id, dataRow);
+            }
+            else if (baseItemData.InteractionType == InteractionType.TONER)
+            {
+                if (_room != null && _room.TonerData == null)
+                    _room.TonerData = new Data.Toner.TonerData(id, dataRow);
+            }
             switch (baseItemData.InteractionType)
             {
                 case InteractionType.TELEPORT:
@@ -1200,7 +1212,7 @@ namespace Polar.HabboHotel.Items
         public void UpdateState(bool inDb, bool inRoom)
         {
             if (GetRoom() == null) return;
-            Console.WriteLine($"[UpdateState] Item={GetBaseItem().ItemName} ExtraData={ExtraData} inDb={inDb} inRoom={inRoom} IsFloorItem={IsFloorItem}");
+            //Console.WriteLine($"[UpdateState] Item={GetBaseItem().ItemName} ExtraData={ExtraData} inDb={inDb} inRoom={inRoom} IsFloorItem={IsFloorItem}");
             if (inDb) GetRoom().GetRoomItemHandler().UpdateItem(this);
             if (inRoom)
             {

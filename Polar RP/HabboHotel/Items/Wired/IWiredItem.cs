@@ -10,6 +10,12 @@ using Polar.HabboHotel.Rooms;
 
 namespace Polar.HabboHotel.Items.Wired
 {
+    // IWiredItem.cs o archivo aparte
+    public interface IWiredCustomData
+    {
+        string GetWiredData();
+        void LoadWiredData(string json);
+    }
     public interface IWiredItem
     {
         Room Instance { get; set; }

@@ -1,91 +1,98 @@
-using Polar.Communication.Packets.Outgoing;
-using System;
-using System.Linq;
-using System.Text;
-using System.Collections.Generic;
 using System.Collections.Concurrent;
-
+using System.Collections.Generic;
+using System.Linq;
+using Newtonsoft.Json;
 using Polar.Communication.Packets.Incoming;
+using Polar.Communication.Packets.Outgoing;
 using Polar.HabboHotel.Rooms;
 using Polar.HabboHotel.Users;
 
 namespace Polar.HabboHotel.Items.Wired.Boxes.Triggers
 {
-    class RoomEnterBox : IWiredItem
+    class RoomEnterBox : IWiredItem, IWiredCustomData
     {
         public Room Instance { get; set; }
         public Item Item { get; set; }
-        public WiredBoxType Type { get { return WiredBoxType.TriggerRoomEnter; } }
+        public WiredBoxType Type => WiredBoxType.TriggerRoomEnter;
         public ConcurrentDictionary<int, Item> SetItems { get; set; }
         public string StringData { get; set; }
         public bool BoolData { get; set; }
         public string ItemsData { get; set; }
 
-        public RoomEnterBox(Room Instance, Item Item)
+        public RoomEnterBox(Room instance, Item item)
         {
-            this.Instance = Instance;
-            this.Item = Item;
-            this.SetItems = new ConcurrentDictionary<int, Item>();
+            Instance = instance;
+            Item = item;
+            StringData = "";
+            SetItems = new ConcurrentDictionary<int, Item>();
         }
 
-        public void HandleSave(ClientPacket Packet)
+        public void HandleSave(ClientPacket packet)
         {
-            int Unknown = Packet.PopInt();
-            string User = Packet.PopString();
-
-            this.StringData = User;
+            packet.PopInt();                    // ignorar
+            StringData = packet.PopString();    // username
         }
 
-        
-        public void Serialize(ServerPacket Packet)
+        public string GetWiredData()
         {
-            Packet.WriteBoolean(false);
-            Packet.WriteInteger(100);
-            Packet.WriteInteger(SetItems.Count);
-            foreach (Item Item in SetItems.Values.ToList())
+            return JsonConvert.SerializeObject(new JsonData { username = this.StringData });
+        }
+
+        public void LoadWiredData(string wiredData)
+        {
+            this.StringData = "";
+
+            if (string.IsNullOrEmpty(wiredData)) return;
+
+            if (wiredData.StartsWith("{"))
             {
-                Packet.WriteInteger(Item.Id);
+                var data = JsonConvert.DeserializeObject<JsonData>(wiredData);
+                if (data != null)
+                    this.StringData = data.username ?? "";
             }
-            Packet.WriteInteger(Item.GetBaseItem().SpriteId);
-            Packet.WriteInteger(Item.Id);
-            Packet.WriteString(StringData);
-
-            Packet.WriteInteger(this is IWiredCycle ? 1 : 0);
-            if (this is IWiredCycle)
+            else
             {
-                IWiredCycle Cycle = (IWiredCycle)this;
-                Packet.WriteInteger(Cycle.Delay);
+                // Retrocompatibilidad: el dato era directamente el username
+                this.StringData = wiredData;
             }
-            Packet.WriteInteger(0);
-            Packet.WriteInteger(WiredBoxTypeUtility.GetWiredId(Type));
         }
+
+        public void Serialize(ServerPacket packet)
+        {
+            packet.WriteBoolean(false);
+            packet.WriteInteger(5);
+            packet.WriteInteger(0); // sin furnis
+            packet.WriteInteger(Item.GetBaseItem().SpriteId);
+            packet.WriteInteger(Item.Id);
+            packet.WriteString(StringData); // username
+            packet.WriteInteger(0);
+            packet.WriteInteger(0);
+            packet.WriteInteger(WiredBoxTypeUtility.GetWiredId(Type));
+            packet.WriteInteger(0);
+            packet.WriteInteger(0);
+        }
+
         public bool Execute(params object[] Params)
         {
-            // FIX: Validar Player antes de usarlo
-            Habbo Player = (Habbo)Params[0];
-            if (Player == null)
-                return false;
+            Habbo Player = Params.Length > 0 ? Params[0] as Habbo : null;
+            if (Player == null) return false;
 
             Instance.GetWired().OnEvent(Item);
 
             if (!string.IsNullOrWhiteSpace(StringData) && Player.Username != StringData)
                 return false;
 
-            ICollection<IWiredItem> Effects = Instance.GetWired().GetEffects(this);
-            ICollection<IWiredItem> Conditions = Instance.GetWired().GetConditions(this);
+            var Effects = Instance.GetWired().GetEffects(this);
+            var Conditions = Instance.GetWired().GetConditions(this);
+            var addons = Instance.GetWired().GetTriggers(this)
+                                     .Where(x => x.Type.ToString().StartsWith("Addon")).ToList();
 
-            // Extra Addons
-            var addons = Instance.GetWired().GetTriggers(this).Where(x => x.Type.ToString().StartsWith("Addon")).ToList();
-
-            // Execution Limit Addon
             var limitAddon = addons.FirstOrDefault(x => x.Type == WiredBoxType.AddonExecutionLimit);
             if (limitAddon != null && !limitAddon.Execute()) return false;
 
-            // Random Addon
             var randomAddon = addons.FirstOrDefault(x => x.Type == WiredBoxType.AddonRandom);
             if (randomAddon != null && !randomAddon.Execute()) return false;
 
-            // Condition Evaluation
             bool hasOrEval = addons.Any(x => x.Type == WiredBoxType.AddonOrEval);
             if (hasOrEval)
             {
@@ -93,41 +100,37 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Triggers
             }
             else
             {
-                foreach (IWiredItem Condition in Conditions.ToList())
+                foreach (var Condition in Conditions.ToList())
                 {
-                    if (!Condition.Execute(Player))
-                        return false;
-
+                    if (!Condition.Execute(Player)) return false;
                     Instance.GetWired().OnEvent(Condition.Item);
                 }
             }
 
-            // Effect Execution
             bool hasExecuteInOrder = addons.Any(x => x.Type == WiredBoxType.AddonExecuteInOrder);
-            bool HasRandomEffectAddon = addons.Any(x => x.Type == WiredBoxType.AddonRandomEffect);
-            bool hasUnseenAddon = addons.Any(x => x.Type == WiredBoxType.AddonUnseen);
+            bool hasRandomEffect = addons.Any(x => x.Type == WiredBoxType.AddonRandomEffect);
+            bool hasUnseen = addons.Any(x => x.Type == WiredBoxType.AddonUnseen);
 
-            if (HasRandomEffectAddon)
+            if (hasRandomEffect)
             {
-                IWiredItem RandomBox = addons.FirstOrDefault(x => x.Type == WiredBoxType.AddonRandomEffect);
-                if (RandomBox == null || !RandomBox.Execute())
-                    return false;
+                var RandomBox = addons.FirstOrDefault(x => x.Type == WiredBoxType.AddonRandomEffect);
+                if (RandomBox == null || !RandomBox.Execute()) return false;
 
-                IWiredItem SelectedBox = Instance.GetWired().GetRandomEffect(Effects.ToList());
+                var SelectedBox = Instance.GetWired().GetRandomEffect(Effects.ToList());
                 if (SelectedBox != null && SelectedBox.Execute(Player))
                     Instance.GetWired().OnEvent(SelectedBox.Item);
 
                 Instance.GetWired().OnEvent(RandomBox.Item);
             }
-            else if (hasUnseenAddon)
+            else if (hasUnseen)
             {
-                IWiredItem unseenBox = addons.FirstOrDefault(x => x.Type == WiredBoxType.AddonUnseen);
+                var unseenBox = addons.FirstOrDefault(x => x.Type == WiredBoxType.AddonUnseen);
                 if (unseenBox != null && unseenBox.Execute(Effects.ToList(), Player))
                     Instance.GetWired().OnEvent(unseenBox.Item);
             }
             else if (hasExecuteInOrder)
             {
-                foreach (IWiredItem Effect in Effects.OrderBy(x => x.Item.GetZ).ToList())
+                foreach (var Effect in Effects.OrderBy(x => x.Item.GetZ).ToList())
                 {
                     if (!Effect.Execute(Player)) break;
                     Instance.GetWired().OnEvent(Effect.Item);
@@ -135,16 +138,19 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Triggers
             }
             else
             {
-                foreach (IWiredItem Effect in Effects.ToList())
+                foreach (var Effect in Effects.ToList())
                 {
-                    if (!Effect.Execute(Player))
-                        continue;
-
+                    if (!Effect.Execute(Player)) continue;
                     Instance.GetWired().OnEvent(Effect.Item);
                 }
             }
 
             return true;
+        }
+
+        private class JsonData
+        {
+            public string username { get; set; }
         }
     }
 }

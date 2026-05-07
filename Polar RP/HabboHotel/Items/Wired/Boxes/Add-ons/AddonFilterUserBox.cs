@@ -1,18 +1,16 @@
-using Polar.Communication.Packets.Outgoing;
 using System;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using System.Collections.Generic;
 using System.Collections.Concurrent;
-
+using Newtonsoft.Json;
 using Polar.Communication.Packets.Incoming;
+using Polar.Communication.Packets.Outgoing;
 using Polar.HabboHotel.Rooms;
 
 namespace Polar.HabboHotel.Items.Wired.Boxes.Add_ons
 {
-    class AddonFilterUserBox : IWiredItem
+    class AddonFilterUserBox : IWiredItem, IWiredCustomData
     {
+        private const int MAX_FILTER_AMOUNT = 10000;
+
         public Room Instance { get; set; }
         public Item Item { get; set; }
         public WiredBoxType Type => WiredBoxType.AddonFilterUser;
@@ -21,42 +19,84 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Add_ons
         public bool BoolData { get; set; }
         public string ItemsData { get; set; }
 
+        private int amount = 0;
+        public int Amount => amount;
 
         public AddonFilterUserBox(Room instance, Item item)
         {
-            this.Instance = instance;
-            this.Item = item;
-            this.SetItems = new();
-            this.StringData = "";
+            Instance = instance;
+            Item = item;
+            SetItems = new ConcurrentDictionary<int, Item>();
+            StringData = "";
         }
 
-        public void HandleSave(ClientPacket Packet)
+        public void HandleSave(ClientPacket packet)
         {
-            int unknown = Packet.PopInt();
-            int mode = Packet.PopInt();
-            this.StringData = mode.ToString();
+            int paramsCount = packet.PopInt();
+            int rawAmount = paramsCount > 0 ? packet.PopInt() : 0;
+
+            string strParam = packet.PopString();
+
+            if (rawAmount == 0 && !string.IsNullOrEmpty(strParam) &&
+                int.TryParse(strParam, out int parsed))
+                rawAmount = parsed;
+
+            Console.WriteLine($"[AddonFilterUserBox] HandleSave — amount={rawAmount}");
+
+            this.amount = NormalizeAmount(rawAmount);
+            this.StringData = this.amount.ToString();
         }
 
-        
-        public void Serialize(ServerPacket Packet)
+        public string GetWiredData()
         {
-            Packet.WriteBoolean(false);
-            Packet.WriteInteger(100);
-            Packet.WriteInteger(SetItems.Count);
-            foreach (Item Item in SetItems.Values.ToList())
+            return JsonConvert.SerializeObject(new JsonData { amount = this.amount });
+        }
+
+        public void LoadWiredData(string wiredData)
+        {
+            this.amount = 0;
+            this.StringData = "0";
+
+            if (string.IsNullOrEmpty(wiredData)) return;
+
+            if (wiredData.StartsWith("{"))
             {
-                Packet.WriteInteger(Item.Id);
+                var data = JsonConvert.DeserializeObject<JsonData>(wiredData);
+                this.amount = NormalizeAmount(data?.amount ?? 0);
             }
-            Packet.WriteInteger(Item.GetBaseItem().SpriteId);
-            Packet.WriteInteger(Item.Id);
-            Packet.WriteString(StringData);
-            Packet.WriteInteger(0);
-            Packet.WriteInteger(WiredBoxTypeUtility.GetWiredId(Type));
-            Packet.WriteInteger(0);
+            else
+            {
+                if (int.TryParse(wiredData, out int old))
+                    this.amount = NormalizeAmount(old);
+            }
+
+            this.StringData = this.amount.ToString();
         }
-        public bool Execute(params object[] @params)
+
+        public void Serialize(ServerPacket packet)
         {
-            return true;
+            packet.WriteBoolean(false);
+            packet.WriteInteger(0);
+            packet.WriteInteger(0);
+            packet.WriteInteger(Item.GetBaseItem().SpriteId);
+            packet.WriteInteger(Item.Id);
+            packet.WriteString("");
+            packet.WriteInteger(1);
+            packet.WriteInteger(this.amount);
+            packet.WriteInteger(0);
+            packet.WriteInteger(WiredBoxTypeUtility.GetWiredId(Type));
+            packet.WriteInteger(0);
+            packet.WriteInteger(0);
+        }
+
+        public bool Execute(params object[] @params) => true;
+
+        private static int NormalizeAmount(int value) =>
+            Math.Max(0, Math.Min(MAX_FILTER_AMOUNT, value));
+
+        private class JsonData
+        {
+            public int amount { get; set; }
         }
     }
 }

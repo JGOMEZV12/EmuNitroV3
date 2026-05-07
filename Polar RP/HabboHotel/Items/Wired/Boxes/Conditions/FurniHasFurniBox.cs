@@ -1,17 +1,16 @@
-using Polar.Communication.Packets.Outgoing;
+using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using Newtonsoft.Json;
 using Polar.Communication.Packets.Incoming;
-using Polar.HabboHotel.Rooms;
-using Polar.HabboHotel.Items.Wired;
+using Polar.Communication.Packets.Outgoing;
 using Polar.HabboHotel.Items;
-
-// FIX: Eliminados using duplicados de Packets.Incoming y Rooms
+using Polar.HabboHotel.Rooms;
 
 namespace Polar.HabboHotel.Items.Wired.Boxes.Conditions
 {
-    internal class FurniHasFurniBox : IWiredItem
+    internal class FurniHasFurniBox : IWiredItem, IWiredCustomData
     {
         public Room Instance { get; set; }
         public Item Item { get; set; }
@@ -20,6 +19,9 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Conditions
         public string StringData { get; set; }
         public bool BoolData { get; set; }
         public string ItemsData { get; set; }
+
+        private bool all = false;
+        private int furniSource = WiredBoxTypeUtility.SOURCE_TRIGGER;
 
         public FurniHasFurniBox(Room instance, Item item)
         {
@@ -30,55 +32,163 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Conditions
 
         public void HandleSave(ClientPacket packet)
         {
-            int unknown = packet.PopInt();
-            string unknown2 = packet.PopString();
+            // 1. Int params
+            int paramsCount = packet.PopInt();
+            bool rawAll = paramsCount > 0 && packet.PopInt() == 1;
+            int rawSource = paramsCount > 1 ? packet.PopInt() : WiredBoxTypeUtility.SOURCE_TRIGGER;
 
-            if (SetItems.Count > 0)
-                SetItems.Clear();
+            // 2. String param
+            string strParam = packet.PopString();
 
+            // 3. Furnis
             int furniCount = packet.PopInt();
+            Console.WriteLine($"[FurniHasFurniBox] HandleSave — all={rawAll}, furniSource={rawSource}, furniCount={furniCount}");
+
+            this.all = rawAll;
+            this.furniSource = rawSource;
+            this.SetItems.Clear();
+
             for (int i = 0; i < furniCount; i++)
             {
-                Item selectedItem = Instance.GetRoomItemHandler().GetItem(packet.PopInt());
-                if (selectedItem != null)
-                    SetItems.TryAdd(selectedItem.Id, selectedItem);
+                int rawId = packet.PopInt();
+                Item selected = Instance.GetRoomItemHandler().GetItem(rawId);
+                Console.WriteLine($"  furni[{i}] id={rawId}, found={selected != null}");
+                if (selected != null)
+                    SetItems.TryAdd(selected.Id, selected);
             }
+
+            if (SetItems.Count > 0 && furniSource == WiredBoxTypeUtility.SOURCE_TRIGGER)
+                furniSource = WiredBoxTypeUtility.SOURCE_SELECTED;
+        }
+        public string GetWiredData()
+        {
+            Refresh();
+            return JsonConvert.SerializeObject(new JsonData
+            {
+                all = this.all,
+                itemIds = SetItems.Keys.ToList(),
+                furniSource = this.furniSource
+            });
         }
 
-        
-        public void Serialize(ServerPacket Packet)
+        public void LoadWiredData(string wiredData)
         {
-            Packet.WriteBoolean(false);
-            Packet.WriteInteger(100);
-            Packet.WriteInteger(SetItems.Count);
-            foreach (Item Item in SetItems.Values.ToList())
+            SetItems.Clear();
+            this.all = false;
+            this.furniSource = WiredBoxTypeUtility.SOURCE_TRIGGER;
+
+            if (string.IsNullOrEmpty(wiredData)) return;
+
+            if (wiredData.StartsWith("{"))
             {
-                Packet.WriteInteger(Item.Id);
+                var data = JsonConvert.DeserializeObject<JsonData>(wiredData);
+                if (data == null) return;
+
+                this.all = data.all;
+                this.furniSource = data.furniSource;
+
+                foreach (int id in data.itemIds ?? new List<int>())
+                {
+                    var item = Instance.GetRoomItemHandler().GetItem(id);
+                    if (item != null)
+                        SetItems.TryAdd(item.Id, item);
+                }
             }
-            Packet.WriteInteger(Item.GetBaseItem().SpriteId);
-            Packet.WriteInteger(Item.Id);
-            Packet.WriteString(StringData);
-            Packet.WriteInteger(0);
-            Packet.WriteInteger(0);
-            Packet.WriteInteger(WiredBoxTypeUtility.GetWiredId(Type));
+            else
+            {
+                // Retrocompatibilidad: formato viejo "all:id1;id2;"
+                var parts = wiredData.Split(':');
+                if (parts.Length >= 1)
+                {
+                    this.all = parts[0] == "1";
+
+                    if (parts.Length == 2)
+                    {
+                        foreach (var s in parts[1].Split(';'))
+                        {
+                            if (string.IsNullOrEmpty(s)) continue;
+                            if (!int.TryParse(s, out int id)) continue;
+
+                            var item = Instance.GetRoomItemHandler().GetItem(id);
+                            if (item != null)
+                                SetItems.TryAdd(item.Id, item);
+                        }
+                    }
+                }
+
+                furniSource = SetItems.Count == 0
+                    ? WiredBoxTypeUtility.SOURCE_TRIGGER
+                    : WiredBoxTypeUtility.SOURCE_SELECTED;
+            }
+
+            if (furniSource == WiredBoxTypeUtility.SOURCE_TRIGGER && SetItems.Count > 0)
+                furniSource = WiredBoxTypeUtility.SOURCE_SELECTED;
+
+            ItemsData = string.Join(";", SetItems.Keys);
         }
+
+        public void Serialize(ServerPacket packet)
+        {
+            Refresh();
+
+            packet.WriteBoolean(false);
+            packet.WriteInteger(5); // MAXIMUM_FURNI_SELECTION
+            packet.WriteInteger(SetItems.Count);
+            foreach (var id in SetItems.Keys)
+                packet.WriteInteger(id);
+
+            packet.WriteInteger(Item.GetBaseItem().SpriteId);
+            packet.WriteInteger(Item.Id);
+            packet.WriteString("");
+            packet.WriteInteger(2);
+            packet.WriteInteger(this.all ? 1 : 0);
+            packet.WriteInteger(this.furniSource);
+            packet.WriteInteger(0);
+            packet.WriteInteger(WiredBoxTypeUtility.GetWiredId(Type));
+            packet.WriteInteger(0);
+            packet.WriteInteger(0);
+        }
+
         public bool Execute(params object[] @params)
         {
-            foreach (Item item in SetItems.Values.ToList())
+            Refresh();
+
+            var targets = SetItems.Values.ToList();
+            if (targets.Count == 0) return true;
+
+            if (this.all)
             {
-                if (item == null || !Instance.GetRoomItemHandler().GetFloor.Contains(item))
-                    continue;
-
-                bool hasFurni = false;
-                List<Item> items = Instance.GetGameMap().GetAllRoomItemForSquare(item.GetX, item.GetY);
-                if (items.Count(x => x.GetZ >= item.GetZ) > 1)
-                    hasFurni = true;
-
-                if (!hasFurni)
-                    return false;
+                return targets.All(item => HasFurniOnTop(item));
             }
+            else
+            {
+                return targets.Any(item => HasFurniOnTop(item));
+            }
+        }
 
-            return true;
+        private bool HasFurniOnTop(Item item)
+        {
+            if (item == null || !Instance.GetRoomItemHandler().GetFloor.Contains(item))
+                return false;
+
+            var items = Instance.GetGameMap().GetAllRoomItemForSquare(item.GetX, item.GetY);
+            return items.Count(x => x != item && x.GetZ >= item.GetZ) > 0;
+        }
+
+        private void Refresh()
+        {
+            var toRemove = SetItems.Keys
+                .Where(id => Instance.GetRoomItemHandler().GetItem(id) == null)
+                .ToList();
+            foreach (var id in toRemove)
+                SetItems.TryRemove(id, out _);
+        }
+
+        private class JsonData
+        {
+            public bool all { get; set; }
+            public List<int> itemIds { get; set; }
+            public int furniSource { get; set; }
         }
     }
 }

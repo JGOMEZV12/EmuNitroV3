@@ -1,83 +1,122 @@
-using Polar.Communication.Packets.Outgoing;
 using System;
-using System.Linq;
-using System.Text;
-using System.Collections.Generic;
 using System.Collections.Concurrent;
-
+using Newtonsoft.Json;
 using Polar.Communication.Packets.Incoming;
+using Polar.Communication.Packets.Outgoing;
 using Polar.HabboHotel.Rooms;
 
 namespace Polar.HabboHotel.Items.Wired.Boxes.Conditions
 {
-    class UserCountInRoomBox : IWiredItem
+    class UserCountInRoomBox : IWiredItem, IWiredCustomData
     {
         public Room Instance { get; set; }
         public Item Item { get; set; }
-        public WiredBoxType Type { get { return WiredBoxType.ConditionUserCountInRoom; } }
+        public virtual WiredBoxType Type => WiredBoxType.ConditionUserCountInRoom;
         public ConcurrentDictionary<int, Item> SetItems { get; set; }
         public string StringData { get; set; }
         public bool BoolData { get; set; }
         public string ItemsData { get; set; }
 
+        protected int lowerLimit = 0;
+        protected int upperLimit = 50;
+        protected int userSource = WiredBoxTypeUtility.SOURCE_TRIGGER;
+
         public UserCountInRoomBox(Room instance, Item item)
         {
-            // FIX: Usaba 'Instance' (propiedad null) en vez de 'instance' (parámetro)
-            this.Instance = instance;
-            this.Item = item;
-            this.SetItems = new ConcurrentDictionary<int, Item>();
+            Instance = instance;
+            Item = item;
+            SetItems = new ConcurrentDictionary<int, Item>();
+            StringData = "0;50";
         }
 
-        public void HandleSave(ClientPacket Packet)
+        public void HandleSave(ClientPacket packet)
         {
-            int Unknown = Packet.PopInt();
-            int CountOne = Packet.PopInt();
-            int CountTwo = Packet.PopInt();
+            int paramsCount = packet.PopInt();
+            int rawLower = paramsCount > 0 ? packet.PopInt() : 0;
+            int rawUpper = paramsCount > 1 ? packet.PopInt() : 50;
+            int rawSource = paramsCount > 2 ? packet.PopInt() : WiredBoxTypeUtility.SOURCE_TRIGGER;
 
-            this.StringData = CountOne + ";" + CountTwo;
+            string strParam = packet.PopString();
+
+            Console.WriteLine($"[UserCountInRoomBox] HandleSave — lower={rawLower}, upper={rawUpper}, userSource={rawSource}");
+
+            this.lowerLimit = rawLower;
+            this.upperLimit = rawUpper;
+            this.userSource = rawSource;
+            this.StringData = $"{lowerLimit};{upperLimit}";
         }
 
-        
-        public void Serialize(ServerPacket Packet)
+        public string GetWiredData()
         {
-            Packet.WriteBoolean(false);
-            Packet.WriteInteger(100);
-            Packet.WriteInteger(SetItems.Count);
-            foreach (Item Item in SetItems.Values.ToList())
+            return JsonConvert.SerializeObject(new JsonData
             {
-                Packet.WriteInteger(Item.Id);
-            }
-            Packet.WriteInteger(Item.GetBaseItem().SpriteId);
-            Packet.WriteInteger(Item.Id);
-            Packet.WriteString(StringData);
-            if (String.IsNullOrEmpty(StringData)) StringData = "0;0";
-            Packet.WriteInteger(2);
-            Packet.WriteInteger(int.Parse(StringData.Split(';')[0]));
-            Packet.WriteInteger(int.Parse(StringData.Split(';')[1]));
-            Packet.WriteInteger(0);
-            Packet.WriteInteger(WiredBoxTypeUtility.GetWiredId(Type));
+                lowerLimit = this.lowerLimit,
+                upperLimit = this.upperLimit,
+                userSource = this.userSource
+            });
         }
-        public bool Execute(params object[] Params)
+
+        public void LoadWiredData(string wiredData)
         {
-            if (Params.Length == 0)
-                return false;
+            this.lowerLimit = 0;
+            this.upperLimit = 50;
+            this.userSource = WiredBoxTypeUtility.SOURCE_TRIGGER;
 
-            if (string.IsNullOrEmpty(this.StringData))
-                return false;
+            if (string.IsNullOrEmpty(wiredData)) return;
 
-            // FIX: int.Parse reemplazado por TryParse para evitar FormatException
-            int CountOne = 1, CountTwo = 50;
-            var parts = this.StringData.Split(';');
-            if (parts.Length >= 2)
+            if (wiredData.StartsWith("{"))
             {
-                int.TryParse(parts[0], out CountOne);
-                int.TryParse(parts[1], out CountTwo);
+                var data = JsonConvert.DeserializeObject<JsonData>(wiredData);
+                if (data == null) return;
+
+                this.lowerLimit = data.lowerLimit;
+                this.upperLimit = data.upperLimit;
+                this.userSource = data.userSource;
+            }
+            else
+            {
+                // Retrocompatibilidad: "lower:upper"
+                var parts = wiredData.Split(':');
+                if (parts.Length >= 2)
+                {
+                    int.TryParse(parts[0], out this.lowerLimit);
+                    int.TryParse(parts[1], out this.upperLimit);
+                }
+                this.userSource = WiredBoxTypeUtility.SOURCE_TRIGGER;
             }
 
-            if (this.Instance.UserCount >= CountOne && this.Instance.UserCount <= CountTwo)
-                return true;
+            this.StringData = $"{lowerLimit};{upperLimit}";
+        }
 
-            return false;
+        public void Serialize(ServerPacket packet)
+        {
+            packet.WriteBoolean(false);
+            packet.WriteInteger(5);
+            packet.WriteInteger(0);
+            packet.WriteInteger(Item.GetBaseItem().SpriteId);
+            packet.WriteInteger(Item.Id);
+            packet.WriteString("");
+            packet.WriteInteger(3);
+            packet.WriteInteger(this.lowerLimit);
+            packet.WriteInteger(this.upperLimit);
+            packet.WriteInteger(this.userSource);
+            packet.WriteInteger(0);
+            packet.WriteInteger(WiredBoxTypeUtility.GetWiredId(Type));
+            packet.WriteInteger(0);
+            packet.WriteInteger(0);
+        }
+
+        public virtual bool Execute(params object[] Params)
+        {
+            int count = Instance.UserCount;
+            return count >= this.lowerLimit && count <= this.upperLimit;
+        }
+
+        protected class JsonData
+        {
+            public int lowerLimit { get; set; }
+            public int upperLimit { get; set; }
+            public int userSource { get; set; }
         }
     }
 }

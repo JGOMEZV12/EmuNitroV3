@@ -1,17 +1,12 @@
-using Polar.Communication.Packets.Outgoing;
-using System;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using System.Collections.Generic;
 using System.Collections.Concurrent;
-
+using Newtonsoft.Json;
 using Polar.Communication.Packets.Incoming;
+using Polar.Communication.Packets.Outgoing;
 using Polar.HabboHotel.Rooms;
 
 namespace Polar.HabboHotel.Items.Wired.Boxes.Add_ons
 {
-    class AddonExecuteInOrderBox : IWiredItem
+    class AddonExecuteInOrderBox : IWiredItem, IWiredCustomData
     {
         public Room Instance { get; set; }
         public Item Item { get; set; }
@@ -21,40 +16,35 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Add_ons
         public bool BoolData { get; set; }
         public string ItemsData { get; set; }
 
-
         public AddonExecuteInOrderBox(Room instance, Item item)
         {
-            this.Instance = instance;
-            this.Item = item;
-            this.SetItems = new();
-            this.StringData = "";
+            Instance = instance;
+            Item = item;
+            SetItems = new ConcurrentDictionary<int, Item>();
+            StringData = "";
         }
 
-        public void HandleSave(ClientPacket Packet)
-        {
+        public void HandleSave(ClientPacket packet) { }
 
+        public string GetWiredData() => JsonConvert.SerializeObject(new { });
+
+        public void LoadWiredData(string wiredData) { }
+
+        public void Serialize(ServerPacket packet)
+        {
+            packet.WriteBoolean(false);
+            packet.WriteInteger(0);
+            packet.WriteInteger(0);
+            packet.WriteInteger(Item.GetBaseItem().SpriteId);
+            packet.WriteInteger(Item.Id);
+            packet.WriteString("");
+            packet.WriteInteger(0);
+            packet.WriteInteger(0);
+            packet.WriteInteger(WiredBoxTypeUtility.GetWiredId(Type));
+            packet.WriteInteger(0);
+            packet.WriteInteger(0);
         }
 
-        
-        public void Serialize(ServerPacket Packet)
-        {
-            Packet.WriteBoolean(false);
-            Packet.WriteInteger(100);
-            Packet.WriteInteger(SetItems.Count);
-            foreach (Item Item in SetItems.Values.ToList())
-            {
-                Packet.WriteInteger(Item.Id);
-            }
-            Packet.WriteInteger(Item.GetBaseItem().SpriteId);
-            Packet.WriteInteger(Item.Id);
-            Packet.WriteString(StringData);
-            Packet.WriteInteger(0);
-            Packet.WriteInteger(WiredBoxTypeUtility.GetWiredId(Type));
-            Packet.WriteInteger(0);
-        }
-        public bool Execute(params object[] @params)
-        {
-            return true; // Marker for Triggers
-        }
+        public bool Execute(params object[] @params) => true;
     }
 }

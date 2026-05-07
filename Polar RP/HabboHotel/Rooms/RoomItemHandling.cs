@@ -238,7 +238,7 @@ namespace Polar.HabboHotel.Rooms
             {
                 if (floorItem.IsRoller)
                     mGotRollers = true;
-                else if (floorItem.GetBaseItem().InteractionType == InteractionType.MOODLIGHT)
+                /*else if (floorItem.GetBaseItem().InteractionType == InteractionType.MOODLIGHT)
                 {
                     if (_room.MoodlightData == null)
                         _room.MoodlightData = new MoodlightData(floorItem.Id);
@@ -248,7 +248,7 @@ namespace Polar.HabboHotel.Rooms
                     if (_room.TonerData == null)
                         _room.TonerData = new TonerData(floorItem.Id);
                 }
-
+                */
                 else if (floorItem.GetBaseItem().InteractionType == InteractionType.HOPPER)
                     HopperCount++;
                 else if (floorItem.GetBaseItem().InteractionType == InteractionType.JUKEBOX)

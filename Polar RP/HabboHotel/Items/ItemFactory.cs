@@ -16,7 +16,7 @@ namespace Polar.HabboHotel.Items
         {
             if (Data == null) throw new InvalidOperationException("Data cannot be null.");
 
-            Item Item = new Item(0, 0, Data.Id, ExtraData, 0, 0, 0, 0, Habbo.Id, GroupId, LimitedNumber, LimitedStack, "");
+            //Item Item = new Item(0, 0, Data.Id, ExtraData, 0, 0, 0, 0, Habbo.Id, GroupId, LimitedNumber, LimitedStack, "");
 
             using (IQueryAdapter dbClient = PolarEnvironment.GetDatabaseManager().GetQueryReactor())
             {
@@ -29,26 +29,26 @@ namespace Polar.HabboHotel.Items
                 dbClient.AddParameter("z", 0);
                 dbClient.AddParameter("wall_pos", "");
                 dbClient.AddParameter("rot", 0);
-                dbClient.AddParameter("extra_data", ExtraData);
+                dbClient.AddParameter("extra_data", ExtraData ?? "");
                 dbClient.AddParameter("limited_number", LimitedNumber);
                 dbClient.AddParameter("limited_stack", LimitedStack);
-                Item.Id = Convert.ToInt32(dbClient.InsertQuery());
+                int id = Convert.ToInt32(dbClient.InsertQuery());
 
                 if (GroupId > 0)
                 {
                     dbClient.SetQuery("INSERT INTO `items_groups` (`id`, `group_id`) VALUES (@id, @gid)");
-                    dbClient.AddParameter("id", Item.Id);
+                    dbClient.AddParameter("id", id);
                     dbClient.AddParameter("gid", GroupId);
                     dbClient.RunQuery();
                 }
-                return Item;
+                return new Item(id, 0, Data.Id, ExtraData ?? "", 0, 0, 0, 0, Habbo.Id, GroupId, LimitedNumber, LimitedStack, "");
             }
         }
         public static Item CreateSingleItemNullableRP(ItemData Data, string ExtraData, string DisplayFlags, int GroupId = 0, int LimitedNumber = 0, int LimitedStack = 0)
         {
             if (Data == null) throw new InvalidOperationException("Data cannot be null.");
 
-            Item Item = new Item(0, 0, Data.Id, ExtraData, 0, 0, 0, 0, 0, GroupId, LimitedNumber, LimitedStack, "");
+//Item Item = new Item(0, 0, Data.Id, ExtraData, 0, 0, 0, 0, 0, GroupId, LimitedNumber, LimitedStack, "");
 
             using (IQueryAdapter dbClient = PolarEnvironment.GetDatabaseManager().GetQueryReactor())
             {
@@ -61,19 +61,19 @@ namespace Polar.HabboHotel.Items
                 dbClient.AddParameter("z", 0);
                 dbClient.AddParameter("wall_pos", "");
                 dbClient.AddParameter("rot", 0);
-                dbClient.AddParameter("extra_data", ExtraData);
+                dbClient.AddParameter("extra_data", ExtraData ?? "");
                 dbClient.AddParameter("limited_number", LimitedNumber);
                 dbClient.AddParameter("limited_stack", LimitedStack);
-                Item.Id = Convert.ToInt32(dbClient.InsertQuery());
+                int id = Convert.ToInt32(dbClient.InsertQuery());
 
                 if (GroupId > 0)
                 {
                     dbClient.SetQuery("INSERT INTO `items_groups` (`id`, `group_id`) VALUES (@id, @gid)");
-                    dbClient.AddParameter("id", Item.Id);
+                    dbClient.AddParameter("id", id);
                     dbClient.AddParameter("gid", GroupId);
                     dbClient.RunQuery();
                 }
-                return Item;
+                return new Item(id, 0, Data.Id, ExtraData ?? "", 0, 0, 0, 0, 0, GroupId, LimitedNumber, LimitedStack, "");
             }
         }
 
@@ -81,7 +81,7 @@ namespace Polar.HabboHotel.Items
         {
             if (Data == null) throw new InvalidOperationException("Data cannot be null.");
 
-            Item Item = new Item(ItemId, 0, Data.Id, ExtraData, 0, 0, 0, 0, Habbo.Id, 0, LimitedNumber, LimitedStack, "");
+            //Item Item = new Item(ItemId, 0, Data.Id, ExtraData, 0, 0, 0, 0, Habbo.Id, 0, LimitedNumber, LimitedStack, "");
 
             using (IQueryAdapter dbClient = PolarEnvironment.GetDatabaseManager().GetQueryReactor())
             {
@@ -95,12 +95,12 @@ namespace Polar.HabboHotel.Items
                 dbClient.AddParameter("z", 0);
                 dbClient.AddParameter("wall_pos", "");
                 dbClient.AddParameter("rot", 0);
-                dbClient.AddParameter("extra_data", ExtraData);
+                dbClient.AddParameter("extra_data", ExtraData ?? "");
                 dbClient.AddParameter("limited_number", LimitedNumber);
                 dbClient.AddParameter("limited_stack", LimitedStack);
                 dbClient.RunQuery();
 
-                return Item;
+                return new Item(ItemId, 0, Data.Id, ExtraData ?? "", 0, 0, 0, 0, Habbo.Id, 0, LimitedNumber, LimitedStack, "");
             }
         }
 
@@ -108,7 +108,7 @@ namespace Polar.HabboHotel.Items
         {
             if (Data == null) throw new InvalidOperationException("Data cannot be null.");
 
-            Item Item = new Item(ItemId, 0, Data.Id, ExtraData, 0, 0, 0, 0, Habbo.Id, 0, LimitedNumber, LimitedStack, "");
+            //Item Item = new Item(ItemId, 0, Data.Id, ExtraData, 0, 0, 0, 0, Habbo.Id, 0, LimitedNumber, LimitedStack, "");
 
             using (IQueryAdapter dbClient = PolarEnvironment.GetDatabaseManager().GetQueryReactor())
             {
@@ -122,12 +122,12 @@ namespace Polar.HabboHotel.Items
                 dbClient.AddParameter("z", 0);
                 dbClient.AddParameter("wall_pos", "");
                 dbClient.AddParameter("rot", 0);
-                dbClient.AddParameter("extra_data", ExtraData);
+                dbClient.AddParameter("extra_data", ExtraData ?? "");
                 dbClient.AddParameter("limited_number", LimitedNumber);
                 dbClient.AddParameter("limited_stack", LimitedStack);
                 dbClient.RunQuery();
 
-                return Item;
+                return new Item(ItemId, 0, Data.Id, ExtraData ?? "", 0, 0, 0, 0, Habbo.Id, 0, LimitedNumber, LimitedStack, "");
             }
         }
 
@@ -150,19 +150,21 @@ namespace Polar.HabboHotel.Items
                     dbClient.AddParameter("z", 0);
                     dbClient.AddParameter("wallpos", "");
                     dbClient.AddParameter("rot", 0);
-                    dbClient.AddParameter("flags", ExtraData);
+                    dbClient.AddParameter("flags", ExtraData ?? "");
 
-                    Item Item = new Item(Convert.ToInt32(dbClient.InsertQuery()), 0, Data.Id, ExtraData, 0, 0, 0, 0, Habbo.Id, GroupId, 0, 0, "");
+                    // Item Item = new Item(Convert.ToInt32(dbClient.InsertQuery()), 0, Data.Id, ExtraData, 0, 0, 0, 0, Habbo.Id, GroupId, 0, 0, "");
+
+                    int id = Convert.ToInt32(dbClient.InsertQuery());
 
                     if (GroupId > 0)
                     {
                         dbClient.SetQuery("INSERT INTO `items_groups` (`id`, `group_id`) VALUES (@id, @gid)");
-                        dbClient.AddParameter("id", Item.Id);
+                        dbClient.AddParameter("id", id);
                         dbClient.AddParameter("gid", GroupId);
                         dbClient.RunQuery();
                     }
 
-                    Items.Add(Item);
+                    Items.Add(new Item(id, 0, Data.Id, ExtraData ?? "", 0, 0, 0, 0, Habbo.Id, GroupId, 0, 0, ""));
                 }
             }
             return Items;

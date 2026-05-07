@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.Concurrent;
 using System.Linq;
+using Newtonsoft.Json;
 using Polar.Communication.Packets.Incoming;
 using Polar.Communication.Packets.Outgoing;
 using Polar.HabboHotel.Rooms;
@@ -10,15 +11,11 @@ using Polar.HabboHotel.Users.Effects;
 
 namespace Polar.HabboHotel.Items.Wired.Boxes.Effects
 {
-    class TeleportUserBox : IWiredItem, IWiredCycle
+    class TeleportUserBox : IWiredItem, IWiredCycle, IWiredCustomData
     {
-        // ── Constantes (equivalentes a WiredManager en Java) ─────────────────────
         private const int MAXIMUM_FURNI_SELECTION = 5;
-        private const int TELEPORT_DELAY = 500;  // ms — ajustar según config
-        private const int SOURCE_TRIGGER = 0;
-        private const int SOURCE_SELECTED = 1;
+        private const int TELEPORT_DELAY = 500;
 
-        // ── IWiredItem ───────────────────────────────────────────────────────────
         public Room Instance { get; set; }
         public Item Item { get; set; }
         public WiredBoxType Type => WiredBoxType.EffectTeleportToFurni;
@@ -27,7 +24,6 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Effects
         public bool BoolData { get; set; }
         public string ItemsData { get; set; }
 
-        // ── IWiredCycle ──────────────────────────────────────────────────────────
         public int Delay
         {
             get => _delay;
@@ -35,12 +31,11 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Effects
         }
         public int TickCount { get; set; }
 
-        // ── Campos privados ──────────────────────────────────────────────────────
         private readonly Queue<RoomUser> _queue;
         private int _delay;
         private bool _fastTeleport = false;
-        private int _furniSource = SOURCE_TRIGGER;
-        private int _userSource = SOURCE_TRIGGER;
+        private int _furniSource = WiredBoxTypeUtility.SOURCE_TRIGGER;
+        private int _userSource = WiredBoxTypeUtility.SOURCE_TRIGGER;
 
         public TeleportUserBox(Room instance, Item item)
         {
@@ -51,35 +46,32 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Effects
             TickCount = Delay;
         }
 
-        // ── HandleSave ───────────────────────────────────────────────────────────
-        // Java: lee fastTeleport, furniSource, userSource desde intParams
+        // ── HandleSave — sin cambios, ya funciona ────────────────────────────────
         public void HandleSave(ClientPacket packet)
         {
-            int paramsCount = packet.PopInt();   // cantidad de int params
-            string strParam = packet.PopString(); // string param (vacío)
+            int paramsCount = packet.PopInt();
 
-            // Leer parámetros int (Java: params[0]=fastTeleport, [1]=furniSource, [2]=userSource)
             bool fastTeleport = false;
-            int furniSource = SOURCE_TRIGGER;
-            int userSource = SOURCE_TRIGGER;
+            int furniSource = WiredBoxTypeUtility.SOURCE_TRIGGER;
+            int userSource = WiredBoxTypeUtility.SOURCE_TRIGGER;
 
             if (paramsCount >= 1) fastTeleport = packet.PopInt() == 1;
             if (paramsCount >= 2) furniSource = packet.PopInt();
             if (paramsCount >= 3) userSource = packet.PopInt();
 
-            // Leer furni seleccionados
+            packet.PopString();
+
             SetItems.Clear();
             int furniCount = packet.PopInt();
             for (int i = 0; i < furniCount; i++)
             {
-                Item selectedItem = Instance.GetRoomItemHandler().GetItem(packet.PopInt());
-                if (selectedItem != null)
-                    SetItems.TryAdd(selectedItem.Id, selectedItem);
+                Item selected = Instance.GetRoomItemHandler().GetItem(packet.PopInt());
+                if (selected != null)
+                    SetItems.TryAdd(selected.Id, selected);
             }
 
-            // Java: si hay items y furniSource es TRIGGER, cambiar a SELECTED
-            if (SetItems.Count > 0 && furniSource == SOURCE_TRIGGER)
-                furniSource = SOURCE_SELECTED;
+            if (SetItems.Count > 0 && furniSource == WiredBoxTypeUtility.SOURCE_TRIGGER)
+                furniSource = WiredBoxTypeUtility.SOURCE_SELECTED;
 
             _fastTeleport = fastTeleport;
             _furniSource = furniSource;
@@ -87,10 +79,78 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Effects
             Delay = packet.PopInt();
         }
 
-        // ── Serialize ─────────────────────────────────────────────────────────────
-        // Java: bool + maxFurni + itemCount + items[] + spriteId + id + string +
-        //       int(3) + fastTeleport + furniSource + userSource + int(0) +
-        //       typeCode + delay + invalidTriggers
+        // ── IWiredCustomData ─────────────────────────────────────────────────────
+        public string GetWiredData()
+        {
+            return JsonConvert.SerializeObject(new JsonData
+            {
+                delay = this.Delay,
+                itemIds = SetItems.Keys.ToList(),
+                fastTeleport = this._fastTeleport,
+                furniSource = this._furniSource,
+                userSource = this._userSource
+            });
+        }
+
+        public void LoadWiredData(string wiredData)
+        {
+            SetItems.Clear();
+            _fastTeleport = false;
+            _furniSource = WiredBoxTypeUtility.SOURCE_TRIGGER;
+            _userSource = WiredBoxTypeUtility.SOURCE_TRIGGER;
+
+            if (string.IsNullOrEmpty(wiredData)) return;
+
+            if (wiredData.StartsWith("{"))
+            {
+                var data = JsonConvert.DeserializeObject<JsonData>(wiredData);
+                if (data == null) return;
+
+                Delay = data.delay;
+                _fastTeleport = data.fastTeleport;
+                _furniSource = data.furniSource;
+                _userSource = data.userSource;
+
+                foreach (int id in data.itemIds ?? new List<int>())
+                {
+                    var item = Instance.GetRoomItemHandler().GetItem(id);
+                    if (item != null)
+                        SetItems.TryAdd(item.Id, item);
+                }
+
+                if (_furniSource == WiredBoxTypeUtility.SOURCE_TRIGGER && SetItems.Count > 0)
+                    _furniSource = WiredBoxTypeUtility.SOURCE_SELECTED;
+            }
+            else
+            {
+                // Retrocompatibilidad: formato viejo "delay\tid1;id2;"
+                var parts = wiredData.Split('\t');
+                if (parts.Length >= 1 && int.TryParse(parts[0], out int delay))
+                    Delay = delay;
+
+                if (parts.Length == 2 && parts[1].Contains(";"))
+                {
+                    foreach (var s in parts[1].Split(';'))
+                    {
+                        if (string.IsNullOrEmpty(s)) continue;
+                        if (!int.TryParse(s, out int id)) continue;
+
+                        var item = Instance.GetRoomItemHandler().GetItem(id);
+                        if (item != null)
+                            SetItems.TryAdd(item.Id, item);
+                    }
+                }
+
+                _fastTeleport = false;
+                _furniSource = SetItems.Count == 0 ? WiredBoxTypeUtility.SOURCE_TRIGGER : WiredBoxTypeUtility.SOURCE_SELECTED;
+                _userSource = WiredBoxTypeUtility.SOURCE_TRIGGER;
+            }
+
+            ItemsData = string.Join(";", SetItems.Keys);
+            TickCount = Delay;
+        }
+
+        // ── Serialize — sin cambios ──────────────────────────────────────────────
         public void Serialize(ServerPacket packet)
         {
             var itemsList = SetItems.Values.ToList();
@@ -105,7 +165,6 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Effects
             packet.WriteInteger(Item.Id);
             packet.WriteString(StringData ?? string.Empty);
 
-            // 3 parámetros int: fastTeleport, furniSource, userSource
             packet.WriteInteger(3);
             packet.WriteInteger(_fastTeleport ? 1 : 0);
             packet.WriteInteger(_furniSource);
@@ -114,21 +173,10 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Effects
             packet.WriteInteger(0);
             packet.WriteInteger(WiredBoxTypeUtility.GetWiredId(Type));
             packet.WriteInteger(Delay);
-
-            // invalidTriggers (si userSource == SOURCE_TRIGGER necesita usuario)
-            if (_userSource == SOURCE_TRIGGER)
-            {
-                // TODO: filtrar triggers que no son triggered by room unit
-                // Por ahora enviamos 0 triggers inválidos
-                packet.WriteInteger(0);
-            }
-            else
-            {
-                packet.WriteInteger(0);
-            }
+            packet.WriteInteger(0);
         }
 
-        // ── Execute ───────────────────────────────────────────────────────────────
+        // ── Execute ──────────────────────────────────────────────────────────────
         public bool Execute(params object[] Params)
         {
             if (Params == null || Params.Length == 0) return false;
@@ -139,14 +187,12 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Effects
             RoomUser user = Instance.GetRoomUserManager().GetRoomUserByHabbo(player.Id);
             if (user == null) return false;
 
-            // Efecto visual de teleport (Java: RoomUserEffectComposer con effect 4)
             player.Effects()?.ApplyEffect(EffectsList.Twinkle);
-
             _queue.Enqueue(user);
             return true;
         }
 
-        // ── OnCycle ───────────────────────────────────────────────────────────────
+        // ── OnCycle ──────────────────────────────────────────────────────────────
         public bool OnCycle()
         {
             if (_queue.Count == 0 || SetItems.Count == 0)
@@ -169,14 +215,13 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Effects
             return true;
         }
 
-        // ── TeleportUser ──────────────────────────────────────────────────────────
+        // ── TeleportUser ─────────────────────────────────────────────────────────
         private void TeleportUser(RoomUser user)
         {
             if (user == null || Instance?.GetGameMap() == null) return;
 
-            // Limpiar items inválidos (Java: removeIf)
             var invalidIds = SetItems
-                .Where(kv => !Instance.GetRoomItemHandler().GetFloor.Contains(kv.Value))
+                .Where(kv => Instance.GetRoomItemHandler().GetItem(kv.Key) == null)
                 .Select(kv => kv.Key)
                 .ToList();
             foreach (int id in invalidIds)
@@ -184,19 +229,23 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Effects
 
             if (SetItems.Count == 0) return;
 
-            // Java: selección aleatoria con nextInt
             var items = SetItems.Values.ToList();
             Item target = items[PolarEnvironment.GetRandomNumber(0, items.Count - 1)];
             if (target == null) return;
 
-            // Java: getTile + buscar tile alternativo si está bloqueado
-            var tile = new System.Drawing.Point(target.GetX, target.GetY);
-
             Instance.GetGameMap().TeleportToItem(user, target);
             Instance.GetRoomUserManager().UpdateUserStatusses();
-
-            // Quitar efecto tras teleport
             user.GetClient()?.GetHabbo()?.Effects()?.ApplyEffect(0);
+        }
+
+        // ── JsonData ─────────────────────────────────────────────────────────────
+        private class JsonData
+        {
+            public int delay { get; set; }
+            public List<int> itemIds { get; set; }
+            public bool fastTeleport { get; set; }
+            public int furniSource { get; set; }
+            public int userSource { get; set; }
         }
     }
 }

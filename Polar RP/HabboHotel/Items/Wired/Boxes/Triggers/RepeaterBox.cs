@@ -1,121 +1,138 @@
-using Polar.Communication.Packets.Outgoing;
+using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using Newtonsoft.Json;
 using Polar.Communication.Packets.Incoming;
-using Polar.HabboHotel.Rooms;
-using Polar.HabboHotel.Items.Wired;
+using Polar.Communication.Packets.Outgoing;
 using Polar.HabboHotel.Items;
+using Polar.HabboHotel.Rooms;
 
 namespace Polar.HabboHotel.Items.Wired.Boxes.Triggers
 {
-    internal class RepeaterBox : IWiredItem, IWiredCycle
+    internal class RepeaterBox : IWiredItem, IWiredCycle, IWiredCustomData
     {
+        private const int DEFAULT_DELAY = 10 * 500; // 5 segundos en ms
+        private const int MIN_DELAY = 500;
+
         public Room Instance { get; set; }
         public Item Item { get; set; }
         public WiredBoxType Type => WiredBoxType.TriggerRepeat;
         public ConcurrentDictionary<int, Item> SetItems { get; set; }
         public string StringData { get; set; }
         public bool BoolData { get; set; }
+        public string ItemsData { get; set; }
 
+        // repeatTime en ms, igual que Java
+        private int repeatTime = DEFAULT_DELAY;
+
+        // Delay en ticks (repeatTime / 500) — usado por IWiredCycle
         public int Delay
         {
-            get => _delay;
+            get => repeatTime / 500;
             set
             {
-                _delay = value;
-                TickCount = value;
+                repeatTime = Math.Max(value * 500, MIN_DELAY);
+                TickCount = Delay;
             }
         }
 
         public int TickCount { get; set; }
-        public string ItemsData { get; set; }
-
-        private int _delay;
 
         public RepeaterBox(Room instance, Item item)
         {
             Instance = instance;
             Item = item;
             SetItems = new ConcurrentDictionary<int, Item>();
+            TickCount = Delay;
         }
 
         public void HandleSave(ClientPacket packet)
         {
-            int unknown = packet.PopInt();
-            int delay = packet.PopInt();
+            int intCount = packet.PopInt();
+            int ticks = packet.PopInt(); // el cliente manda ticks, no ms
 
-            Delay = delay;
-            TickCount = delay;
+            Console.WriteLine($"[RepeaterBox] HandleSave — intCount={intCount}, ticks={ticks}");
+
+            int newRepeatTime = ticks * 500;
+            if (newRepeatTime < MIN_DELAY) newRepeatTime = MIN_DELAY;
+
+            repeatTime = newRepeatTime;
+            TickCount = Delay;
         }
 
-        
-        public void Serialize(ServerPacket Packet)
+        public string GetWiredData()
         {
-            Packet.WriteBoolean(false);
-            Packet.WriteInteger(100);
-            Packet.WriteInteger(SetItems.Count);
-            foreach (Item Item in SetItems.Values.ToList())
-            {
-                Packet.WriteInteger(Item.Id);
-            }
-            Packet.WriteInteger(Item.GetBaseItem().SpriteId);
-            Packet.WriteInteger(Item.Id);
-            Packet.WriteString(StringData);
+            return JsonConvert.SerializeObject(new JsonData { repeatTime = this.repeatTime });
+        }
 
-            Packet.WriteInteger(this is IWiredCycle ? 1 : 0);
-            if (this is IWiredCycle)
-            {
-                IWiredCycle Cycle = (IWiredCycle)this;
-                Packet.WriteInteger(Cycle.Delay);
-            }
-            Packet.WriteInteger(0);
-            Packet.WriteInteger(WiredBoxTypeUtility.GetWiredId(Type));
-        }
-        public bool Execute(params object[] @params)
+        public void LoadWiredData(string wiredData)
         {
-            return true;
+            if (string.IsNullOrEmpty(wiredData)) return;
+
+            if (wiredData.StartsWith("{"))
+            {
+                var data = JsonConvert.DeserializeObject<JsonData>(wiredData);
+                repeatTime = data?.repeatTime ?? DEFAULT_DELAY;
+            }
+            else
+            {
+                // Retrocompatibilidad: el viejo formato guardaba el delay en ticks
+                if (int.TryParse(wiredData, out int ticks))
+                    repeatTime = ticks * 500;
+            }
+
+            if (repeatTime < MIN_DELAY)
+                repeatTime = 20 * 500;
+
+            TickCount = Delay;
         }
+
+        public void Serialize(ServerPacket packet)
+        {
+            packet.WriteBoolean(false);
+            packet.WriteInteger(5);
+            packet.WriteInteger(0);
+            packet.WriteInteger(Item.GetBaseItem().SpriteId);
+            packet.WriteInteger(Item.Id);
+            packet.WriteString("");
+            packet.WriteInteger(1);
+            packet.WriteInteger(repeatTime / 500); // ticks al cliente
+            packet.WriteInteger(0);
+            packet.WriteInteger(WiredBoxTypeUtility.GetWiredId(Type));
+            packet.WriteInteger(0);
+        }
+
+        public bool Execute(params object[] @params) => true;
 
         public bool OnCycle()
         {
-            ICollection<RoomUser> avatars = Instance.GetRoomUserManager().GetRoomUsers().ToList();
-            ICollection<IWiredItem> effects = Instance.GetWired().GetEffects(this);
-            ICollection<IWiredItem> conditions = Instance.GetWired().GetConditions(this);
+            var avatars = Instance.GetRoomUserManager().GetRoomUsers().ToList();
+            var effects = Instance.GetWired().GetEffects(this);
+            var conditions = Instance.GetWired().GetConditions(this);
+            var addons = Instance.GetWired().GetTriggers(this)
+                                     .Where(x => x.Type.ToString().StartsWith("Addon")).ToList();
 
-            // Extra Addons
-            var addons = Instance.GetWired().GetTriggers(this).Where(x => x.Type.ToString().StartsWith("Addon")).ToList();
-
-            // Execution Limit Addon
             var limitAddon = addons.FirstOrDefault(x => x.Type == WiredBoxType.AddonExecutionLimit);
             if (limitAddon != null && !limitAddon.Execute()) return false;
 
-            // Random Addon
             var randomAddon = addons.FirstOrDefault(x => x.Type == WiredBoxType.AddonRandom);
             if (randomAddon != null && !randomAddon.Execute()) return false;
 
-            // Condition Evaluation
             bool hasOrEval = addons.Any(x => x.Type == WiredBoxType.AddonOrEval);
-            bool conditionsMet = false;
 
             if (conditions.Count > 0)
             {
+                bool conditionsMet;
                 if (hasOrEval)
                 {
-                    conditionsMet = conditions.Any(c => avatars.Any(a => a != null && a.GetClient() != null && a.GetClient().GetHabbo() != null && c.Execute(a.GetClient().GetHabbo())));
+                    conditionsMet = conditions.Any(c =>
+                        avatars.Any(a => a?.GetClient()?.GetHabbo() != null && c.Execute(a.GetClient().GetHabbo())));
                 }
                 else
                 {
-                    conditionsMet = true;
-                    foreach (IWiredItem condition in conditions)
-                    {
-                        bool anyAvatarMet = avatars.Any(a => a != null && a.GetClient() != null && a.GetClient().GetHabbo() != null && condition.Execute(a.GetClient().GetHabbo()));
-                        if (!anyAvatarMet)
-                        {
-                            conditionsMet = false;
-                            break;
-                        }
-                    }
+                    conditionsMet = conditions.All(c =>
+                        avatars.Any(a => a?.GetClient()?.GetHabbo() != null && c.Execute(a.GetClient().GetHabbo())));
                 }
 
                 if (!conditionsMet) return false;
@@ -124,32 +141,30 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Triggers
                     Instance.GetWired().OnEvent(condition.Item);
             }
 
-            // Effect Execution
             bool hasExecuteInOrder = addons.Any(x => x.Type == WiredBoxType.AddonExecuteInOrder);
-            bool hasRandomEffectAddon = addons.Any(x => x.Type == WiredBoxType.AddonRandomEffect);
-            bool hasUnseenAddon = addons.Any(x => x.Type == WiredBoxType.AddonUnseen);
+            bool hasRandomEffect = addons.Any(x => x.Type == WiredBoxType.AddonRandomEffect);
+            bool hasUnseen = addons.Any(x => x.Type == WiredBoxType.AddonUnseen);
 
-            if (hasRandomEffectAddon)
+            if (hasRandomEffect)
             {
-                IWiredItem randomBox = addons.FirstOrDefault(x => x.Type == WiredBoxType.AddonRandomEffect);
-                if (randomBox == null || !randomBox.Execute())
-                    return false;
+                var randomBox = addons.FirstOrDefault(x => x.Type == WiredBoxType.AddonRandomEffect);
+                if (randomBox == null || !randomBox.Execute()) return false;
 
-                IWiredItem selectedBox = Instance.GetWired().GetRandomEffect(effects.ToList());
+                var selectedBox = Instance.GetWired().GetRandomEffect(effects.ToList());
                 if (selectedBox != null && selectedBox.Execute())
                     Instance.GetWired().OnEvent(selectedBox.Item);
 
                 Instance.GetWired().OnEvent(randomBox.Item);
             }
-            else if (hasUnseenAddon)
+            else if (hasUnseen)
             {
-                IWiredItem unseenBox = addons.FirstOrDefault(x => x.Type == WiredBoxType.AddonUnseen);
+                var unseenBox = addons.FirstOrDefault(x => x.Type == WiredBoxType.AddonUnseen);
                 if (unseenBox != null && unseenBox.Execute(effects.ToList()))
                     Instance.GetWired().OnEvent(unseenBox.Item);
             }
             else if (hasExecuteInOrder)
             {
-                foreach (IWiredItem effect in effects.OrderBy(x => x.Item.GetZ).ToList())
+                foreach (var effect in effects.OrderBy(x => x.Item.GetZ).ToList())
                 {
                     if (!effect.Execute()) break;
                     Instance.GetWired().OnEvent(effect.Item);
@@ -157,17 +172,20 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Triggers
             }
             else
             {
-                foreach (IWiredItem effect in effects.ToList())
+                foreach (var effect in effects.ToList())
                 {
-                    if (!effect.Execute())
-                        continue;
-
-                    Instance?.GetWired().OnEvent(effect.Item);
+                    if (!effect.Execute()) continue;
+                    Instance.GetWired().OnEvent(effect.Item);
                 }
             }
 
             TickCount = Delay;
             return true;
+        }
+
+        private class JsonData
+        {
+            public int repeatTime { get; set; }
         }
     }
 }

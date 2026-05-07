@@ -21,10 +21,9 @@ namespace Polar.Communication.Packets.Outgoing.Rooms.Engine
             WriteInteger(item.GetX);
             WriteInteger(item.GetY);
             WriteInteger(item.Rotation);
-            WriteString(ObjectUpdateComposer.GetStackHeight(item, interactionType, zStr));
+            WriteString(zStr);
 
-            // ✅ stackHeight con AdjustableHeights
-            WriteString(ObjectUpdateComposer.GetStackHeight(item, interactionType, zStr));
+             WriteString(item.GetZ.ToString("G", System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty);
 
             if (interactionType == InteractionType.GIFT)
             {
@@ -55,7 +54,9 @@ namespace Polar.Communication.Packets.Outgoing.Rooms.Engine
             }
 
             WriteInteger(-1);
+
             WriteInteger((item.GetBaseItem().Modes > 1) ? 1 : 0);
+
             WriteInteger(item.UserID);
             WriteInteger(item.Data.Stackable ? 1 : 0);
             WriteInteger(item.Data.IsSeat ? 1 : 0);

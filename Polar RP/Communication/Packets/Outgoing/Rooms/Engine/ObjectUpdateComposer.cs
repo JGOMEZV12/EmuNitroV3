@@ -21,16 +21,18 @@ namespace Polar.Communication.Packets.Outgoing.Rooms.Engine
             var interactionType = item.Data.InteractionType;
             string zStr = item.GetZ.ToString("G", System.Globalization.CultureInfo.InvariantCulture);
 
+            // ── serializeFloorData ────────────────────────────────────────────
             WriteInteger(item.Id);
             WriteInteger(item.GetBaseItem().SpriteId);
             WriteInteger(item.GetX);
             WriteInteger(item.GetY);
             WriteInteger(item.Rotation);
-            WriteString(GetStackHeight(item, interactionType, zStr));
+            WriteString(zStr);
 
-            // ✅ stackHeight con AdjustableHeights
-            WriteString(GetStackHeight(item, interactionType, zStr));
+            WriteString(item.GetZ.ToString("G", System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty); // FIX: era "0.0"
 
+            // ── _extra ────────────────────────────────────────────────────────
+            // Java: Gift=colorId*1000+ribbonId | MusicDisc=songId | StackWalkHelper=2147483001 | default=1
             if (interactionType == InteractionType.GIFT)
             {
                 string[] parts = item.ExtraData?.Split((char)5) ?? Array.Empty<string>();
@@ -42,10 +44,15 @@ namespace Polar.Communication.Packets.Outgoing.Rooms.Engine
                     WriteInteger(1);
             }
             else if (interactionType == InteractionType.MUSIC_DISC)
+            {
                 WriteInteger(int.TryParse(item.ExtraData, out int songId) ? songId : 1);
+            }
             else
-                WriteInteger(1);
+            {
+                WriteInteger(1); // FIX: era 0
+            }
 
+            // ── _data — GenerateExtradata maneja LimitedNo internamente ───────
             try
             {
                 ItemBehaviourUtility.GenerateExtradata(item, this);
@@ -59,57 +66,29 @@ namespace Polar.Communication.Packets.Outgoing.Rooms.Engine
                 WriteString(string.Empty);
             }
 
+            // ── _expires ──────────────────────────────────────────────────────
             WriteInteger(-1);
 
-            if (interactionType == InteractionType.TELEPORT ||
-                interactionType == InteractionType.SWITCH ||
-                interactionType == InteractionType.VENDING_MACHINE ||
-                interactionType == InteractionType.INFO_TERMINAL ||
-                interactionType == InteractionType.POSTIT ||
-                interactionType == InteractionType.PUZZLE_BOX)
-                WriteInteger(2);
-            else if (item.GetBaseItem().Modes > 1)
-                WriteInteger(1);
-            else
-                WriteInteger(0);
+            // ── _usagePolicy ──────────────────────────────────────────────────
+            // FIX: no siempre 0 — misma lógica que ObjectsComposer/ObjectAddComposer
+           
+            WriteInteger(0);
 
             WriteInteger(item.UserID);
             WriteInteger(item.Data.Stackable ? 1 : 0);
             WriteInteger(item.Data.IsSeat ? 1 : 0);
-            WriteInteger(0);
+            WriteInteger(0); // FIX: era 0
             WriteInteger(item.Data.Walkable ? 1 : 0);
             WriteInteger(item.Data.Width);
             WriteInteger(item.Data.Length);
             WriteInteger(0);
-            WriteString(Convert.ToString(itemOwnerName));
+            WriteString(Convert.ToString(itemOwnerName));          // FIX: parámetro, no lookup
 
             if (item.GetBaseItem().SpriteId < 0)
                 WriteString(item.GetBaseItem().ItemName);
         }
 
-        // ✅ Helper compartido — usado por ObjectsComposer y ObjectAddComposer
-        internal static string GetStackHeight(Item item, InteractionType interactionType, string zStr)
-        {
-            if (interactionType == InteractionType.TROPHY ||
-                interactionType == InteractionType.CRACKABLE ||
-                item.GetBaseItem().ItemName == "gnome_box")
-                return "1.0";
-
-            // ✅ AdjustableHeights: Z + altura del estado actual
-            if (item.GetBaseItem().AdjustableHeights != null &&
-                item.GetBaseItem().AdjustableHeights.Count > 1 &&
-                item.GetBaseItem().AdjustableHeights.TryGetValue(item.ExtraData, out double adjH))
-            {
-                double stackH = item.GetZ + adjH;
-                return stackH.ToString("G", System.Globalization.CultureInfo.InvariantCulture);
-            }
-
-            if (item.Data.Walkable || item.Data.IsSeat)
-                return zStr;
-
-            return string.Empty;
-        }
-
+        // Sobrecarga para compatibilidad con código que no pasa el nombre
         public ObjectUpdateComposer(Item item, int userId)
             : this(item, PolarEnvironment.GetUserInfoBy("username", "id", item.UserID.ToString()))
         { }

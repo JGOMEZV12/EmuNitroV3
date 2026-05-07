@@ -22,7 +22,7 @@ namespace Polar.Communication.Packets.Incoming.Groups
             if (group == null)
                 return;
 
-            session.SendMessage(new GroupInfoComposer(group, session, newWindow));     
+            //session.SendMessage(new GroupInfoComposer(group, session, newWindow));     
         }
     }
 }

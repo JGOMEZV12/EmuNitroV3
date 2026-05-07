@@ -23,38 +23,48 @@ namespace Polar.HabboHotel.Items.Data.RentableSpace
         public long Last_Forcing;
         public FarmingSpace FarmingSpace;
 
-        public RentableSpaceData(int Item, int RoomId, int X, int Y, double Z)
+        public RentableSpaceData(int Item, int RoomId, int X, int Y, double Z, DataRow row = null)
         {
             this.ItemId = Item;
-            using (IQueryAdapter dbClient = PolarEnvironment.GetDatabaseManager().GetQueryReactor())
-            {
-                dbClient.SetQuery("SELECT * FROM `rp_houses` WHERE `sign_id` = '" + ItemId + "' LIMIT 1");
-                DataRow Row = dbClient.getRow();
+            DataRow Row = row;
 
-                if (Row == null)
+            if (Row == null || !Row.Table.Columns.Contains("house_owner"))
+            {
+                using (IQueryAdapter dbClient = PolarEnvironment.GetDatabaseManager().GetQueryReactor())
                 {
-                    dbClient.RunQuery("INSERT INTO `rp_houses` VALUES ('" + ItemId + "','" + RoomId + "','0','20000', '1', '1', 'none', '0', '" + RoomId + "', '" + X + "', '" + Y + "', '" + Z + "', '1', '0', '1,1;10,1;1,10;10,10')");
-                    dbClient.SetQuery("SELECT * FROM `rp_houses` WHERE `sign_id` = '" + ItemId + "' LIMIT 1");
+                    dbClient.SetQuery("SELECT sign_id, room_id, owner_id AS house_owner, cost AS house_cost, for_sale AS house_for_sale, level AS house_level, is_locked AS house_locked, inside_room_id, door_x, door_y, door_z, type AS house_type, last_forcing FROM `rp_houses` WHERE `sign_id` = @id LIMIT 1");
+                    dbClient.AddParameter("id", ItemId);
                     Row = dbClient.getRow();
                 }
-                else
+            }
+
+            if (Row == null || Row["house_owner"] == DBNull.Value)
+            {
+                using (IQueryAdapter dbClient = PolarEnvironment.GetDatabaseManager().GetQueryReactor())
                 {
-                    this.ItemId = Convert.ToInt32(Row["sign_id"]);
-                    this.RoomId = Convert.ToInt32(Row["room_id"]);
-                    this.OwnerId = Convert.ToInt32(Row["owner_id"]);
-                    this.Cost = Convert.ToInt32(Row["cost"]);
-                    this.ForSale = PolarEnvironment.EnumToBool(Row["for_sale"].ToString());
-                    this.Level = Convert.ToInt32(Row["level"]);
-                    //this.Upgrades[0] = Row["upgrades"].ToString();
-                    this.IsLocked = PolarEnvironment.EnumToBool(Row["is_locked"].ToString());
-                    this.InsideRoomId = Convert.ToInt32(Row["inside_room_id"]);
-                    this.DoorX = Convert.ToInt32(Row["door_x"]);
-                    this.DoorY = Convert.ToInt32(Row["door_y"]);
-                    this.DoorZ = Convert.ToInt32(Row["door_z"]);
-                    this.Type = Convert.ToInt32(Row["type"]);
-                    this.Last_Forcing = Convert.ToInt32(Row["last_forcing"]);
-                    this.FarmingSpace = null;
+                    dbClient.RunQuery("INSERT INTO `rp_houses` VALUES ('" + ItemId + "','" + RoomId + "','0','20000', '1', '1', 'none', '0', '" + RoomId + "', '" + X + "', '" + Y + "', '" + Z + "', '1', '0', '1,1;10,1;1,10;10,10')");
+                    dbClient.SetQuery("SELECT sign_id, room_id, owner_id AS house_owner, cost AS house_cost, for_sale AS house_for_sale, level AS house_level, is_locked AS house_locked, inside_room_id, door_x, door_y, door_z, type AS house_type, last_forcing FROM `rp_houses` WHERE `sign_id` = '" + ItemId + "' LIMIT 1");
+                    Row = dbClient.getRow();
                 }
+            }
+
+            if (Row != null)
+            {
+                this.ItemId = Convert.ToInt32(Row.Table.Columns.Contains("sign_id") ? Row["sign_id"] : ItemId);
+                this.RoomId = Convert.ToInt32(Row.Table.Columns.Contains("room_id") ? Row["room_id"] : RoomId);
+                this.OwnerId = Convert.ToInt32(Row["house_owner"]);
+                this.Cost = Convert.ToInt32(Row.Table.Columns.Contains("house_cost") ? Row["house_cost"] : Row["cost"]);
+                this.ForSale = PolarEnvironment.EnumToBool((Row.Table.Columns.Contains("house_for_sale") ? Row["house_for_sale"] : Row["for_sale"]).ToString());
+                this.Level = Convert.ToInt32(Row.Table.Columns.Contains("house_level") ? Row["house_level"] : Row["level"]);
+                //this.Upgrades[0] = Row["upgrades"].ToString();
+                this.IsLocked = PolarEnvironment.EnumToBool((Row.Table.Columns.Contains("house_locked") ? Row["house_locked"] : Row["is_locked"]).ToString());
+                this.InsideRoomId = Convert.ToInt32(Row["inside_room_id"]);
+                this.DoorX = Convert.ToInt32(Row["door_x"]);
+                this.DoorY = Convert.ToInt32(Row["door_y"]);
+                this.DoorZ = Convert.ToDouble(Row["door_z"]);
+                this.Type = Convert.ToInt32(Row.Table.Columns.Contains("house_type") ? Row["house_type"] : Row["type"]);
+                this.Last_Forcing = Convert.ToInt64(Row["last_forcing"]);
+                this.FarmingSpace = null;
             }
         }
 

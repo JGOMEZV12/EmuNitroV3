@@ -1,18 +1,16 @@
-using Polar.Communication.Packets.Outgoing;
 using System;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using System.Collections.Generic;
 using System.Collections.Concurrent;
-
+using Newtonsoft.Json;
 using Polar.Communication.Packets.Incoming;
+using Polar.Communication.Packets.Outgoing;
 using Polar.HabboHotel.Rooms;
 
 namespace Polar.HabboHotel.Items.Wired.Boxes.Add_ons
 {
-    class AddonMovePhysicsBox : IWiredItem
+    class AddonMovePhysicsBox : IWiredItem, IWiredCustomData
     {
+        public const int SOURCE_ALL_ROOM = 900;
+
         public Room Instance { get; set; }
         public Item Item { get; set; }
         public WiredBoxType Type => WiredBoxType.AddonMovePhysics;
@@ -21,40 +19,169 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Add_ons
         public bool BoolData { get; set; }
         public string ItemsData { get; set; }
 
+        private bool keepAltitude = false;
+        private bool moveThroughFurni = false;
+        private bool moveThroughUsers = false;
+        private bool blockByFurni = false;
+        private int moveThroughFurniSource = WiredBoxTypeUtility.SOURCE_TRIGGER;
+        private int blockByFurniSource = WiredBoxTypeUtility.SOURCE_TRIGGER;
+        private int moveThroughUsersSource = WiredBoxTypeUtility.SOURCE_TRIGGER;
+
+        public bool KeepAltitude => keepAltitude;
+        public bool MoveThroughFurni => moveThroughFurni;
+        public bool MoveThroughUsers => moveThroughUsers;
+        public bool BlockByFurni => blockByFurni;
+        public int MoveThroughFurniSource => moveThroughFurniSource;
+        public int MoveThroughUsersSource => moveThroughUsersSource;
+        public int BlockByFurniSource => blockByFurniSource;
 
         public AddonMovePhysicsBox(Room instance, Item item)
         {
-            this.Instance = instance;
-            this.Item = item;
-            this.SetItems = new();
-            this.StringData = "";
+            Instance = instance;
+            Item = item;
+            SetItems = new ConcurrentDictionary<int, Item>();
+            StringData = "";
         }
 
-        public void HandleSave(ClientPacket Packet)
+        public void HandleSave(ClientPacket packet)
         {
+            // intParams → string (sin furnis)
+            int paramsCount = packet.PopInt();
 
+            bool rawKeepAlt = ReadFlag(packet, paramsCount, 0);
+            bool rawMoveFurni = ReadFlag(packet, paramsCount, 1);
+            bool rawMoveUsers = ReadFlag(packet, paramsCount, 2);
+            bool rawBlockFurni = ReadFlag(packet, paramsCount, 3);
+            int rawMoveFurniSrc = ReadInt(packet, paramsCount, 4, WiredBoxTypeUtility.SOURCE_TRIGGER);
+            int rawBlockFurniSrc = ReadInt(packet, paramsCount, 5, WiredBoxTypeUtility.SOURCE_TRIGGER);
+            int rawMoveUsersSrc = ReadInt(packet, paramsCount, 6, WiredBoxTypeUtility.SOURCE_TRIGGER);
+
+            string strParam = packet.PopString();
+
+            Console.WriteLine($"[AddonMovePhysicsBox] HandleSave — keepAlt={rawKeepAlt}, moveFurni={rawMoveFurni}, moveUsers={rawMoveUsers}, blockFurni={rawBlockFurni}");
+
+            this.keepAltitude = rawKeepAlt;
+            this.moveThroughFurni = rawMoveFurni;
+            this.moveThroughUsers = rawMoveUsers;
+            this.blockByFurni = rawBlockFurni;
+            this.moveThroughFurniSource = NormalizeSource(rawMoveFurniSrc);
+            this.blockByFurniSource = NormalizeSource(rawBlockFurniSrc);
+            this.moveThroughUsersSource = NormalizeSource(rawMoveUsersSrc);
         }
 
-        
-        public void Serialize(ServerPacket Packet)
+        public string GetWiredData()
         {
-            Packet.WriteBoolean(false);
-            Packet.WriteInteger(100);
-            Packet.WriteInteger(SetItems.Count);
-            foreach (Item Item in SetItems.Values.ToList())
+            return JsonConvert.SerializeObject(new JsonData
             {
-                Packet.WriteInteger(Item.Id);
-            }
-            Packet.WriteInteger(Item.GetBaseItem().SpriteId);
-            Packet.WriteInteger(Item.Id);
-            Packet.WriteString(StringData);
-            Packet.WriteInteger(0);
-            Packet.WriteInteger(WiredBoxTypeUtility.GetWiredId(Type));
-            Packet.WriteInteger(0);
+                keepAltitude = this.keepAltitude,
+                moveThroughFurni = this.moveThroughFurni,
+                moveThroughUsers = this.moveThroughUsers,
+                blockByFurni = this.blockByFurni,
+                moveThroughFurniSource = this.moveThroughFurniSource,
+                blockByFurniSource = this.blockByFurniSource,
+                moveThroughUsersSource = this.moveThroughUsersSource
+            });
         }
-        public bool Execute(params object[] @params)
+
+        public void LoadWiredData(string wiredData)
         {
-            return true; // Marker for Effects
+            Reset();
+
+            if (string.IsNullOrEmpty(wiredData)) return;
+
+            if (wiredData.StartsWith("{"))
+            {
+                var data = JsonConvert.DeserializeObject<JsonData>(wiredData);
+                if (data == null) return;
+
+                this.keepAltitude = data.keepAltitude;
+                this.moveThroughFurni = data.moveThroughFurni;
+                this.moveThroughUsers = data.moveThroughUsers;
+                this.blockByFurni = data.blockByFurni;
+                this.moveThroughFurniSource = NormalizeSource(data.moveThroughFurniSource);
+                this.blockByFurniSource = NormalizeSource(data.blockByFurniSource);
+                this.moveThroughUsersSource = NormalizeSource(data.moveThroughUsersSource);
+            }
+            else
+            {
+                // Retrocompatibilidad: "val\tval\tval\t..."
+                var parts = wiredData.Split('\t');
+                this.keepAltitude = ReadLegacyFlag(parts, 0);
+                this.moveThroughFurni = ReadLegacyFlag(parts, 1);
+                this.moveThroughUsers = ReadLegacyFlag(parts, 2);
+                this.blockByFurni = ReadLegacyFlag(parts, 3);
+                this.moveThroughFurniSource = NormalizeSource(ReadLegacyInt(parts, 4, WiredBoxTypeUtility.SOURCE_TRIGGER));
+                this.blockByFurniSource = NormalizeSource(ReadLegacyInt(parts, 5, WiredBoxTypeUtility.SOURCE_TRIGGER));
+                this.moveThroughUsersSource = NormalizeSource(ReadLegacyInt(parts, 6, WiredBoxTypeUtility.SOURCE_TRIGGER));
+            }
+        }
+
+        public void Serialize(ServerPacket packet)
+        {
+            packet.WriteBoolean(false);
+            packet.WriteInteger(0);
+            packet.WriteInteger(0);
+            packet.WriteInteger(Item.GetBaseItem().SpriteId);
+            packet.WriteInteger(Item.Id);
+            packet.WriteString("");
+            packet.WriteInteger(7);
+            packet.WriteInteger(keepAltitude ? 1 : 0);
+            packet.WriteInteger(moveThroughFurni ? 1 : 0);
+            packet.WriteInteger(moveThroughUsers ? 1 : 0);
+            packet.WriteInteger(blockByFurni ? 1 : 0);
+            packet.WriteInteger(moveThroughFurniSource);
+            packet.WriteInteger(blockByFurniSource);
+            packet.WriteInteger(moveThroughUsersSource);
+            packet.WriteInteger(0);
+            packet.WriteInteger(WiredBoxTypeUtility.GetWiredId(Type));
+            packet.WriteInteger(0);
+            packet.WriteInteger(0);
+        }
+
+        public bool Execute(params object[] @params) => true;
+
+        private void Reset()
+        {
+            keepAltitude = false;
+            moveThroughFurni = false;
+            moveThroughUsers = false;
+            blockByFurni = false;
+            moveThroughFurniSource = WiredBoxTypeUtility.SOURCE_TRIGGER;
+            moveThroughUsersSource = WiredBoxTypeUtility.SOURCE_TRIGGER;
+            blockByFurniSource = WiredBoxTypeUtility.SOURCE_TRIGGER;
+        }
+
+        private static bool ReadFlag(ClientPacket packet, int count, int index) =>
+            count > index && packet.PopInt() == 1;
+
+        private static int ReadInt(ClientPacket packet, int count, int index, int fallback) =>
+            count > index ? packet.PopInt() : fallback;
+
+        private static bool ReadLegacyFlag(string[] parts, int index) =>
+            ReadLegacyInt(parts, index, 0) == 1;
+
+        private static int ReadLegacyInt(string[] parts, int index, int fallback)
+        {
+            if (parts.Length <= index) return fallback;
+            return int.TryParse(parts[index], out int v) ? v : fallback;
+        }
+
+        private static int NormalizeSource(int value) =>
+            value == SOURCE_ALL_ROOM ||
+            value == WiredBoxTypeUtility.SOURCE_TRIGGER ||
+            value == WiredBoxTypeUtility.SOURCE_SELECTOR
+                ? value
+                : WiredBoxTypeUtility.SOURCE_TRIGGER;
+
+        private class JsonData
+        {
+            public bool keepAltitude { get; set; }
+            public bool moveThroughFurni { get; set; }
+            public bool moveThroughUsers { get; set; }
+            public bool blockByFurni { get; set; }
+            public int moveThroughFurniSource { get; set; }
+            public int blockByFurniSource { get; set; }
+            public int moveThroughUsersSource { get; set; }
         }
     }
 }

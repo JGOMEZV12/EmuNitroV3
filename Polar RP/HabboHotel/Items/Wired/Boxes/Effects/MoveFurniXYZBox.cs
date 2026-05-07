@@ -13,7 +13,7 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Effects
     {
         public Room Instance { get; set; }
         public Item Item { get; set; }
-        public WiredBoxType Type => WiredBoxType.EffectMoveAndRotate; // Reusing for compatibility if needed
+        public WiredBoxType Type => WiredBoxType.EffectMoveFurniXYZ; // Reusing for compatibility if needed
         public ConcurrentDictionary<int, Item> SetItems { get; set; }
         public string StringData { get; set; }
         public bool BoolData { get; set; }

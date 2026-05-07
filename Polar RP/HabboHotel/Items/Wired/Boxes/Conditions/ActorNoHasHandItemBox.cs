@@ -1,68 +1,35 @@
-using Polar.Communication.Packets.Outgoing;
-using Polar.Communication.Packets.Incoming;
-using Polar.HabboHotel.Rooms;
-using Polar.HabboHotel.Users;
+using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using Newtonsoft.Json;
+using Polar.Communication.Packets.Incoming;
+using Polar.Communication.Packets.Outgoing;
+using Polar.HabboHotel.Rooms;
+using Polar.HabboHotel.Users;
 
 namespace Polar.HabboHotel.Items.Wired.Boxes.Conditions
 {
-    class NotActorHasHandItemBox : IWiredItem
+    class NotActorHasHandItemBox : ActorHasHandItemBox
     {
-        public Room Instance { get; set; }
-        public Item Item { get; set; }
-        public WiredBoxType Type => WiredBoxType.ConditionNotActorHasHandItemBox;
-        public ConcurrentDictionary<int, Item> SetItems { get; set; }
-        public string StringData { get; set; }
-        public bool BoolData { get; set; }
-        public string ItemsData { get; set; }
+        public override WiredBoxType Type => WiredBoxType.ConditionNotActorHasHandItemBox;
 
         public NotActorHasHandItemBox(Room instance, Item item)
+            : base(instance, item) { }
+
+        public override bool Execute(params object[] Params)
         {
-            Instance = instance;
-            Item = item;
-            SetItems = new ConcurrentDictionary<int, Item>();
-            StringData = "";
-        }
+            if (Params.Length == 0 || Instance == null) return false;
 
-        public void HandleSave(ClientPacket packet)
-        {
-            int unknown = packet.PopInt();
-            int handItemId = packet.PopInt();
-            StringData = handItemId.ToString();
-        }
+            Habbo Player = Params[0] as Habbo;
+            if (Player == null) return false;
 
-        public void Serialize(ServerPacket packet)
-        {
-            packet.WriteBoolean(false);
-            packet.WriteInteger(100);
-            packet.WriteInteger(SetItems.Count);
-            foreach (Item item in SetItems.Values.ToList())
-                packet.WriteInteger(item.Id);
-            packet.WriteInteger(Item.GetBaseItem().SpriteId);
-            packet.WriteInteger(Item.Id);
-            packet.WriteString(StringData);
-            packet.WriteInteger(0);
-            packet.WriteInteger(0);
-            packet.WriteInteger(WiredBoxTypeUtility.GetWiredId(Type));
-        }
+            RoomUser User = Instance.GetRoomUserManager().GetRoomUserByHabbo(Player.Id);
+            if (User == null) return false;
 
-        public bool Execute(params object[] @params)
-        {
-            if (@params.Length == 0 || Instance == null || string.IsNullOrEmpty(StringData))
-                return false;
+            bool hasItem = User.CarryItemID == this.handItem;
 
-            Habbo player = (Habbo)@params[0];
-            if (player == null)
-                return false;
-
-            RoomUser user = Instance.GetRoomUserManager().GetRoomUserByHabbo(player.Id);
-            if (user == null)
-                return false;
-
-            // NOT: el jugador NO debe tener el hand item
-            return user.CarryItemID != int.Parse(StringData);
+            return quantifier == QUANTIFIER_ANY ? !hasItem : !hasItem;
         }
     }
 }

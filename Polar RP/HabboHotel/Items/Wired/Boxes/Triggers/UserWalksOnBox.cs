@@ -1,131 +1,231 @@
-using Polar.Communication.Packets.Outgoing;
 using System;
-using System.Linq;
-using System.Text;
-using System.Collections.Generic;
 using System.Collections.Concurrent;
-
+using System.Collections.Generic;
+using System.Linq;
+using Newtonsoft.Json;
 using Polar.Communication.Packets.Incoming;
+using Polar.Communication.Packets.Outgoing;
 using Polar.HabboHotel.Rooms;
 using Polar.HabboHotel.Users;
 
 namespace Polar.HabboHotel.Items.Wired.Boxes.Triggers
 {
-    class UserWalksOnBox : IWiredItem
+    class UserWalksOnBox : IWiredItem, IWiredCustomData
     {
         public Room Instance { get; set; }
         public Item Item { get; set; }
-        public WiredBoxType Type { get { return WiredBoxType.TriggerWalkOnFurni; } }
+        public WiredBoxType Type => WiredBoxType.TriggerWalkOnFurni;
         public ConcurrentDictionary<int, Item> SetItems { get; set; }
         public string StringData { get; set; }
         public bool BoolData { get; set; }
         public string ItemsData { get; set; }
 
-        public UserWalksOnBox(Room Instance, Item Item)
+        private int furniSource = WiredBoxTypeUtility.SOURCE_TRIGGER;
+
+        public UserWalksOnBox(Room instance, Item item)
         {
-            this.Instance = Instance;
-            this.Item = Item;
-            this.StringData = "";
-            this.SetItems = new ConcurrentDictionary<int, Item>();
+            Instance = instance;
+            Item = item;
+            StringData = "";
+            SetItems = new ConcurrentDictionary<int, Item>();
         }
 
-        public void HandleSave(ClientPacket Packet)
+        public void HandleSave(ClientPacket packet)
         {
-            int Unknown = Packet.PopInt();
-            string Unknown2 = Packet.PopString();
+            packet.PopInt();   // ignorar (siempre 1)
+            int fSource = packet.PopInt();  // 100 = SOURCE_SELECTED
+            packet.PopString(); // string vacío
 
-            if (this.SetItems.Count > 0)
-                this.SetItems.Clear();
+            this.SetItems.Clear();
+            this.furniSource = NormalizeFurniSource(fSource);
 
-            int FurniCount = Packet.PopInt();
-            for (int i = 0; i < FurniCount; i++)
+            int furniCount = packet.PopInt();
+            //Console.WriteLine($"[HandleSave] furniCount={furniCount}, fSource={fSource}");
+
+            for (int i = 0; i < furniCount; i++)
             {
-                Item SelectedItem = Instance.GetRoomItemHandler().GetItem(Packet.PopInt());
-                if (SelectedItem != null)
-                    SetItems.TryAdd(SelectedItem.Id, SelectedItem);
+                int itemId = packet.PopInt();
+                Item selected = Instance.GetRoomItemHandler().GetItem(itemId);
+                //Console.WriteLine($"[HandleSave] itemId={itemId}, found={selected != null}");
+                if (selected != null)
+                    SetItems.TryAdd(selected.Id, selected);
             }
+
+            //Console.WriteLine($"[HandleSave] FINAL — furniSource={furniSource}, SetItems.Count={SetItems.Count}");
         }
 
-        
-        public void Serialize(ServerPacket Packet)
+        public string GetWiredData()
         {
-            Packet.WriteBoolean(false);
-            Packet.WriteInteger(100);
-            Packet.WriteInteger(SetItems.Count);
-            foreach (Item Item in SetItems.Values.ToList())
+            return JsonConvert.SerializeObject(new JsonData
             {
-                Packet.WriteInteger(Item.Id);
-            }
-            Packet.WriteInteger(Item.GetBaseItem().SpriteId);
-            Packet.WriteInteger(Item.Id);
-            Packet.WriteString(StringData);
-
-            Packet.WriteInteger(this is IWiredCycle ? 1 : 0);
-            if (this is IWiredCycle)
-            {
-                IWiredCycle Cycle = (IWiredCycle)this;
-                Packet.WriteInteger(Cycle.Delay);
-            }
-            Packet.WriteInteger(0);
-            Packet.WriteInteger(WiredBoxTypeUtility.GetWiredId(Type));
+                furniSource = this.furniSource,
+                itemIds = SetItems.Keys.ToList()
+            });
         }
+
+        public void LoadWiredData(string wiredData)
+        {
+            this.SetItems.Clear();
+            this.furniSource = WiredBoxTypeUtility.SOURCE_TRIGGER;
+
+            if (string.IsNullOrEmpty(wiredData)) return;
+
+            if (wiredData.StartsWith("{"))
+            {
+                var data = JsonConvert.DeserializeObject<JsonData>(wiredData);
+                if (data == null) return;
+
+                this.furniSource = NormalizeFurniSource(data.furniSource);
+
+                foreach (int id in data.itemIds ?? new List<int>())
+                {
+                    var item = Instance.GetRoomItemHandler().GetItem(id);
+                    if (item != null)
+                        SetItems.TryAdd(item.Id, item);
+                }
+
+                // Si hay items cargados, forzar SOURCE_SELECTED sin importar lo que diga la DB
+                if (SetItems.Count > 0)
+                    this.furniSource = WiredBoxTypeUtility.SOURCE_SELECTED;
+            }
+            else
+            {
+                // Retrocompatibilidad: formato viejo "delay:?:id1;id2;"
+                var parts = wiredData.Split(':');
+                if (parts.Length >= 3 && parts[2] != "\t")
+                {
+                    foreach (var s in parts[2].Split(';'))
+                    {
+                        if (string.IsNullOrEmpty(s)) continue;
+                        if (!int.TryParse(s, out int id)) continue;
+
+                        var item = Instance.GetRoomItemHandler().GetItem(id);
+                        if (item != null)
+                            SetItems.TryAdd(item.Id, item);
+                    }
+                }
+
+                furniSource = SetItems.Count == 0 ? WiredBoxTypeUtility.SOURCE_TRIGGER : WiredBoxTypeUtility.SOURCE_SELECTED;
+            }
+
+            this.ItemsData = string.Join(";", SetItems.Keys);
+        }
+
+        public void Serialize(ServerPacket packet)
+        {
+            // Limpiar items que ya no están en la sala
+            var toRemove = SetItems.Keys
+                .Where(id => Instance.GetRoomItemHandler().GetItem(id) == null)
+                .ToList();
+            foreach (var id in toRemove)
+                SetItems.TryRemove(id, out _);
+
+            packet.WriteBoolean(false);
+            packet.WriteInteger(5); // MAXIMUM_FURNI_SELECTION
+            packet.WriteInteger(SetItems.Count);
+            foreach (var id in SetItems.Keys)
+                packet.WriteInteger(id);
+
+            packet.WriteInteger(Item.GetBaseItem().SpriteId);
+            packet.WriteInteger(Item.Id);
+            packet.WriteString("");
+            packet.WriteInteger(1);
+            packet.WriteInteger(this.furniSource);
+            packet.WriteInteger(0);
+            packet.WriteInteger(WiredBoxTypeUtility.GetWiredId(Type));
+            packet.WriteInteger(0);
+            packet.WriteInteger(0);
+        }
+
         public bool Execute(params object[] Params)
         {
-            Habbo Player = (Habbo)Params[0];
-            if (Player == null)
+            Habbo Player = Params.Length > 0 ? Params[0] as Habbo : null;
+            Item source = Params.Length > 1 ? Params[1] as Item : null;
+
+            if (Player == null) return false;
+
+            // Si es SOURCE_SELECTED, verificar que el furni está en la lista
+            if (furniSource == WiredBoxTypeUtility.SOURCE_SELECTED && (source == null || !SetItems.ContainsKey(source.Id)))
                 return false;
 
-            Item Item = (Item)Params[1];
-            if (Item == null)
-                return false;
+            var Effects = Instance.GetWired().GetEffects(this);
+            var Conditions = Instance.GetWired().GetConditions(this);
+            var addons = Instance.GetWired().GetTriggers(this)
+                                     .Where(x => x.Type.ToString().StartsWith("Addon")).ToList();
 
-            if (!this.SetItems.ContainsKey(Item.Id))
-                return false;
+            var limitAddon = addons.FirstOrDefault(x => x.Type == WiredBoxType.AddonExecutionLimit);
+            if (limitAddon != null && !limitAddon.Execute()) return false;
 
-            ICollection<IWiredItem> Effects = Instance.GetWired().GetEffects(this);
-            ICollection<IWiredItem> Conditions = Instance.GetWired().GetConditions(this);
+            var randomAddon = addons.FirstOrDefault(x => x.Type == WiredBoxType.AddonRandom);
+            if (randomAddon != null && !randomAddon.Execute()) return false;
 
-            foreach (IWiredItem Condition in Conditions.ToList())
+            bool hasOrEval = addons.Any(x => x.Type == WiredBoxType.AddonOrEval);
+            if (hasOrEval)
             {
-                if (!Condition.Execute(Player))
-                    return false;
-
-                if (Instance != null)
+                if (Conditions.Count > 0 && !Conditions.Any(c => c.Execute(Player))) return false;
+            }
+            else
+            {
+                foreach (var Condition in Conditions.ToList())
+                {
+                    if (!Condition.Execute(Player)) return false;
                     Instance.GetWired().OnEvent(Condition.Item);
+                }
             }
 
-            // FIX: Any() en lugar de .Where().ToList().Count() > 0
-            bool HasRandomEffectAddon = Effects.Any(x => x.Type == WiredBoxType.AddonRandomEffect);
-            if (HasRandomEffectAddon)
+            bool hasExecuteInOrder = addons.Any(x => x.Type == WiredBoxType.AddonExecuteInOrder);
+            bool hasRandomEffect = addons.Any(x => x.Type == WiredBoxType.AddonRandomEffect);
+            bool hasUnseen = addons.Any(x => x.Type == WiredBoxType.AddonUnseen);
+
+            if (hasRandomEffect)
             {
-                // FIX: null-check en RandomBox antes de ejecutar
-                IWiredItem RandomBox = Effects.FirstOrDefault(x => x.Type == WiredBoxType.AddonRandomEffect);
-                if (RandomBox == null || !RandomBox.Execute())
-                    return false;
+                var RandomBox = addons.FirstOrDefault(x => x.Type == WiredBoxType.AddonRandomEffect);
+                if (RandomBox == null || !RandomBox.Execute()) return false;
 
-                IWiredItem SelectedBox = Instance.GetWired().GetRandomEffect(Effects.ToList());
-                if (SelectedBox == null || !SelectedBox.Execute())
-                    return false;
-
-                if (Instance != null)
-                {
-                    Instance.GetWired().OnEvent(RandomBox.Item);
+                var SelectedBox = Instance.GetWired().GetRandomEffect(Effects.ToList());
+                if (SelectedBox != null && SelectedBox.Execute(Player))
                     Instance.GetWired().OnEvent(SelectedBox.Item);
+
+                Instance.GetWired().OnEvent(RandomBox.Item);
+            }
+            else if (hasUnseen)
+            {
+                var unseenBox = addons.FirstOrDefault(x => x.Type == WiredBoxType.AddonUnseen);
+                if (unseenBox != null && unseenBox.Execute(Effects.ToList(), Player))
+                    Instance.GetWired().OnEvent(unseenBox.Item);
+            }
+            else if (hasExecuteInOrder)
+            {
+                foreach (var Effect in Effects.OrderBy(x => x.Item.GetZ).ToList())
+                {
+                    if (!Effect.Execute(Player)) break;
+                    Instance.GetWired().OnEvent(Effect.Item);
                 }
             }
             else
             {
-                foreach (IWiredItem Effect in Effects.ToList())
+                foreach (var Effect in Effects.ToList())
                 {
-                    if (!Effect.Execute(Player))
-                        return false;
-
-                    if (Instance != null)
-                        Instance.GetWired().OnEvent(Effect.Item);
+                    if (!Effect.Execute(Player)) continue;
+                    Instance.GetWired().OnEvent(Effect.Item);
                 }
             }
 
             return true;
+        }
+
+        private int NormalizeFurniSource(int value)
+        {
+            if (value == WiredBoxTypeUtility.SOURCE_SELECTED || value == WiredBoxTypeUtility.SOURCE_SELECTOR)
+                return value;
+            return WiredBoxTypeUtility.SOURCE_TRIGGER;
+        }
+
+
+        private class JsonData
+        {
+            public int furniSource { get; set; }
+            public List<int> itemIds { get; set; }
         }
     }
 }

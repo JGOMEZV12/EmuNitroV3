@@ -1,10 +1,11 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using Nancy.Session;
 using Polar.HabboHotel.GameClients;
-using Polar.HabboHotel.Rooms;
 using Polar.HabboHotel.Pathfinding;
-using System.Linq;
+using Polar.HabboHotel.Rooms;
+using System;
+using System.Collections.Generic;
 using System.Drawing;
+using System.Linq;
 
 namespace Polar.HabboHotel.Items.Interactor
 {
@@ -72,26 +73,14 @@ namespace Polar.HabboHotel.Items.Interactor
             int CurrentMode = 0;
             int NewMode = 0;
 
-            if (string.IsNullOrEmpty(Item.ExtraData))
-                Item.ExtraData = "0";
-
-            if (!int.TryParse(Item.ExtraData, out CurrentMode))
-            {
-                return;
-            }
+            int.TryParse(Item.ExtraData, out CurrentMode);
 
             if (CurrentMode <= 0)
-            {
                 NewMode = 1;
-            }
             else if (CurrentMode >= Modes)
-            {
                 NewMode = 0;
-            }
             else
-            {
                 NewMode = CurrentMode + 1;
-            }
 
             Item.ExtraData = NewMode.ToString();
             Item.UpdateState();

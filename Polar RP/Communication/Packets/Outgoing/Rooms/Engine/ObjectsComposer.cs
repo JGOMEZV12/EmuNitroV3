@@ -13,6 +13,7 @@ namespace Polar.Communication.Packets.Outgoing.Rooms.Engine
             : base(ServerPacketHeader.ObjectsMessageComposer)
         {
             bool hideWired = room.HideWired;
+
             var filteredItems = new List<Item>(objects.Length);
             var owners = new Dictionary<int, string>(objects.Length);
 
@@ -20,7 +21,9 @@ namespace Polar.Communication.Packets.Outgoing.Rooms.Engine
             {
                 if (item == null) continue;
                 if (hideWired && item.IsWired) continue;
+
                 filteredItems.Add(item);
+
                 if (!owners.ContainsKey(item.UserID))
                     owners[item.UserID] = item.Username;
             }
@@ -47,10 +50,9 @@ namespace Polar.Communication.Packets.Outgoing.Rooms.Engine
             WriteInteger(item.GetX);
             WriteInteger(item.GetY);
             WriteInteger(item.Rotation);
-            WriteString(ObjectUpdateComposer.GetStackHeight(item, interactionType, zStr));
+            WriteString(zStr);
 
-            // ✅ stackHeight con AdjustableHeights
-            WriteString(ObjectUpdateComposer.GetStackHeight(item, interactionType, zStr));
+            WriteString(item.GetZ.ToString("G", System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty);
 
             if (interactionType == InteractionType.GIFT)
             {

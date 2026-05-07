@@ -105,24 +105,44 @@ namespace Polar.HabboHotel.Users.Inventory
 
                 if (fromRoom)
                 {
-                    dbClient.RunQuery($"UPDATE `{Polar.Core.DatabaseCompatibility.ItemsTable}` SET `room_id` = '0', `user_id` = '{_userId}' WHERE `id` = '{id}' LIMIT 1");
+                    dbClient.SetQuery($"UPDATE `{Polar.Core.DatabaseCompatibility.ItemsTable}` SET `room_id` = '0', `user_id` = @uid WHERE `id` = @id LIMIT 1");
+                    dbClient.AddParameter("uid", _userId);
+                    dbClient.AddParameter("id", id);
+                    dbClient.RunQuery();
                 }
                 else
                 {
                     if (id > 0)
                     {
-                        dbClient.RunQuery($"INSERT INTO `{Polar.Core.DatabaseCompatibility.ItemsTable}` (`id`,`{Polar.Core.DatabaseCompatibility.ItemsBaseItemColumn}`,`user_id`,`limited_number`,`limited_stack`) VALUES ('{id}','{baseItem}','{_userId}','{limitedNumber}','{limitedStack}')");
+                        dbClient.SetQuery($"INSERT INTO `{Polar.Core.DatabaseCompatibility.ItemsTable}` (`id`,`{Polar.Core.DatabaseCompatibility.ItemsBaseItemColumn}`,`user_id`,`limited_number`,`limited_stack`,`extra_data`) VALUES (@id,@base,@uid,@lnum,@lstack,@extra)");
+                        dbClient.AddParameter("id", id);
+                        dbClient.AddParameter("base", baseItem);
+                        dbClient.AddParameter("uid", _userId);
+                        dbClient.AddParameter("lnum", limitedNumber);
+                        dbClient.AddParameter("lstack", limitedStack);
+                        dbClient.AddParameter("extra", extraData ?? "");
+                        dbClient.RunQuery();
                     }
                     else
                     {
-                        dbClient.SetQuery($"INSERT INTO `{Polar.Core.DatabaseCompatibility.ItemsTable}` (`{Polar.Core.DatabaseCompatibility.ItemsBaseItemColumn}`,`user_id`,`limited_number`,`limited_stack`) VALUES ('{baseItem}','{_userId}','{limitedNumber}','{limitedStack}')");
+                        dbClient.SetQuery($"INSERT INTO `{Polar.Core.DatabaseCompatibility.ItemsTable}` (`{Polar.Core.DatabaseCompatibility.ItemsBaseItemColumn}`,`user_id`,`limited_number`,`limited_stack`,`extra_data`) VALUES (@base,@uid,@lnum,@lstack,@extra)");
+                        dbClient.AddParameter("base", baseItem);
+                        dbClient.AddParameter("uid", _userId);
+                        dbClient.AddParameter("lnum", limitedNumber);
+                        dbClient.AddParameter("lstack", limitedStack);
+                        dbClient.AddParameter("extra", extraData ?? "");
                         id = Convert.ToInt32(dbClient.InsertQuery());
                     }
 
                     SendNewItems(id);
 
                     if (group > 0)
-                        dbClient.RunQuery($"INSERT INTO `items_groups` VALUES ({id}, {group})");
+                    {
+                        dbClient.SetQuery("INSERT INTO `items_groups` VALUES (@id, @group)");
+                        dbClient.AddParameter("id", id);
+                        dbClient.AddParameter("group", group);
+                        dbClient.RunQuery();
+                    }
 
                     if (!string.IsNullOrEmpty(extraData))
                     {
@@ -209,8 +229,7 @@ namespace Polar.HabboHotel.Users.Inventory
             {
                 string table = Polar.Core.DatabaseCompatibility.ItemsTable;
                 dbClient.runFastQuery(
-                    $"DELETE i, wired_items, user_presents, room_items_moodlight, room_items_tele_links, room_items_toner, items_groups FROM `{table}` i " +
-                    "LEFT JOIN wired_items              ON (wired_items.id = i.id) " +
+                    $"DELETE i, user_presents, room_items_moodlight, room_items_tele_links, room_items_toner, items_groups FROM `{table}` i " +
                     "LEFT JOIN user_presents            ON (user_presents.item_id = i.id) " +
                     "LEFT JOIN room_items_moodlight     ON (room_items_moodlight.item_id = i.id) " +
                     "LEFT JOIN room_items_tele_links    ON (room_items_tele_links.tele_one_id = i.id OR room_items_tele_links.tele_two_id = i.id) " +

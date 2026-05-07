@@ -1,83 +1,135 @@
-using Polar.Communication.Packets.Outgoing;
 using System;
-using System.Linq;
-using System.Text;
-using System.Collections.Generic;
 using System.Collections.Concurrent;
-
+using System.Linq;
+using Newtonsoft.Json;
 using Polar.Communication.Packets.Incoming;
+using Polar.Communication.Packets.Outgoing;
 using Polar.HabboHotel.Rooms;
 using Polar.HabboHotel.Users;
 using Polar.HabboHotel.Users.Badges;
 
 namespace Polar.HabboHotel.Items.Wired.Boxes.Conditions
 {
-    class IsWearingBadgeBox : IWiredItem
+    class IsWearingBadgeBox : IWiredItem, IWiredCustomData
     {
+        protected const int QUANTIFIER_ALL = 0;
+        protected const int QUANTIFIER_ANY = 1;
+
         public Room Instance { get; set; }
         public Item Item { get; set; }
-        public WiredBoxType Type { get { return WiredBoxType.ConditionIsWearingBadge; } }
+        public virtual WiredBoxType Type => WiredBoxType.ConditionIsWearingBadge;
         public ConcurrentDictionary<int, Item> SetItems { get; set; }
         public string StringData { get; set; }
         public bool BoolData { get; set; }
         public string ItemsData { get; set; }
 
-        public IsWearingBadgeBox(Room Instance, Item Item)
+        protected string badge = "";
+        protected int userSource = WiredBoxTypeUtility.SOURCE_TRIGGER;
+        protected int quantifier = QUANTIFIER_ANY;
+
+        public IsWearingBadgeBox(Room instance, Item item)
         {
-            this.Instance = Instance;
-            this.Item = Item;
-            this.SetItems = new ConcurrentDictionary<int, Item>();
+            Instance = instance;
+            Item = item;
+            SetItems = new ConcurrentDictionary<int, Item>();
+            StringData = "";
         }
 
-        public void HandleSave(ClientPacket Packet)
+        public void HandleSave(ClientPacket packet)
         {
-            int Unknown = Packet.PopInt();
-            string BadgeCode = Packet.PopString();
+            int paramsCount = packet.PopInt();
+            int rawSource = paramsCount > 0 ? packet.PopInt() : WiredBoxTypeUtility.SOURCE_TRIGGER;
+            int rawQuant = paramsCount > 1 ? packet.PopInt() : QUANTIFIER_ANY;
 
-            this.StringData = BadgeCode;
+            string rawBadge = packet.PopString();
+
+            Console.WriteLine($"[IsWearingBadgeBox] HandleSave — badge='{rawBadge}', userSource={rawSource}, quantifier={rawQuant}");
+
+            this.badge = rawBadge;
+            this.userSource = rawSource;
+            this.quantifier = NormalizeQuantifier(rawQuant);
+            this.StringData = this.badge;
         }
 
-        
-        public void Serialize(ServerPacket Packet)
+        public string GetWiredData()
         {
-            Packet.WriteBoolean(false);
-            Packet.WriteInteger(100);
-            Packet.WriteInteger(SetItems.Count);
-            foreach (Item Item in SetItems.Values.ToList())
+            return JsonConvert.SerializeObject(new JsonData
             {
-                Packet.WriteInteger(Item.Id);
-            }
-            Packet.WriteInteger(Item.GetBaseItem().SpriteId);
-            Packet.WriteInteger(Item.Id);
-            Packet.WriteString(StringData);
-            Packet.WriteInteger(0);
-            Packet.WriteInteger(0);
-            Packet.WriteInteger(WiredBoxTypeUtility.GetWiredId(Type));
+                badge = this.badge,
+                userSource = this.userSource,
+                quantifier = this.quantifier
+            });
         }
-        public bool Execute(params object[] Params)
+
+        public void LoadWiredData(string wiredData)
         {
-            if (Params.Length == 0)
-                return false;
+            this.badge = "";
+            this.userSource = WiredBoxTypeUtility.SOURCE_TRIGGER;
+            this.quantifier = QUANTIFIER_ANY;
 
-            if (string.IsNullOrEmpty(this.StringData))
-                return false;
+            if (string.IsNullOrEmpty(wiredData)) return;
 
-            Habbo Player = (Habbo)Params[0];
-            if (Player == null)
-                return false;
-
-            if (!Player.GetBadgeComponent().GetBadges().Contains(Player.GetBadgeComponent().GetBadge(this.StringData)))
-                return false;
-
-            foreach (Badge Badge in Player.GetBadgeComponent().GetBadges().ToList())
+            if (wiredData.StartsWith("{"))
             {
-                if (Badge.Slot <= 0)
-                    continue;
+                var data = JsonConvert.DeserializeObject<JsonData>(wiredData);
+                if (data == null) return;
 
-                if (Badge.Code == this.StringData)
-                    return true;
+                this.badge = data.badge ?? "";
+                this.userSource = data.userSource;
+                this.quantifier = NormalizeQuantifier(data.quantifier);
             }
-            return false;
+            else
+            {
+                // Retrocompatibilidad: formato viejo era solo el badge code
+                this.badge = wiredData;
+                this.userSource = WiredBoxTypeUtility.SOURCE_TRIGGER;
+                this.quantifier = QUANTIFIER_ANY;
+            }
+
+            this.StringData = this.badge;
+        }
+
+        public void Serialize(ServerPacket packet)
+        {
+            packet.WriteBoolean(false);
+            packet.WriteInteger(5);
+            packet.WriteInteger(0);
+            packet.WriteInteger(Item.GetBaseItem().SpriteId);
+            packet.WriteInteger(Item.Id);
+            packet.WriteString(this.badge);
+            packet.WriteInteger(2);
+            packet.WriteInteger(this.userSource);
+            packet.WriteInteger(this.quantifier);
+            packet.WriteInteger(0);
+            packet.WriteInteger(WiredBoxTypeUtility.GetWiredId(Type));
+            packet.WriteInteger(0);
+            packet.WriteInteger(0);
+        }
+
+        public virtual bool Execute(params object[] Params)
+        {
+            if (Params.Length == 0 || string.IsNullOrEmpty(this.badge)) return false;
+
+            Habbo Player = Params[0] as Habbo;
+            if (Player == null) return false;
+
+            return IsWearingBadge(Player);
+        }
+
+        protected bool IsWearingBadge(Habbo player)
+        {
+            return player.GetBadgeComponent().GetBadges()
+                .Any(b => b.Slot > 0 && b.Code.Equals(this.badge, StringComparison.OrdinalIgnoreCase));
+        }
+
+        protected int NormalizeQuantifier(int value) =>
+            value == QUANTIFIER_ANY ? QUANTIFIER_ANY : QUANTIFIER_ALL;
+
+        protected class JsonData
+        {
+            public string badge { get; set; }
+            public int userSource { get; set; }
+            public int quantifier { get; set; }
         }
     }
 }

@@ -1,187 +1,242 @@
-using Polar.Communication.Packets.Incoming;
-using Polar.Communication.Packets.Outgoing;
-using Polar.Communication.Packets.Outgoing.Rooms.Engine;
-using Polar.Core;
-using Polar.HabboHotel.Rooms;
-using Polar.HabboHotel.Users;
-using Polar.Utilities;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Linq;
-using System.Security.Cryptography;
-using System.Text;
+using Newtonsoft.Json;
+using Polar.Communication.Packets.Incoming;
+using Polar.Communication.Packets.Outgoing;
+using Polar.Communication.Packets.Outgoing.Rooms.Engine;
+using Polar.HabboHotel.Rooms;
+using Polar.HabboHotel.Users;
 
 namespace Polar.HabboHotel.Items.Wired.Boxes.Effects
 {
-    internal class MoveFurniToUserBox : IWiredItem, IWiredCycle
+    internal class MoveFurniToUserBox : IWiredItem, IWiredCycle, IWiredCustomData
     {
         public Room Instance { get; set; }
         public Item Item { get; set; }
-
-        public WiredBoxType Type
-        {
-            get { return WiredBoxType.EffectMoveFurniToNearestUser; }
-        }
-
+        public WiredBoxType Type => WiredBoxType.EffectMoveFurniToNearestUser;
         public ConcurrentDictionary<int, Item> SetItems { get; set; }
         public string StringData { get; set; }
         public bool BoolData { get; set; }
+        public string ItemsData { get; set; }
 
         public int Delay
         {
-            get { return this._delay; }
-            set
-            {
-                this._delay = value;
-                this.TickCount = value + 1;
-            }
+            get => _delay;
+            set { _delay = value; TickCount = value + 1; }
         }
 
         public int TickCount { get; set; }
-        public string ItemsData { get; set; }
-        private bool Requested;
+
         private int _delay = 0;
         private long _next = 0;
+        private bool _requested = false;
+        private int _furniSource = WiredBoxTypeUtility.SOURCE_TRIGGER;
 
-        public MoveFurniToUserBox(Room Instance, Item Item)
+        public MoveFurniToUserBox(Room instance, Item item)
         {
-            this.Instance = Instance;
-            this.Item = Item;
-            this.SetItems = new ConcurrentDictionary<int, Item>();
-            this.TickCount = Delay;
-            this.Requested = false;
+            Instance = instance;
+            Item = item;
+            SetItems = new ConcurrentDictionary<int, Item>();
+            TickCount = Delay;
         }
 
-        // AMBAS CAJAS — HandleSave corregido:
-        public void HandleSave(ClientPacket Packet)
+        public void HandleSave(ClientPacket packet)
         {
-            int IntCount = Packet.PopInt();      // ints.length = 0 o 1
-            for (int i = 0; i < IntCount; i++)
-                Packet.PopInt();                 // consumir ints
+            int intCount = packet.PopInt();
+            int fSource = intCount > 0 ? packet.PopInt() : WiredBoxTypeUtility.SOURCE_TRIGGER;
+            for (int i = 1; i < intCount; i++) packet.PopInt();
 
-            string StringParam = Packet.PopString();
+            packet.PopString();
 
-            int FurniCount = Packet.PopInt();
             SetItems.Clear();
-            for (int i = 0; i < FurniCount; i++)
+            int furniCount = packet.PopInt();
+            for (int i = 0; i < furniCount; i++)
             {
-                Item selected = Instance.GetRoomItemHandler().GetItem(Packet.PopInt());
+                Item selected = Instance.GetRoomItemHandler().GetItem(packet.PopInt());
                 if (selected != null && !Instance.GetWired().OtherBoxHasItem(this, selected.Id))
                     SetItems.TryAdd(selected.Id, selected);
             }
 
-            this.Delay = Packet.PopInt();
-            int SelectionCode = Packet.PopInt();
+            Delay = packet.PopInt();
+            _furniSource = fSource;
 
-            //Console.WriteLine($"[MoveFurniToUserBox] IntCount={IntCount} FurniCount={FurniCount} Delay={Delay} SelectionCode={SelectionCode}");
+            if (SetItems.Count > 0 && _furniSource == WiredBoxTypeUtility.SOURCE_TRIGGER)
+                _furniSource = WiredBoxTypeUtility.SOURCE_SELECTED;
         }
-        public void Serialize(ServerPacket Packet)
+
+        public string GetWiredData()
         {
-            int furniSource = 0;
-            if (!string.IsNullOrEmpty(this.StringData))
-                int.TryParse(this.StringData, out furniSource);
-
-            Packet.WriteBoolean(false);                              // stuffTypeSelectionEnabled
-            Packet.WriteInteger(100);                                // furniLimit
-            Packet.WriteInteger(SetItems.Count);                     // stuffIds count
-            foreach (Item item in SetItems.Values.ToList())
-                Packet.WriteInteger(item.Id);                        // stuffIds
-
-            Packet.WriteInteger(Item.GetBaseItem().SpriteId);        // stuffTypeId
-            Packet.WriteInteger(Item.Id);                            // id
-            Packet.WriteString("");                                  // stringParam
-            Packet.WriteInteger(1);                                  // intParams count
-            Packet.WriteInteger(furniSource);                        // intParams[0] = furniSource
-            Packet.WriteInteger(0);                                  // stuffTypeSelectionCode
-
-            // WiredActionDefinition
-            Packet.WriteInteger(WiredBoxTypeUtility.GetWiredId(Type)); // type
-            Packet.WriteInteger(this.Delay);                           // delayInPulses
-            Packet.WriteInteger(0);                                    // conflictingTriggers count
+            return JsonConvert.SerializeObject(new JsonData
+            {
+                delay = Delay,
+                itemIds = SetItems.Keys.ToList(),
+                furniSource = _furniSource
+            });
         }
+
+        public void LoadWiredData(string wiredData)
+        {
+            SetItems.Clear();
+            _furniSource = WiredBoxTypeUtility.SOURCE_TRIGGER;
+            Delay = 0;
+
+            if (string.IsNullOrEmpty(wiredData)) return;
+
+            if (wiredData.StartsWith("{"))
+            {
+                var data = JsonConvert.DeserializeObject<JsonData>(wiredData);
+                if (data == null) return;
+
+                Delay = data.delay;
+                _furniSource = data.furniSource;
+
+                foreach (int id in data.itemIds ?? new List<int>())
+                {
+                    var item = Instance.GetRoomItemHandler().GetItem(id);
+                    if (item != null)
+                        SetItems.TryAdd(item.Id, item);
+                }
+
+                if (SetItems.Count > 0 && _furniSource == WiredBoxTypeUtility.SOURCE_TRIGGER)
+                    _furniSource = WiredBoxTypeUtility.SOURCE_SELECTED;
+            }
+            else
+            {
+                // Retrocompatibilidad: formato viejo "delay\tid1;id2;"
+                var parts = wiredData.Split('\t');
+                if (parts.Length >= 1 && int.TryParse(parts[0], out int delay))
+                    Delay = delay;
+
+                if (parts.Length == 2 && parts[1].Contains(";"))
+                {
+                    foreach (var s in parts[1].Split(';'))
+                    {
+                        if (string.IsNullOrEmpty(s)) continue;
+                        if (!int.TryParse(s, out int id)) continue;
+
+                        var item = Instance.GetRoomItemHandler().GetItem(id);
+                        if (item != null)
+                            SetItems.TryAdd(item.Id, item);
+                    }
+                }
+
+                _furniSource = SetItems.Count == 0
+                    ? WiredBoxTypeUtility.SOURCE_TRIGGER
+                    : WiredBoxTypeUtility.SOURCE_SELECTED;
+            }
+
+            ItemsData = string.Join(";", SetItems.Keys);
+            TickCount = Delay;
+        }
+
+        public void Serialize(ServerPacket packet)
+        {
+            var toRemove = SetItems.Keys
+                .Where(id => Instance.GetRoomItemHandler().GetItem(id) == null)
+                .ToList();
+            foreach (var id in toRemove)
+                SetItems.TryRemove(id, out _);
+
+            packet.WriteBoolean(false);
+            packet.WriteInteger(5); // MAXIMUM_FURNI_SELECTION
+            packet.WriteInteger(SetItems.Count);
+            foreach (var id in SetItems.Keys)
+                packet.WriteInteger(id);
+
+            packet.WriteInteger(Item.GetBaseItem().SpriteId);
+            packet.WriteInteger(Item.Id);
+            packet.WriteString("");
+            packet.WriteInteger(1);
+            packet.WriteInteger(_furniSource);
+            packet.WriteInteger(0);
+            packet.WriteInteger(WiredBoxTypeUtility.GetWiredId(Type));
+            packet.WriteInteger(Delay);
+            packet.WriteInteger(0);
+        }
+
         public bool Execute(params object[] Params)
         {
-            if (this.SetItems.Count == 0)
-                return false;
+            if (SetItems.Count == 0) return false;
 
-            if (this._next == 0 || this._next < PolarEnvironment.Now())
-                this._next = PolarEnvironment.Now() + this.Delay;
+            if (_next == 0 || _next < PolarEnvironment.Now())
+                _next = PolarEnvironment.Now() + Delay;
 
-            if (!Requested)
+            if (!_requested)
             {
-                this.TickCount = this.Delay;
-                this.Requested = true;
+                TickCount = Delay;
+                _requested = true;
             }
             return true;
         }
 
         public bool OnCycle()
         {
-            if (Instance == null || !Requested || _next == 0)
+            if (Instance == null || !_requested || _next == 0)
                 return false;
 
-            long Now = PolarEnvironment.Now();
-            if (_next < Now)
+            if (_next < PolarEnvironment.Now())
             {
-                foreach (Item Item in this.SetItems.Values.ToList())
+                foreach (Item item in SetItems.Values.ToList())
                 {
-                    if (Item == null)
-                        continue;
-
-                    if (!Instance.GetRoomItemHandler().GetFloor.Contains(Item))
-                        continue;
-
-                    Item toRemove = null;
-
-                    if (Instance.GetWired().OtherBoxHasItem(this, Item.Id))
-                        this.SetItems.TryRemove(Item.Id, out toRemove);
-
-                    Point Point = Instance.GetGameMap().GetChaseMovement(Item);
-                    Instance.GetWired().OnUserFurniCollision(Instance, Item);
-
-                    if (!Instance.GetGameMap().ItemCanMove(Item, Point))
-                        continue;
-
-                    if (Instance.GetGameMap().CanRollItemHere(Point.X, Point.Y) && !Instance.GetGameMap().SquareHasUsers(Point.X, Point.Y))
+                    if (item == null) continue;
+                    if (!Instance.GetRoomItemHandler().GetFloor.Contains(item)) continue;
+                    if (Instance.GetWired().OtherBoxHasItem(this, item.Id))
                     {
-                        Double NewZ = Item.GetZ;
-                        Boolean CanBePlaced = true;
+                        SetItems.TryRemove(item.Id, out _);
+                        continue;
+                    }
 
-                        List<Item> Items = Instance.GetGameMap().GetCoordinatedItems(Point);
-                        foreach (Item IItem in Items.ToList())
+                    Point point = Instance.GetGameMap().GetChaseMovement(item);
+                    Instance.GetWired().OnUserFurniCollision(Instance, item);
+
+                    if (!Instance.GetGameMap().ItemCanMove(item, point)) continue;
+
+                    if (Instance.GetGameMap().CanRollItemHere(point.X, point.Y) && !Instance.GetGameMap().SquareHasUsers(point.X, point.Y))
+                    {
+                        double newZ = item.GetZ;
+                        bool canBePlaced = true;
+
+                        foreach (Item iItem in Instance.GetGameMap().GetCoordinatedItems(point).ToList())
                         {
-                            if (IItem == null || IItem.Id == Item.Id)
-                                continue;
+                            if (iItem == null || iItem.Id == item.Id) continue;
 
-                            if (!IItem.GetBaseItem().Walkable)
+                            if (!iItem.GetBaseItem().Walkable)
                             {
                                 _next = 0;
-                                CanBePlaced = false;
+                                canBePlaced = false;
                                 break;
                             }
 
-                            if (IItem.TotalHeight > NewZ)
-                                NewZ = IItem.TotalHeight;
-
-                            if (CanBePlaced == true && !IItem.GetBaseItem().Stackable)
-                                CanBePlaced = false;
+                            if (iItem.TotalHeight > newZ) newZ = iItem.TotalHeight;
+                            if (!iItem.GetBaseItem().Stackable) canBePlaced = false;
                         }
 
-                        if (CanBePlaced && Point != Item.Coordinate)
+                        if (canBePlaced && point != item.Coordinate)
                         {
-                            Instance.SendMessage(new SlideObjectBundleComposer(Item.GetX, Item.GetY, Item.GetZ, Point.X,
-                                Point.Y, NewZ, 0, 0, Item.Id));
-                            Instance.GetRoomItemHandler().SetFloorItem(Item, Point.X, Point.Y, NewZ);
+                            Instance.SendMessage(new SlideObjectBundleComposer(
+                                item.GetX, item.GetY, item.GetZ,
+                                point.X, point.Y, newZ, 0, 0, item.Id));
+                            Instance.GetRoomItemHandler().SetFloorItem(item, point.X, point.Y, newZ);
                         }
                     }
                 }
 
                 _next = 0;
+                _requested = false;
                 return true;
             }
+
             return false;
+        }
+
+        private class JsonData
+        {
+            public int delay { get; set; }
+            public List<int> itemIds { get; set; }
+            public int furniSource { get; set; }
         }
     }
 }

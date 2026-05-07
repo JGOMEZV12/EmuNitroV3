@@ -41,24 +41,21 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Add_ons
 
         public void HandleSave(ClientPacket packet)
         {
-            // Sin configuración — igual que Java
+            packet.PopInt();    // intCount = 0
+            packet.PopString(); // string vacío
         }
 
         public void Serialize(ServerPacket packet)
         {
             packet.WriteBoolean(false);
-            packet.WriteInteger(100);
-            packet.WriteInteger(SetItems.Count);
-            foreach (Item Item in SetItems.Values.ToList())
-            {
-                packet.WriteInteger(Item.Id);
-            }
+            packet.WriteInteger(0); // sin furnis
+            packet.WriteInteger(0);
             packet.WriteInteger(Item.GetBaseItem().SpriteId);
             packet.WriteInteger(Item.Id);
-            packet.WriteString(StringData);
+            packet.WriteString("");
+            packet.WriteInteger(0); // sin intParams
             packet.WriteInteger(0);
-            packet.WriteInteger(0);
-            packet.WriteInteger(62);
+            packet.WriteInteger(WiredBoxTypeUtility.GetWiredId(Type)); // 62
             packet.WriteInteger(0);
             packet.WriteInteger(0);
         }

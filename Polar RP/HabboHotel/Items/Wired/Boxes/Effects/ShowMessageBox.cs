@@ -1,127 +1,224 @@
-using Polar.Communication.Packets.Outgoing;
 using System;
-using System.Linq;
-using System.Text;
-using System.Collections.Generic;
 using System.Collections.Concurrent;
-
+using System.Collections.Generic;
+using System.Linq;
+using Newtonsoft.Json;
 using Polar.Communication.Packets.Incoming;
+using Polar.Communication.Packets.Outgoing;
+using Polar.Communication.Packets.Outgoing.Rooms.Chat;
 using Polar.HabboHotel.Rooms;
 using Polar.HabboHotel.Users;
-using Polar.Communication.Packets.Outgoing.Rooms.Chat;
 
 namespace Polar.HabboHotel.Items.Wired.Boxes.Effects
 {
-    class ShowMessageBox : IWiredItem
+    class ShowMessageBox : IWiredItem, IWiredCycle, IWiredCustomData
     {
+        private const int VISIBILITY_SOURCE_USERS = 0;
+        private const int VISIBILITY_ALL_ROOM_USERS = 1;
+        private const int DEFAULT_BUBBLE = 34; // WIRED bubble
+
         public Room Instance { get; set; }
         public Item Item { get; set; }
-        public WiredBoxType Type { get { return WiredBoxType.EffectShowMessage; } }
+        public WiredBoxType Type => WiredBoxType.EffectShowMessage;
         public ConcurrentDictionary<int, Item> SetItems { get; set; }
         public string StringData { get; set; }
         public bool BoolData { get; set; }
         public string ItemsData { get; set; }
 
-        public ShowMessageBox(Room Instance, Item Item)
+        public int Delay
         {
-            this.Instance = Instance;
-            this.Item = Item;
-            this.SetItems = new ConcurrentDictionary<int, Item>();
+            get => _delay;
+            set { _delay = value; TickCount = value + 1; }
+        }
+        public int TickCount { get; set; }
+        private int _delay;
+
+        private string message = "";
+        private int userSource = WiredBoxTypeUtility.SOURCE_TRIGGER;
+        private int visibilitySelection = VISIBILITY_SOURCE_USERS;
+        private int bubbleStyle = DEFAULT_BUBBLE;
+
+        public ShowMessageBox(Room instance, Item item)
+        {
+            Instance = instance;
+            Item = item;
+            SetItems = new ConcurrentDictionary<int, Item>();
         }
 
-        public void HandleSave(ClientPacket Packet)
+        public void HandleSave(ClientPacket packet)
         {
-            int Unknown = Packet.PopInt();
-            string Message = Packet.PopString();
+            // orden: intParams → string → delay → (sin furnis)
+            int paramsCount = packet.PopInt();
+            int rawUserSource = paramsCount > 0 ? packet.PopInt() : WiredBoxTypeUtility.SOURCE_TRIGGER;
+            int rawVisibility = paramsCount > 1 ? packet.PopInt() : VISIBILITY_SOURCE_USERS;
+            int rawBubble = paramsCount > 2 ? packet.PopInt() : DEFAULT_BUBBLE;
 
-            this.StringData = Message;
+            string rawMessage = packet.PopString();
+            int rawDelay = packet.PopInt();
+
+            Console.WriteLine($"[ShowMessageBox] HandleSave — userSource={rawUserSource}, visibility={rawVisibility}, bubble={rawBubble}, delay={rawDelay}, message='{rawMessage}'");
+
+            this.userSource = rawUserSource;
+            this.visibilitySelection = rawVisibility == VISIBILITY_ALL_ROOM_USERS
+                ? VISIBILITY_ALL_ROOM_USERS
+                : VISIBILITY_SOURCE_USERS;
+            this.bubbleStyle = rawBubble;
+            this.message = rawMessage;
+            this.StringData = rawMessage;
+            this.Delay = rawDelay;
         }
 
-        
-        public void Serialize(ServerPacket Packet)
+        public string GetWiredData()
         {
-            Packet.WriteBoolean(false);
-            Packet.WriteInteger(100);
-            Packet.WriteInteger(SetItems.Count);
-            foreach (Item Item in SetItems.Values.ToList())
+            return JsonConvert.SerializeObject(new JsonData
             {
-                Packet.WriteInteger(Item.Id);
-            }
-            Packet.WriteInteger(Item.GetBaseItem().SpriteId);
-            Packet.WriteInteger(Item.Id);
-            Packet.WriteString(StringData);
-            Packet.WriteInteger(0);
-            if (this is IWiredCycle)
+                message = this.message,
+                delay = this.Delay,
+                userSource = this.userSource,
+                visibilitySelection = this.visibilitySelection,
+                bubbleStyle = this.bubbleStyle
+            });
+        }
+
+        public void LoadWiredData(string wiredData)
+        {
+            this.message = "";
+            this.userSource = WiredBoxTypeUtility.SOURCE_TRIGGER;
+            this.visibilitySelection = VISIBILITY_SOURCE_USERS;
+            this.bubbleStyle = DEFAULT_BUBBLE;
+            this.Delay = 0;
+
+            if (string.IsNullOrEmpty(wiredData)) return;
+
+            if (wiredData.StartsWith("{"))
             {
-                Packet.WriteInteger(WiredBoxTypeUtility.GetWiredId(Type));
-                Packet.WriteInteger(0);
-                Packet.WriteInteger(((IWiredCycle)this).Delay);
+                var data = JsonConvert.DeserializeObject<JsonData>(wiredData);
+                if (data == null) return;
+
+                this.message = data.message ?? "";
+                this.Delay = data.delay;
+                this.userSource = data.userSource;
+                this.visibilitySelection = data.visibilitySelection == VISIBILITY_ALL_ROOM_USERS
+                    ? VISIBILITY_ALL_ROOM_USERS
+                    : VISIBILITY_SOURCE_USERS;
+                this.bubbleStyle = data.bubbleStyle;
             }
             else
             {
-                Packet.WriteInteger(0);
-                Packet.WriteInteger(WiredBoxTypeUtility.GetWiredId(Type));
-                Packet.WriteInteger(0);
+                // Retrocompatibilidad: "delay\tmessage"
+                var parts = wiredData.Split('\t');
+                if (parts.Length >= 2 && int.TryParse(parts[0], out int delay))
+                {
+                    this.Delay = delay;
+                    this.message = parts[1];
+                }
+
+                this.userSource = WiredBoxTypeUtility.SOURCE_TRIGGER;
+                this.visibilitySelection = VISIBILITY_SOURCE_USERS;
+                this.bubbleStyle = DEFAULT_BUBBLE;
             }
+
+            this.StringData = this.message;
         }
+
+        public void Serialize(ServerPacket packet)
+        {
+            packet.WriteBoolean(false);
+            packet.WriteInteger(0); // sin furnis
+            packet.WriteInteger(0);
+            packet.WriteInteger(Item.GetBaseItem().SpriteId);
+            packet.WriteInteger(Item.Id);
+            packet.WriteString(this.message);
+            packet.WriteInteger(3);
+            packet.WriteInteger(this.userSource);
+            packet.WriteInteger(this.visibilitySelection);
+            packet.WriteInteger(this.bubbleStyle);
+            packet.WriteInteger(0);
+            packet.WriteInteger(WiredBoxTypeUtility.GetWiredId(Type));
+            packet.WriteInteger(this.Delay);
+            packet.WriteInteger(0); // invalidTriggers
+        }
+
         public bool Execute(params object[] Params)
         {
-            if (Params == null || Params.Length == 0)
+            if (Params == null || Params.Length == 0) return false;
+
+            Habbo Player = Params[0] as Habbo;
+            if (Player == null || Player.GetClient() == null || string.IsNullOrWhiteSpace(this.message))
                 return false;
 
-            Habbo Player = (Habbo)Params[0];
-            if (Player == null || Player.GetClient() == null || string.IsNullOrWhiteSpace(StringData))
-                return false;
-
-            // FIX: Validar CurrentRoom antes de usarlo
-            if (Player.CurrentRoom == null)
-                return false;
+            if (Player.CurrentRoom == null) return false;
 
             RoomUser User = Player.CurrentRoom.GetRoomUserManager().GetRoomUserByHabbo(Player.Id);
-            if (User == null)
-                return false;
+            if (User == null) return false;
 
-            string Message = StringData;
+            string msg = BuildMessage(Player);
 
-            if (StringData.Contains("%USERNAME%"))
-                Message = Message.Replace("%USERNAME%", Player.Username);
-
-            if (StringData.Contains("%ROOMNAME%"))
-                Message = Message.Replace("%ROOMNAME%", Player.CurrentRoom.Name);
-
-            if (StringData.Contains("%USERCOUNT%"))
-                Message = Message.Replace("%USERCOUNT%", Player.CurrentRoom.UserCount.ToString());
-
-            if (StringData.Contains("%USERSONLINE%"))
-                Message = Message.Replace("%USERSONLINE%", PolarEnvironment.GetGame().GetClientManager().Count.ToString());
-
-            Message = Message.Replace("{username}", Player.Username);
-
-            // Roleplay Variables
-            if (Player.GetClient().GetRoleplay() != null)
+            if (visibilitySelection == VISIBILITY_ALL_ROOM_USERS)
             {
-                var rp = Player.GetClient().GetRoleplay();
-                Message = Message.Replace("{job}", Polar.HabboHotel.Groups.GroupManager.GetJob(rp.JobId)?.Name ?? "Ninguno");
-                Message = Message.Replace("{gang}", Polar.HabboHotel.Groups.GroupManager.GetGang(rp.GangId)?.Name ?? "Ninguna");
-                Message = Message.Replace("{health}", rp.CurHealth.ToString());
-                Message = Message.Replace("{maxhealth}", rp.MaxHealth.ToString());
-                Message = Message.Replace("{armor}", rp.Armor.ToString());
-                Message = Message.Replace("{energy}", rp.CurEnergy.ToString());
-                Message = Message.Replace("{maxenergy}", rp.MaxEnergy.ToString());
-                Message = Message.Replace("{hunger}", rp.Hunger.ToString());
-                Message = Message.Replace("{hygiene}", rp.Hygiene.ToString());
-                Message = Message.Replace("{poop}", rp.Poop.ToString());
-                Message = Message.Replace("{level}", rp.Level.ToString());
-                Message = Message.Replace("{exp}", rp.LevelEXP.ToString());
-                Message = Message.Replace("{money}", Player.Credits.ToString());
-                Message = Message.Replace("{bank}", rp.BankChequings.ToString());
-                Message = Message.Replace("{intelligence}", rp.Intelligence.ToString());
-                Message = Message.Replace("{strength}", rp.Strength.ToString());
-                Message = Message.Replace("{stamina}", rp.Stamina.ToString());
+                // Enviar a todos en la sala
+                foreach (var roomUser in Instance.GetRoomUserManager().GetRoomUsers().ToList())
+                {
+                    var habbo = roomUser?.GetClient()?.GetHabbo();
+                    if (habbo == null) continue;
+
+                    RoomUser target = Instance.GetRoomUserManager().GetRoomUserByHabbo(habbo.Id);
+                    if (target != null)
+                        habbo.GetClient().SendMessage(new WhisperComposer(target.VirtualId, msg, 0, bubbleStyle));
+                }
+            }
+            else
+            {
+                Player.GetClient().SendMessage(new WhisperComposer(User.VirtualId, msg, 0, bubbleStyle));
             }
 
-            Player.GetClient().SendMessage(new WhisperComposer(User.VirtualId, Message, 0, 34));
             return true;
+        }
+
+        public bool OnCycle() => true;
+
+        private string BuildMessage(Habbo player)
+        {
+            string msg = this.message;
+
+            msg = msg.Replace("%USERNAME%", player.Username);
+            msg = msg.Replace("%ROOMNAME%", player.CurrentRoom?.Name ?? "");
+            msg = msg.Replace("%USERCOUNT%", player.CurrentRoom?.UserCount.ToString() ?? "0");
+            msg = msg.Replace("%USERSONLINE%", PolarEnvironment.GetGame().GetClientManager().Count.ToString());
+            msg = msg.Replace("{username}", player.Username);
+
+            var rp = player.GetClient()?.GetRoleplay();
+            if (rp != null)
+            {
+                msg = msg.Replace("{job}", Polar.HabboHotel.Groups.GroupManager.GetJob(rp.JobId)?.Name ?? "Ninguno");
+                msg = msg.Replace("{gang}", Polar.HabboHotel.Groups.GroupManager.GetGang(rp.GangId)?.Name ?? "Ninguna");
+                msg = msg.Replace("{health}", rp.CurHealth.ToString());
+                msg = msg.Replace("{maxhealth}", rp.MaxHealth.ToString());
+                msg = msg.Replace("{armor}", rp.Armor.ToString());
+                msg = msg.Replace("{energy}", rp.CurEnergy.ToString());
+                msg = msg.Replace("{maxenergy}", rp.MaxEnergy.ToString());
+                msg = msg.Replace("{hunger}", rp.Hunger.ToString());
+                msg = msg.Replace("{hygiene}", rp.Hygiene.ToString());
+                msg = msg.Replace("{poop}", rp.Poop.ToString());
+                msg = msg.Replace("{level}", rp.Level.ToString());
+                msg = msg.Replace("{exp}", rp.LevelEXP.ToString());
+                msg = msg.Replace("{money}", player.Credits.ToString());
+                msg = msg.Replace("{bank}", rp.BankChequings.ToString());
+                msg = msg.Replace("{intelligence}", rp.Intelligence.ToString());
+                msg = msg.Replace("{strength}", rp.Strength.ToString());
+                msg = msg.Replace("{stamina}", rp.Stamina.ToString());
+            }
+
+            return msg;
+        }
+
+        private class JsonData
+        {
+            public string message { get; set; }
+            public int delay { get; set; }
+            public int userSource { get; set; }
+            public int visibilitySelection { get; set; }
+            public int bubbleStyle { get; set; }
         }
     }
 }

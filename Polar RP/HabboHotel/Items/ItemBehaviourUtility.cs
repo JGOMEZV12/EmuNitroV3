@@ -27,6 +27,61 @@ namespace Polar.HabboHotel.Items
 
             switch (Item.GetBaseItem().InteractionType)
             {
+                case InteractionType.WIRED_HIGHSCORE:
+                    {
+                        string itemName = Item.GetBaseItem().ItemName;
+                        string typePart = itemName?.Split('*').ElementAtOrDefault(1);
+
+                        if (typePart == null) break;
+
+                        // scoreType: classic=2, mostwin=1, perteam=0
+                        int scoreType;
+                        if (itemName.StartsWith("highscore_classic")) scoreType = 2;
+                        else if (itemName.StartsWith("highscore_mostwin")) scoreType = 1;
+                        else scoreType = 0; // perteam
+
+                        // clearType: alltime=0, day=1, week=2, month=3
+                        // El nombre es "highscore_X*N" donde N: 1=alltime, 2=day, 3=week, 4=month
+                        int clearType = typePart switch
+                        {
+                            "1" => 0, // alltime
+                            "2" => 1, // day
+                            "3" => 2, // week
+                            "4" => 3, // month
+                            _ => 0
+                        };
+
+                        var room = Item.GetRoom();
+
+                        Dictionary<int, KeyValuePair<int, string>> scoreData = clearType switch
+                        {
+                            1 => room?.WiredScoreBordDay ?? new(),
+                            2 => room?.WiredScoreBordWeek ?? new(),
+                            3 => room?.WiredScoreBordMonth ?? new(),
+                            _ => new() // alltime — ajusta si tienes un WiredScoreBordAllTime
+                        };
+
+                        var sorted = scoreData
+                            .OrderByDescending(i => i.Value.Key)
+                            .Select(i => i.Value)
+                            .Take(50)
+                            .ToList();
+
+                        Message.WriteInteger(6);
+                        Message.WriteString(Item.ExtraData ?? string.Empty);
+                        Message.WriteInteger(scoreType);
+                        Message.WriteInteger(clearType);
+                        Message.WriteInteger(sorted.Count);
+
+                        foreach (var row in sorted)
+                        {
+                            Message.WriteInteger(row.Key);    // score
+                            Message.WriteInteger(1);          // user count por row
+                            Message.WriteString(row.Value ?? string.Empty);
+                        }
+
+                        break;
+                    }
                 case InteractionType.GUILD_ITEM:
                 case InteractionType.GUILD_GATE:
                 case InteractionType.GUILD_FORUM:

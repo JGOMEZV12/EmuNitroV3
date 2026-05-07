@@ -11,69 +11,21 @@ using Polar.HabboHotel.Users;
 
 namespace Polar.HabboHotel.Items.Wired.Boxes.Conditions
 {
-    class IsNotWearingFXBox : IWiredItem
+    class IsNotWearingFXBox : IsWearingFXBox
     {
-        public Room Instance { get; set; }
-        public Item Item { get; set; }
-        // FIX: WiredBoxType incorrecto — usaba ConditionIsWearingFX en vez de ConditionIsNotWearingFX
-        public WiredBoxType Type { get { return WiredBoxType.ConditionIsNotWearingFX; } }
-        public ConcurrentDictionary<int, Item> SetItems { get; set; }
-        public string StringData { get; set; }
-        public bool BoolData { get; set; }
-        public string ItemsData { get; set; }
+        public override WiredBoxType Type => WiredBoxType.ConditionIsNotWearingFX;
 
-        public IsNotWearingFXBox(Room Instance, Item Item)
+        public IsNotWearingFXBox(Room instance, Item item)
+            : base(instance, item) { }
+
+        public override bool Execute(params object[] Params)
         {
-            this.Instance = Instance;
-            this.Item = Item;
-            this.SetItems = new ConcurrentDictionary<int, Item>();
-        }
+            if (Params.Length == 0) return false;
 
-        public void HandleSave(ClientPacket Packet)
-        {
-            int Unknown = Packet.PopInt();
-            int Unknown2 = Packet.PopInt();
+            Habbo Player = Params[0] as Habbo;
+            if (Player == null) return false;
 
-            this.StringData = Unknown2.ToString();
-        }
-
-        
-        public void Serialize(ServerPacket Packet)
-        {
-            Packet.WriteBoolean(false);
-            Packet.WriteInteger(100);
-            Packet.WriteInteger(SetItems.Count);
-            foreach (Item Item in SetItems.Values.ToList())
-            {
-                Packet.WriteInteger(Item.Id);
-            }
-            Packet.WriteInteger(Item.GetBaseItem().SpriteId);
-            Packet.WriteInteger(Item.Id);
-            Packet.WriteString(StringData);
-            Packet.WriteInteger(0);
-            Packet.WriteInteger(0);
-            Packet.WriteInteger(WiredBoxTypeUtility.GetWiredId(Type));
-        }
-        public bool Execute(params object[] Params)
-        {
-            if (Params.Length == 0)
-                return false;
-
-            if (string.IsNullOrEmpty(this.StringData))
-                return false;
-
-            Habbo Player = (Habbo)Params[0];
-            if (Player == null)
-                return false;
-
-            // FIX: Effects() puede ser null
-            if (Player.Effects() == null)
-                return false;
-
-            if (Player.Effects().CurrentEffect != int.Parse(this.StringData))
-                return true;
-
-            return false;
+            return !MatchesEffect(Player);
         }
     }
 }

@@ -94,7 +94,7 @@ namespace Polar.HabboHotel.Items.Interactor
             
 
             Item.ExtraData = NewMode.ToString();
-            Item.UpdateState();
+            Item.UpdateState(false, true);
 
             Item.GetRoom().GetGameMap().UpdateMapForItem(Item);
             //Item.GetRoom().GenerateMaps();
