@@ -266,11 +266,40 @@ namespace Polar.HabboHotel.Items.Wired
                 case "wf_xtra_mov_no_animation": return WiredBoxType.AddonMoveNoAnimation;
                 case "wf_xtra_mov_physics": return WiredBoxType.AddonMovePhysics;
                 case "wf_xtra_or_eval": return WiredBoxType.AddonOrEval;
-                case "wf_var_user": return WiredBoxType.AddonSetVariable;
+                case "wf_var_user": return WiredBoxType.AddonUserVariable;
+                case "wf_var_room": return WiredBoxType.AddonRoomVariable;
+                case "wf_var_furni": return WiredBoxType.AddonFurniVariable;
+                case "wf_var_context": return WiredBoxType.AddonContextVariable;
                 case "wf_var_lvlup_system": return WiredBoxType.AddonVariableLevelUpSystem;
                 case "wf_var_reference": return WiredBoxType.AddonVariableReference;
                 case "wf_xtra_text_output_furni_name": return WiredBoxType.AddonTextOutputFurniName;
                 case "wf_xtra_text_output_username": return WiredBoxType.AddonTextOutputUsername;
+                case "wf_xtra_text_input_variable": return WiredBoxType.AddonTextInputVariable;
+                case "wf_xtra_text_output_variable": return WiredBoxType.AddonTextOutputVariable;
+                case "wf_xtra_variable_echo": return WiredBoxType.AddonVariableEcho;
+                case "wf_xtra_filter_furni_by_variable": return WiredBoxType.AddonFilterFurniByVariable;
+                case "wf_xtra_filter_users_by_variable": return WiredBoxType.AddonFilterUsersByVariable;
+                case "wf_xtra_variable_text_connector": return WiredBoxType.AddonVariableTextConnector;
+
+                case "wf_slct_users_on_furni": return WiredBoxType.EffectUsersOnFurni;
+                case "wf_slct_users_signal": return WiredBoxType.EffectUsersSignal;
+                case "wf_slct_users_group": return WiredBoxType.EffectUsersGroup;
+                case "wf_slct_users_action": return WiredBoxType.EffectUsersAction;
+                case "wf_slct_users_picks": return WiredBoxType.EffectUsersPicks;
+                case "wf_slct_users_altitude": return WiredBoxType.EffectUsersAltitude;
+                case "wf_slct_furni_on_furni": return WiredBoxType.SelectorFurniOnFurni;
+                case "wf_slct_users_area": return WiredBoxType.SelectorUsersArea;
+                case "wf_slct_furni_area": return WiredBoxType.SelectorFurniArea;
+                case "wf_slct_users_team": return WiredBoxType.SelectorUsersTeam;
+                case "wf_slct_users_handitem": return WiredBoxType.SelectorUsersHandItem;
+                case "wf_slct_users_neighborhood": return WiredBoxType.SelectorUsersNeighborhood;
+                case "wf_slct_furni_neighborhood": return WiredBoxType.SelectorFurniNeighborhood;
+                case "wf_slct_users_by_type": return WiredBoxType.SelectorUsersByType;
+                case "wf_slct_furni_by_type": return WiredBoxType.SelectorFurniByType;
+                case "wf_slct_users_by_name": return WiredBoxType.SelectorUsersByName;
+                case "wf_slct_users_with_variable": return WiredBoxType.SelectorUsersWithVariable;
+                case "wf_slct_furni_with_variable": return WiredBoxType.SelectorFurniWithVariable;
+
                 case "wf_xtra_unseenrandom":
                 case "wf_xtra_unseen_random":
                 case "wf_xtra_pt_unseenrandom":
@@ -543,6 +572,38 @@ namespace Polar.HabboHotel.Items.Wired
                     return 96;
                 case WiredBoxType.EffectTeleportToRoom:
                     return 97;
+
+                // Selectores
+                case WiredBoxType.EffectUsersOnFurni: return 100;
+                case WiredBoxType.EffectUsersSignal: return 101;
+                case WiredBoxType.EffectUsersGroup: return 102;
+                case WiredBoxType.EffectUsersAction: return 103;
+                case WiredBoxType.EffectUsersPicks: return 104;
+                case WiredBoxType.EffectUsersAltitude: return 105;
+                case WiredBoxType.SelectorFurniOnFurni: return 106;
+                case WiredBoxType.SelectorUsersArea: return 107;
+                case WiredBoxType.SelectorFurniArea: return 108;
+                case WiredBoxType.SelectorUsersTeam: return 109;
+                case WiredBoxType.SelectorUsersHandItem: return 110;
+                case WiredBoxType.SelectorUsersNeighborhood: return 111;
+                case WiredBoxType.SelectorFurniNeighborhood: return 112;
+                case WiredBoxType.SelectorUsersByType: return 113;
+                case WiredBoxType.SelectorFurniByType: return 114;
+                case WiredBoxType.SelectorUsersByName: return 115;
+                case WiredBoxType.SelectorUsersWithVariable: return 116;
+                case WiredBoxType.SelectorFurniWithVariable: return 117;
+
+                // Nuevos Addons / Variables
+                case WiredBoxType.AddonUserVariable: return 700;
+                case WiredBoxType.AddonRoomVariable: return 710;
+                case WiredBoxType.AddonFurniVariable: return 720;
+                case WiredBoxType.AddonContextVariable: return 730;
+                case WiredBoxType.AddonTextInputVariable: return 740;
+                case WiredBoxType.AddonTextOutputVariable: return 750;
+                case WiredBoxType.AddonVariableEcho: return 760;
+                case WiredBoxType.AddonFilterFurniByVariable: return 770;
+                case WiredBoxType.AddonFilterUsersByVariable: return 780;
+                case WiredBoxType.AddonVariableTextConnector: return 790;
             }
             return 0;
         }
@@ -565,7 +626,7 @@ namespace Polar.HabboHotel.Items.Wired
         }
 
         public static bool IsTriggerType(WiredBoxType type) => type.ToString().StartsWith("Trigger");
-        public static bool IsEffectType(WiredBoxType type) => type.ToString().StartsWith("Effect");
+        public static bool IsEffectType(WiredBoxType type) => type.ToString().StartsWith("Effect") || type.ToString().StartsWith("Selector");
         public static bool IsConditionType(WiredBoxType type) => type.ToString().StartsWith("Condition");
         public static bool IsAddonType(WiredBoxType type) => type.ToString().StartsWith("Addon");
 

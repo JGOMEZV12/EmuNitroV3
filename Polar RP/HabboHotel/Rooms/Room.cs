@@ -89,6 +89,9 @@ namespace Polar.HabboHotel.Rooms
         private List<string> _wordFilterList;
         private FilterComponent _filterComponent;
         private WiredComponent _wiredComponent;
+        private RoomUserVariableManager _roomUserVariableManager;
+        private RoomVariableManager _roomVariableManager;
+        private RoomFurniVariableManager _roomFurniVariableManager;
 
         public bool mCycleEnded { get; set; }
         internal string poolQuestion;
@@ -201,6 +204,9 @@ namespace Polar.HabboHotel.Rooms
             _roomUserManager = new RoomUserManager(this);
             _filterComponent = new FilterComponent(this);
             _wiredComponent = new WiredComponent(this);
+            _roomUserVariableManager = new RoomUserVariableManager(this);
+            _roomVariableManager = new RoomVariableManager(this);
+            _roomFurniVariableManager = new RoomFurniVariableManager(this);
             this._traxManager = new RoomTraxManager(this);
 
             GetRoomItemHandler().LoadFurniture();
@@ -595,10 +601,13 @@ namespace Polar.HabboHotel.Rooms
 
         public FilterComponent GetFilter() => _filterComponent;
 
+        public RoomUserVariableManager GetRoomUserVariableManager() => _roomUserVariableManager;
+        public RoomVariableManager GetRoomVariableManager() => _roomVariableManager;
+        public RoomFurniVariableManager GetRoomFurniVariableManager() => _roomFurniVariableManager;
+
         public WiredComponent GetWired()
         {
-            if (_wiredComponent != null) return _wiredComponent;
-            _wiredComponent = new WiredComponent(this);
+            if (_wiredComponent == null) _wiredComponent = new WiredComponent(this);
             return _wiredComponent;
         }
 

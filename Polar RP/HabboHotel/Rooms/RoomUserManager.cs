@@ -176,6 +176,9 @@ namespace Polar.HabboHotel.Rooms
             User.InternalRoomID = PersonalID;
             Session.GetHabbo().CurrentRoomId = _room.RoomId;
 
+            // Wired Variables
+            _room.GetRoomUserVariableManager()?.RestorePermanentAssignments(Session.GetHabbo().Id);
+
             if (!this._users.TryAdd(PersonalID, User))
                 return false;
 

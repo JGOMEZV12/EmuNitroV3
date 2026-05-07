@@ -1,9 +1,3 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
 namespace Polar.HabboHotel.Items.Wired
 {
     public enum WiredBoxType
@@ -118,7 +112,6 @@ namespace Polar.HabboHotel.Items.Wired
         AddonVariableLevelUpSystem,
         SpecialHighscore,
 
-        // Variable Wireds (from AM Extended)
         EffectSetVariable,
         EffectVariableAdd,
         EffectVariableSubtract,
@@ -126,9 +119,40 @@ namespace Polar.HabboHotel.Items.Wired
         ConditionVariableIsGreaterThan,
         ConditionVariableIsLessThan,
 
-        // Additional AM Extended Wireds
         EffectTeleportToRoom,
         EffectGiveHanditem,
-        EffectMoveFurniXYZ
+        EffectMoveFurniXYZ,
+
+        // Selectores (WiredExtraSelector)
+        EffectUsersOnFurni,
+        EffectUsersSignal,
+        EffectUsersGroup,
+        EffectUsersAction,
+        EffectUsersPicks,
+        EffectUsersAltitude,
+        SelectorFurniOnFurni,
+        SelectorUsersArea,
+        SelectorFurniArea,
+        SelectorUsersTeam,
+        SelectorUsersHandItem,
+        SelectorUsersNeighborhood,
+        SelectorFurniNeighborhood,
+        SelectorUsersByType,
+        SelectorFurniByType,
+        SelectorUsersByName,
+        SelectorUsersWithVariable,
+        SelectorFurniWithVariable,
+
+        // Addons / Variables (WiredExtraVariable)
+        AddonUserVariable,
+        AddonRoomVariable,
+        AddonFurniVariable,
+        AddonContextVariable,
+        AddonTextInputVariable,
+        AddonTextOutputVariable,
+        AddonVariableEcho,
+        AddonFilterFurniByVariable,
+        AddonFilterUsersByVariable,
+        AddonVariableTextConnector
     }
 }

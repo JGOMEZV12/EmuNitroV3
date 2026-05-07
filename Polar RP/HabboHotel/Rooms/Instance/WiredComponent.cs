@@ -2,6 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Data;
+using System.Linq;
 using Newtonsoft.Json;
 using Polar.HabboHotel.Items;
 using Polar.HabboHotel.Items.Wired;
@@ -10,6 +11,7 @@ using Polar.HabboHotel.Items.Wired.Boxes.Conditions;
 using Polar.HabboHotel.Items.Wired.Boxes.Effects;
 using Polar.HabboHotel.Items.Wired.Boxes.Triggers;
 using Polar.HabboHotel.Items.Wired.Boxes.Add_ons;
+using Polar.HabboHotel.Items.Wired.Boxes.Selectors;
 using Polar.HabboHotel.Rooms;
 
 namespace Polar.HabboHotel.Rooms.Instance;
@@ -18,15 +20,9 @@ public class WiredComponent
 {
     private readonly Room _room;
     private readonly ConcurrentDictionary<int, IWiredItem> _wiredItems;
-
-    // Índice secundario: (x,y) → lista de wired en esa celda
-    // Elimina el scan O(n) en GetEffects/GetConditions/GetTriggers
     private readonly ConcurrentDictionary<long, List<IWiredItem>> _byCoord;
-
-    // Cache de triggers por tipo → evita scan en TriggerEvent
     private readonly ConcurrentDictionary<WiredBoxType, List<IWiredItem>> _byType;
 
-    // Key compacta para coordenada: evita allocar un objeto Point o string
     private static long CoordKey(int x, int y) => ((long)x << 32) | (uint)y;
 
     public WiredComponent(Room instance)
@@ -37,13 +33,10 @@ public class WiredComponent
         _byType = new();
     }
 
-    // ── OnCycle ────────────────────────────────────────────────────────────
-    // Sin ToList() — iteramos Values directamente (snapshot-safe en .NET)
     public void OnCycle()
     {
         foreach (var kvp in _wiredItems)
         {
-            // Validar que el furni sigue en la sala (barato: dict lookup)
             if (_room.GetRoomItemHandler().GetItem(kvp.Key) == null)
             {
                 TryRemove(kvp.Key);
@@ -169,9 +162,42 @@ public class WiredComponent
         WiredBoxType.EffectResetTimers => new ResetTimersBox(_room, item),
         WiredBoxType.ConditionFurniTypeMatches => new FurniTypeMatchesBox(_room, item),
         WiredBoxType.ConditionFurniTypeDoesntMatch => new FurniTypeDoesntMatchBox(_room, item),
+
+        // Selectors
+        WiredBoxType.EffectUsersOnFurni => new WiredEffectUsersOnFurni(_room, item),
+        WiredBoxType.EffectUsersSignal => new WiredEffectUsersSignal(_room, item),
+        WiredBoxType.EffectUsersGroup => new WiredEffectUsersGroup(_room, item),
+        WiredBoxType.EffectUsersAction => new WiredEffectUsersAction(_room, item),
+        WiredBoxType.EffectUsersPicks => new WiredEffectUsersOnFurni(_room, item), // placeholder
+        WiredBoxType.EffectUsersAltitude => new WiredEffectUsersAltitude(_room, item),
+        WiredBoxType.SelectorFurniOnFurni => new WiredEffectFurniOnFurni(_room, item),
+        WiredBoxType.SelectorUsersArea => new WiredEffectUsersArea(_room, item),
+        WiredBoxType.SelectorFurniArea => new WiredEffectFurniArea(_room, item),
+        WiredBoxType.SelectorUsersTeam => new WiredEffectUsersTeam(_room, item),
+        WiredBoxType.SelectorUsersHandItem => new WiredEffectUsersHandItem(_room, item),
+        WiredBoxType.SelectorUsersNeighborhood => new WiredEffectUsersNeighborhood(_room, item),
+        WiredBoxType.SelectorFurniNeighborhood => new WiredEffectFurniNeighborhood(_room, item),
+        WiredBoxType.SelectorUsersByType => new WiredEffectUsersByType(_room, item),
+        WiredBoxType.SelectorFurniByType => new WiredEffectFurniByType(_room, item),
+        WiredBoxType.SelectorUsersByName => new WiredEffectUsersByName(_room, item),
+        WiredBoxType.SelectorUsersWithVariable => new WiredEffectUsersWithVariable(_room, item),
+        WiredBoxType.SelectorFurniWithVariable => new WiredEffectFurniWithVariable(_room, item),
+
+        // Addons / Variables
         WiredBoxType.AddonSetVariable => new AddonSetVariableBox(_room, item),
+        WiredBoxType.AddonUserVariable => new AddonUserVariableBox(_room, item),
+        WiredBoxType.AddonRoomVariable => new AddonRoomVariableBox(_room, item),
+        WiredBoxType.AddonFurniVariable => new AddonFurniVariableBox(_room, item),
+        WiredBoxType.AddonContextVariable => new AddonContextVariableBox(_room, item),
         WiredBoxType.AddonVariableLevelUpSystem => new AddonVariableLevelUpSystemBox(_room, item),
         WiredBoxType.AddonVariableReference => new AddonVariableReferenceBox(_room, item),
+        WiredBoxType.AddonTextInputVariable => new AddonTextInputVariableBox(_room, item),
+        WiredBoxType.AddonTextOutputVariable => new AddonTextOutputVariableBox(_room, item),
+        WiredBoxType.AddonVariableEcho => new AddonVariableEchoBox(_room, item),
+        WiredBoxType.AddonFilterFurniByVariable => new AddonFilterFurniByVariableBox(_room, item),
+        WiredBoxType.AddonFilterUsersByVariable => new AddonFilterUsersByVariableBox(_room, item),
+        WiredBoxType.AddonVariableTextConnector => new AddonVariableTextConnectorBox(_room, item),
+
         _ => LogAndReturnNull(item)
     };
 
@@ -184,8 +210,6 @@ public class WiredComponent
     public bool OtherBoxHasItem(IWiredItem box, int itemId)
     {
         if (box == null) return false;
-
-        // FIX: eliminado null check innecesario — GetEffects siempre devuelve una lista no-null
         foreach (var item in GetEffects(box).Where(x => x.Item.Id != box.Item.Id))
         {
             if (item.Type != WiredBoxType.EffectMoveAndRotate &&
@@ -240,7 +264,7 @@ public class WiredComponent
 
     public ICollection<IWiredItem> GetEffects(IWiredItem item) =>
         _wiredItems.Values
-            .Where(i => IsEffect(i.Item) && i.Item.GetX == item.Item.GetX && i.Item.GetY == item.Item.GetY)
+            .Where(i => (IsEffect(i.Item) || IsSelector(i.Item)) && i.Item.GetX == item.Item.GetX && i.Item.GetY == item.Item.GetY)
             .OrderBy(i => i.Item.GetZ)
             .ToList();
 
@@ -249,7 +273,6 @@ public class WiredComponent
             .Where(i => IsCondition(i.Item) && i.Item.GetX == item.Item.GetX && i.Item.GetY == item.Item.GetY)
             .ToList();
 
-    // FIX: Random.Shared.Next() — O(1) vs el anterior OrderBy(Guid.NewGuid()) que era O(n log n)
     public IWiredItem GetRandomEffect(ICollection<IWiredItem> effects)
     {
         if (effects == null || effects.Count == 0) return null;
@@ -260,7 +283,6 @@ public class WiredComponent
     public bool OnUserFurniCollision(Room room, Item item)
     {
         if (room == null || item == null) return false;
-
         foreach (var point in item.GetSides())
         {
             if (!room.GetGameMap().SquareHasUsers(point.X, point.Y)) continue;
@@ -304,8 +326,6 @@ public class WiredComponent
             item.ItemsData = items;
 
         string json;
-
-        // Si el box maneja su propio formato JSON, lo delegamos
         if (item is IWiredCustomData customData)
         {
             json = customData.GetWiredData();
@@ -332,7 +352,6 @@ public class WiredComponent
         dbClient.RunQuery();
     }
 
-    // ── LoadWiredBox — sin cambios de lógica, solo usa nuevo AddBox ────────
     public IWiredItem LoadWiredBox(Item item) { LoadWiredBoxes(new[] { item }); TryGet(item.Id, out var box); return box; }
 
     public void LoadWiredBoxes(IEnumerable<Item> items)
@@ -369,7 +388,6 @@ public class WiredComponent
     {
         try
         {
-            // Si el box maneja su propio formato, lo delegamos
             if (newBox is IWiredCustomData customData)
             {
                 customData.LoadWiredData(wiredData);
@@ -421,20 +439,16 @@ public class WiredComponent
         }
     }
 
-
-    // ── Índices: mantener sincronizados con _wiredItems ────────────────────
     public bool AddBox(IWiredItem item)
     {
         if (!_wiredItems.TryAdd(item.Item.Id, item))
             return false;
 
-        // Índice por coordenada
         var key = CoordKey(item.Item.GetX, item.Item.GetY);
         _byCoord.AddOrUpdate(key,
             _ => new List<IWiredItem> { item },
             (_, list) => { lock (list) { list.Add(item); } return list; });
 
-        // Índice por tipo
         _byType.AddOrUpdate(item.Type,
             _ => new List<IWiredItem> { item },
             (_, list) => { lock (list) { list.Add(item); } return list; });
@@ -448,7 +462,6 @@ public class WiredComponent
         _byCoord.Clear();
         _byType.Clear();
     }
-    // En WiredComponent:
     public IEnumerable<IWiredItem> GetAllItems() => _wiredItems.Values;
     public bool TryRemove(int itemId) => _wiredItems.TryRemove(itemId, out _);
     public bool TryGet(int id, out IWiredItem item) => _wiredItems.TryGetValue(id, out item);
@@ -456,4 +469,5 @@ public class WiredComponent
     public bool IsEffect(Item item) => item.GetBaseItem().InteractionType == InteractionType.WIRED_EFFECT;
     public bool IsCondition(Item item) => item.GetBaseItem().InteractionType == InteractionType.WIRED_CONDITION;
     public bool IsAddon(Item item) => item.GetBaseItem().InteractionType == InteractionType.WIRED_ADDON;
+    public bool IsSelector(Item item) => item.GetBaseItem().WiredType.ToString().StartsWith("Selector") || item.GetBaseItem().WiredType.ToString().StartsWith("EffectUsers");
 }
