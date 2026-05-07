@@ -79,9 +79,27 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Triggers
 
         public bool OnCycle()
         {
-            ICollection<RoomUser> avatars = Instance.GetRoomUserManager().GetRoomUsers().ToList();
+            WiredContext context = new WiredContext();
             ICollection<IWiredItem> effects = Instance.GetWired().GetEffects(this);
             ICollection<IWiredItem> conditions = Instance.GetWired().GetConditions(this);
+            ICollection<IWiredItem> selectors = Instance.GetWired().GetSelectors(this);
+
+            // Execute Selectors
+            foreach (var selector in selectors)
+            {
+                selector.Execute(context);
+                Instance.GetWired().OnEvent(selector.Item);
+            }
+
+            ICollection<RoomUser> avatars = Instance.GetRoomUserManager().GetRoomUsers().ToList();
+            if (context.SelectedUsers.Count == 0)
+            {
+                foreach (var user in avatars)
+                {
+                    if (user.GetClient()?.GetHabbo() != null)
+                        context.SelectedUsers.Add(user.GetClient().GetHabbo());
+                }
+            }
 
             // Extra Addons
             var addons = Instance.GetWired().GetTriggers(this).Where(x => x.Type.ToString().StartsWith("Addon")).ToList();
@@ -102,14 +120,14 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Triggers
             {
                 if (hasOrEval)
                 {
-                    conditionsMet = conditions.Any(c => avatars.Any(a => a != null && a.GetClient() != null && a.GetClient().GetHabbo() != null && c.Execute(a.GetClient().GetHabbo())));
+                    conditionsMet = conditions.Any(c => context.SelectedUsers.Any(a => c.Execute(a, context)));
                 }
                 else
                 {
                     conditionsMet = true;
                     foreach (IWiredItem condition in conditions)
                     {
-                        bool anyAvatarMet = avatars.Any(a => a != null && a.GetClient() != null && a.GetClient().GetHabbo() != null && condition.Execute(a.GetClient().GetHabbo()));
+                        bool anyAvatarMet = context.SelectedUsers.Any(a => condition.Execute(a, context));
                         if (!anyAvatarMet)
                         {
                             conditionsMet = false;
@@ -136,7 +154,7 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Triggers
                     return false;
 
                 IWiredItem selectedBox = Instance.GetWired().GetRandomEffect(effects.ToList());
-                if (selectedBox != null && selectedBox.Execute())
+                if (selectedBox != null && selectedBox.Execute(context))
                     Instance.GetWired().OnEvent(selectedBox.Item);
 
                 Instance.GetWired().OnEvent(randomBox.Item);
@@ -144,7 +162,7 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Triggers
             else if (hasUnseenAddon)
             {
                 IWiredItem unseenBox = addons.FirstOrDefault(x => x.Type == WiredBoxType.AddonUnseen);
-                if (unseenBox != null && unseenBox.Execute(effects.ToList()))
+                if (unseenBox != null && unseenBox.Execute(effects.ToList(), context))
                     Instance.GetWired().OnEvent(unseenBox.Item);
             }
             else if (hasExecuteInOrder)

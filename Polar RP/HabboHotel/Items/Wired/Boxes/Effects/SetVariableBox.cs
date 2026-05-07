@@ -57,6 +57,19 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Effects
             string varName = data[0];
             string varValue = data[1];
 
+            Habbo player = (Habbo)@params[0];
+            if (player != null)
+            {
+                Instance.GetUserVariableManager().SetValue(player.Id, varName, varValue);
+            }
+
+            Instance.GetRoomVariableManager().SetValue(varName, varValue);
+
+            foreach (var item in SetItems.Values)
+            {
+                Instance.GetFurniVariableManager().SetValue(item.Id, varName, varValue);
+            }
+
             if (Instance.WiredVariables.ContainsKey(varName))
                 Instance.WiredVariables[varName] = varValue;
             else

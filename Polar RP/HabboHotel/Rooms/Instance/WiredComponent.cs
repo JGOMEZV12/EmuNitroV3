@@ -10,6 +10,7 @@ using Polar.HabboHotel.Items.Wired.Boxes.Conditions;
 using Polar.HabboHotel.Items.Wired.Boxes.Effects;
 using Polar.HabboHotel.Items.Wired.Boxes.Triggers;
 using Polar.HabboHotel.Items.Wired.Boxes.Add_ons;
+using Polar.HabboHotel.Items.Wired.Boxes.Selectors;
 using Polar.HabboHotel.Rooms;
 
 namespace Polar.HabboHotel.Rooms.Instance;
@@ -162,6 +163,15 @@ public class WiredComponent
         WiredBoxType.EffectMoveFurniXYZ             => new MoveFurniXYZBox(_room, item),
         WiredBoxType.EffectGiveHanditem             => new GiveHanditemBox(_room, item),
         WiredBoxType.EffectTeleportToRoom           => new TeleportToRoomBox(_room, item),
+        WiredBoxType.AddonUserVariable             => new AddonUserVariableBox(_room, item),
+        WiredBoxType.AddonRoomVariable             => new AddonRoomVariableBox(_room, item),
+        WiredBoxType.AddonFurniVariable            => new AddonFurniVariableBox(_room, item),
+        WiredBoxType.SelectorFurniAll              => new SelectorFurniAllBox(_room, item),
+        WiredBoxType.SelectorFurniRandom           => new SelectorFurniRandomBox(_room, item),
+        WiredBoxType.SelectorUserAll               => new SelectorUserAllBox(_room, item),
+        WiredBoxType.SelectorUserRandom            => new SelectorUserRandomBox(_room, item),
+        WiredBoxType.SelectorFurniByType           => new SelectorFurniByTypeBox(_room, item),
+        WiredBoxType.SelectorFurniOnTop            => new SelectorFurniOnTopBox(_room, item),
         _ => LogAndReturnNull(item)
     };
 
@@ -237,6 +247,11 @@ public class WiredComponent
     public ICollection<IWiredItem> GetConditions(IWiredItem item) =>
         _wiredItems.Values
             .Where(i => IsCondition(i.Item) && i.Item.GetX == item.Item.GetX && i.Item.GetY == item.Item.GetY)
+            .ToList();
+
+    public ICollection<IWiredItem> GetSelectors(IWiredItem item) =>
+        _wiredItems.Values
+            .Where(i => IsSelector(i.Item) && i.Item.GetX == item.Item.GetX && i.Item.GetY == item.Item.GetY)
             .ToList();
 
     // FIX: Random.Shared.Next() — O(1) vs el anterior OrderBy(Guid.NewGuid()) que era O(n log n)
@@ -431,4 +446,5 @@ public class WiredComponent
     public bool IsEffect(Item item) => item.GetBaseItem().InteractionType == InteractionType.WIRED_EFFECT;
     public bool IsCondition(Item item) => item.GetBaseItem().InteractionType == InteractionType.WIRED_CONDITION;
     public bool IsAddon(Item item) => item.GetBaseItem().InteractionType == InteractionType.WIRED_ADDON;
+    public bool IsSelector(Item item) => item.GetBaseItem().InteractionType == InteractionType.WIRED_SELECTOR;
 }

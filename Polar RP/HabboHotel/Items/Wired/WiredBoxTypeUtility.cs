@@ -23,6 +23,12 @@ namespace Polar.HabboHotel.Items.Wired
                     return WiredBoxType.TriggerRoomEnter;
                 case 8:
                     return WiredBoxType.TriggerWalkOnFurni;
+                case 700:
+                    return WiredBoxType.AddonUserVariable;
+                case 710:
+                    return WiredBoxType.AddonRoomVariable;
+                case 720:
+                    return WiredBoxType.AddonFurniVariable;
                 case 9:
                     return WiredBoxType.TriggerWalkOffFurni;
                 case 5:
@@ -193,6 +199,18 @@ namespace Polar.HabboHotel.Items.Wired
                     return WiredBoxType.EffectGiveHanditem;
                 case 97:
                     return WiredBoxType.EffectTeleportToRoom;
+                case 800:
+                    return WiredBoxType.SelectorFurniAll;
+                case 810:
+                    return WiredBoxType.SelectorFurniRandom;
+                case 820:
+                    return WiredBoxType.SelectorUserAll;
+                case 830:
+                    return WiredBoxType.SelectorUserRandom;
+                case 840:
+                    return WiredBoxType.SelectorFurniByType;
+                case 850:
+                    return WiredBoxType.SelectorFurniOnTop;
             }
         }
 
@@ -440,6 +458,9 @@ namespace Polar.HabboHotel.Items.Wired
                 case "wf_xtra_or_eval": return WiredBoxType.AddonOrEval;
                 case "wf_xtra_text_output_furni_name": return WiredBoxType.AddonTextOutputFurniName;
                 case "wf_xtra_text_output_username": return WiredBoxType.AddonTextOutputUsername;
+                case "wf_xtra_user_variable": return WiredBoxType.AddonUserVariable;
+                case "wf_xtra_room_variable": return WiredBoxType.AddonRoomVariable;
+                case "wf_xtra_furni_variable": return WiredBoxType.AddonFurniVariable;
                 case "wf_xtra_unseenrandom":
                 case "wf_xtra_unseen_random":
                 case "wf_xtra_pt_unseenrandom":
@@ -486,6 +507,13 @@ namespace Polar.HabboHotel.Items.Wired
                 case "wf_act_move_furni_xyz": return WiredBoxType.EffectMoveFurniXYZ;
                 case "wf_act_give_handitem": return WiredBoxType.EffectGiveHanditem;
                 case "wf_act_teleport_to_room": return WiredBoxType.EffectTeleportToRoom;
+
+                case "wf_slc_furni_all": return WiredBoxType.SelectorFurniAll;
+                case "wf_slc_furni_random": return WiredBoxType.SelectorFurniRandom;
+                case "wf_slc_user_all": return WiredBoxType.SelectorUserAll;
+                case "wf_slc_user_random": return WiredBoxType.SelectorUserRandom;
+                case "wf_slc_furni_type": return WiredBoxType.SelectorFurniByType;
+                case "wf_slc_furni_top": return WiredBoxType.SelectorFurniOnTop;
 
                 default: return WiredBoxType.None;
             }
@@ -681,6 +709,12 @@ namespace Polar.HabboHotel.Items.Wired
                     return 67;
                 case WiredBoxType.AddonTextOutputFurniName:
                     return 68;
+                case WiredBoxType.AddonUserVariable:
+                    return 700;
+                case WiredBoxType.AddonRoomVariable:
+                    return 710;
+                case WiredBoxType.AddonFurniVariable:
+                    return 720;
 
                 case WiredBoxType.EffectSetVariable:
                     return 89;
@@ -700,6 +734,19 @@ namespace Polar.HabboHotel.Items.Wired
                     return 96;
                 case WiredBoxType.EffectTeleportToRoom:
                     return 97;
+
+                case WiredBoxType.SelectorFurniAll:
+                    return 800;
+                case WiredBoxType.SelectorFurniRandom:
+                    return 810;
+                case WiredBoxType.SelectorUserAll:
+                    return 820;
+                case WiredBoxType.SelectorUserRandom:
+                    return 830;
+                case WiredBoxType.SelectorFurniByType:
+                    return 840;
+                case WiredBoxType.SelectorFurniOnTop:
+                    return 850;
             }
             return 0;
         }
@@ -725,6 +772,7 @@ namespace Polar.HabboHotel.Items.Wired
         public static bool IsEffectType(WiredBoxType type) => type.ToString().StartsWith("Effect");
         public static bool IsConditionType(WiredBoxType type) => type.ToString().StartsWith("Condition");
         public static bool IsAddonType(WiredBoxType type) => type.ToString().StartsWith("Addon");
+        public static bool IsSelectorType(WiredBoxType type) => type.ToString().StartsWith("Selector");
 
         public static List<int> ContainsBlockedEffect(IWiredItem box, ICollection<IWiredItem> effects)
         {

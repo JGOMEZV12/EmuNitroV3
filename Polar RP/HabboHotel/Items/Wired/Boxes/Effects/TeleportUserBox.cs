@@ -133,16 +133,32 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Effects
         {
             if (Params == null || Params.Length == 0) return false;
 
-            Habbo player = Params[0] as Habbo;
-            if (player == null) return false;
+            List<Habbo> usersToTeleport = new List<Habbo>();
+            WiredContext context = Params.OfType<WiredContext>().FirstOrDefault();
 
-            RoomUser user = Instance.GetRoomUserManager().GetRoomUserByHabbo(player.Id);
-            if (user == null) return false;
+            if (context != null && context.SelectedUsers.Any())
+            {
+                usersToTeleport.AddRange(context.SelectedUsers);
+            }
+            else
+            {
+                Habbo player = Params[0] as Habbo;
+                if (player != null) usersToTeleport.Add(player);
+            }
 
-            // Efecto visual de teleport (Java: RoomUserEffectComposer con effect 4)
-            player.Effects()?.ApplyEffect(EffectsList.Twinkle);
+            if (usersToTeleport.Count == 0) return false;
 
-            _queue.Enqueue(user);
+            foreach (var player in usersToTeleport)
+            {
+                RoomUser user = Instance.GetRoomUserManager().GetRoomUserByHabbo(player.Id);
+                if (user == null) continue;
+
+                // Efecto visual de teleport (Java: RoomUserEffectComposer con effect 4)
+                player.Effects()?.ApplyEffect(EffectsList.Twinkle);
+
+                _queue.Enqueue(user);
+            }
+
             return true;
         }
 
@@ -174,6 +190,11 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Effects
         {
             if (user == null || Instance?.GetGameMap() == null) return;
 
+            List<Item> targetItems = new List<Item>();
+            // If we have context in the future for this step, we might need it, but for now
+            // IWiredCycle.OnCycle doesn't receive the context.
+            // However, we can use the selector's items if we find a way to store them or if we use the items selected in this box.
+
             // Limpiar items inválidos (Java: removeIf)
             var invalidIds = SetItems
                 .Where(kv => !Instance.GetRoomItemHandler().GetFloor.Contains(kv.Value))
@@ -182,10 +203,12 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Effects
             foreach (int id in invalidIds)
                 SetItems.TryRemove(id, out _);
 
-            if (SetItems.Count == 0) return;
+            targetItems.AddRange(SetItems.Values);
+
+            if (targetItems.Count == 0) return;
 
             // Java: selección aleatoria con nextInt
-            var items = SetItems.Values.ToList();
+            var items = targetItems;
             Item target = items[PolarEnvironment.GetRandomNumber(0, items.Count - 1)];
             if (target == null) return;
 

@@ -104,10 +104,19 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Effects
             Packet.WriteInteger(0);
         }
 
+        private List<Item> _contextItems = new List<Item>();
+
         public bool Execute(params object[] Params)
         {
             if (this._next == 0 || this._next < PolarEnvironment.Now())
                 this._next = PolarEnvironment.Now() + this.Delay;
+
+            _contextItems.Clear();
+            WiredContext context = Params.OfType<WiredContext>().FirstOrDefault();
+            if (context != null && context.SelectedItems.Any())
+            {
+                _contextItems.AddRange(context.SelectedItems);
+            }
 
             this._requested = true;
             this.TickCount = Delay;
@@ -116,13 +125,29 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Effects
 
         public bool OnCycle()
         {
-            if (this.SetItems.Count == 0 || !_requested)
+            if (!_requested)
                 return false;
 
             long now = PolarEnvironment.Now();
             if (_next < now)
             {
-                foreach (Item item in this.SetItems.Values.ToList())
+                List<Item> targetItems = new List<Item>();
+                if (_contextItems.Any())
+                {
+                    targetItems.AddRange(_contextItems);
+                }
+                else
+                {
+                    targetItems.AddRange(SetItems.Values);
+                }
+
+                if (targetItems.Count == 0)
+                {
+                    _requested = false;
+                    return false;
+                }
+
+                foreach (Item item in targetItems)
                 {
                     if (item == null) continue;
 

@@ -104,6 +104,7 @@ namespace Polar.HabboHotel.Items
         WIRED_CONDITION,
         WIRED_HIGHSCORE,
         WIRED_ADDON,
+        WIRED_SELECTOR,
 
         WALLPAPER,
         FLOOR,
@@ -699,6 +700,8 @@ namespace Polar.HabboHotel.Items
                             return InteractionType.WIRED_CONDITION;
                         if (pType.StartsWith("wf_xtra_"))
                             return InteractionType.WIRED_ADDON;
+                        if (pType.StartsWith("wf_slc_"))
+                            return InteractionType.WIRED_SELECTOR;
 
                         //Logging.WriteLine("Unknown interaction type in parse code: " + pType, ConsoleColor.Yellow);
                         return InteractionType.NONE;

@@ -66,13 +66,22 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Triggers
             if (Player == null)
                 return false;
 
+            WiredContext context = new WiredContext(Player);
+            ICollection<IWiredItem> Effects = Instance.GetWired().GetEffects(this);
+            ICollection<IWiredItem> Conditions = Instance.GetWired().GetConditions(this);
+            ICollection<IWiredItem> selectors = Instance.GetWired().GetSelectors(this);
+
+            // Execute Selectors
+            foreach (var selector in selectors)
+            {
+                selector.Execute(context);
+                Instance.GetWired().OnEvent(selector.Item);
+            }
+
             Instance.GetWired().OnEvent(Item);
 
             if (!string.IsNullOrWhiteSpace(StringData) && Player.Username != StringData)
                 return false;
-
-            ICollection<IWiredItem> Effects = Instance.GetWired().GetEffects(this);
-            ICollection<IWiredItem> Conditions = Instance.GetWired().GetConditions(this);
 
             // Extra Addons
             var addons = Instance.GetWired().GetTriggers(this).Where(x => x.Type.ToString().StartsWith("Addon")).ToList();
@@ -89,13 +98,14 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Triggers
             bool hasOrEval = addons.Any(x => x.Type == WiredBoxType.AddonOrEval);
             if (hasOrEval)
             {
-                if (Conditions.Count > 0 && !Conditions.Any(c => c.Execute(Player))) return false;
+                if (Conditions.Count > 0 && !Conditions.Any(c => context.SelectedUsers.Any(u => c.Execute(u, context)))) return false;
             }
             else
             {
                 foreach (IWiredItem Condition in Conditions.ToList())
                 {
-                    if (!Condition.Execute(Player))
+                    bool conditionMet = context.SelectedUsers.Any(u => Condition.Execute(u, context));
+                    if (!conditionMet)
                         return false;
 
                     Instance.GetWired().OnEvent(Condition.Item);
@@ -114,7 +124,7 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Triggers
                     return false;
 
                 IWiredItem SelectedBox = Instance.GetWired().GetRandomEffect(Effects.ToList());
-                if (SelectedBox != null && SelectedBox.Execute(Player))
+                if (SelectedBox != null && SelectedBox.Execute(context))
                     Instance.GetWired().OnEvent(SelectedBox.Item);
 
                 Instance.GetWired().OnEvent(RandomBox.Item);
@@ -122,14 +132,14 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Triggers
             else if (hasUnseenAddon)
             {
                 IWiredItem unseenBox = addons.FirstOrDefault(x => x.Type == WiredBoxType.AddonUnseen);
-                if (unseenBox != null && unseenBox.Execute(Effects.ToList(), Player))
+                if (unseenBox != null && unseenBox.Execute(Effects.ToList(), context))
                     Instance.GetWired().OnEvent(unseenBox.Item);
             }
             else if (hasExecuteInOrder)
             {
                 foreach (IWiredItem Effect in Effects.OrderBy(x => x.Item.GetZ).ToList())
                 {
-                    if (!Effect.Execute(Player)) break;
+                    if (!Effect.Execute(context)) break;
                     Instance.GetWired().OnEvent(Effect.Item);
                 }
             }
@@ -137,7 +147,7 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Triggers
             {
                 foreach (IWiredItem Effect in Effects.ToList())
                 {
-                    if (!Effect.Execute(Player))
+                    if (!Effect.Execute(context))
                         continue;
 
                     Instance.GetWired().OnEvent(Effect.Item);

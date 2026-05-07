@@ -8,6 +8,7 @@ using System.Collections.Concurrent;
 
 using Polar.Communication.Packets.Incoming;
 using Polar.HabboHotel.Rooms;
+using Polar.HabboHotel.Users;
 
 namespace Polar.HabboHotel.Items.Wired.Boxes.Add_ons
 {
@@ -56,6 +57,36 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Add_ons
         }
         public bool Execute(params object[] @params)
         {
+            if (@params.Length == 0 || !(@params[0] is WiredContext context))
+                return true;
+
+            if (SetItems.Count == 0) return true;
+
+            // Mode 0: In list, Mode 1: Not in list
+            int.TryParse(StringData, out int mode);
+
+            var targetItems = SetItems.Values.ToList();
+            var usersOnItems = new List<Habbo>();
+
+            foreach (var item in targetItems)
+            {
+                var users = Instance.GetGameMap().GetRoomUsers(new System.Drawing.Point(item.GetX, item.GetY));
+                foreach (var user in users)
+                {
+                    if (user.GetClient()?.GetHabbo() != null)
+                        usersOnItems.Add(user.GetClient().GetHabbo());
+                }
+            }
+
+            if (mode == 0)
+            {
+                context.SelectedUsers = context.SelectedUsers.Where(u => usersOnItems.Contains(u)).ToList();
+            }
+            else
+            {
+                context.SelectedUsers = context.SelectedUsers.Where(u => !usersOnItems.Contains(u)).ToList();
+            }
+
             return true;
         }
     }

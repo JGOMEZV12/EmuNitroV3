@@ -1,6 +1,7 @@
 using Polar.Communication.Packets.Incoming;
 using Polar.Communication.Packets.Outgoing;
 using Polar.HabboHotel.Rooms;
+using Polar.HabboHotel.Users;
 using System;
 using System.Collections.Concurrent;
 
@@ -53,6 +54,22 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Conditions
 
             string varName = data[0];
             string targetValue = data[1];
+
+            Habbo player = (Habbo)@params[0];
+            if (player != null)
+            {
+                string userVal = Instance.GetUserVariableManager().GetValue(player.Id, varName);
+                if (userVal == targetValue) return true;
+            }
+
+            string roomVal = Instance.GetRoomVariableManager().GetValue(varName);
+            if (roomVal == targetValue) return true;
+
+            foreach (var item in SetItems.Values)
+            {
+                string furniVal = Instance.GetFurniVariableManager().GetValue(item.Id, varName);
+                if (furniVal == targetValue) return true;
+            }
 
             if (Instance.WiredVariables.TryGetValue(varName, out string currentVal))
             {

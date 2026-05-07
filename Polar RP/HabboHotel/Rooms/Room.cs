@@ -89,6 +89,9 @@ namespace Polar.HabboHotel.Rooms
         private List<string> _wordFilterList;
         private FilterComponent _filterComponent;
         private WiredComponent _wiredComponent;
+        private Variables.RoomUserVariableManager _userVariableManager;
+        private Variables.RoomVariableManager _roomVariableManager;
+        private Variables.RoomFurniVariableManager _furniVariableManager;
 
         public bool mCycleEnded { get; set; }
         internal string poolQuestion;
@@ -201,6 +204,9 @@ namespace Polar.HabboHotel.Rooms
             _roomUserManager = new RoomUserManager(this);
             _filterComponent = new FilterComponent(this);
             _wiredComponent = new WiredComponent(this);
+            _userVariableManager = new Variables.RoomUserVariableManager(this);
+            _roomVariableManager = new Variables.RoomVariableManager(this);
+            _furniVariableManager = new Variables.RoomFurniVariableManager(this);
             this._traxManager = new RoomTraxManager(this);
 
             GetRoomItemHandler().LoadFurniture();
@@ -600,6 +606,27 @@ namespace Polar.HabboHotel.Rooms
             if (_wiredComponent != null) return _wiredComponent;
             _wiredComponent = new WiredComponent(this);
             return _wiredComponent;
+        }
+
+        public Variables.RoomUserVariableManager GetUserVariableManager()
+        {
+            if (_userVariableManager != null) return _userVariableManager;
+            _userVariableManager = new Variables.RoomUserVariableManager(this);
+            return _userVariableManager;
+        }
+
+        public Variables.RoomVariableManager GetRoomVariableManager()
+        {
+            if (_roomVariableManager != null) return _roomVariableManager;
+            _roomVariableManager = new Variables.RoomVariableManager(this);
+            return _roomVariableManager;
+        }
+
+        public Variables.RoomFurniVariableManager GetFurniVariableManager()
+        {
+            if (_furniVariableManager != null) return _furniVariableManager;
+            _furniVariableManager = new Variables.RoomFurniVariableManager(this);
+            return _furniVariableManager;
         }
 
         public void LoadPromotions()
@@ -1305,6 +1332,9 @@ namespace Polar.HabboHotel.Rooms
             _roomItemHandling?.Dispose();
             _filterComponent?.Cleanup();
             _wiredComponent?.Cleanup();
+            _userVariableManager?.Cleanup();
+            _roomVariableManager?.Cleanup();
+            _furniVariableManager?.Cleanup();
             ActiveTrades?.Clear();
 
             // ✅ FIX #10: "new Task(...).Start()" era un antipatrón peligroso para

@@ -56,6 +56,25 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Add_ons
         }
         public bool Execute(params object[] @params)
         {
+            if (@params.Length == 0 || !(@params[0] is WiredContext context))
+                return true;
+
+            if (SetItems.Count == 0) return true;
+
+            // Mode 0: In list, Mode 1: Not in list
+            int.TryParse(StringData, out int mode);
+
+            var filterItems = SetItems.Values.ToList();
+
+            if (mode == 0)
+            {
+                context.SelectedItems = context.SelectedItems.Where(i => filterItems.Contains(i)).ToList();
+            }
+            else
+            {
+                context.SelectedItems = context.SelectedItems.Where(i => !filterItems.Contains(i)).ToList();
+            }
+
             return true;
         }
     }

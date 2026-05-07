@@ -110,6 +110,9 @@ namespace Polar.HabboHotel.Items.Wired
         AddonTextOutputFurniName,
         AddonTextOutputUsername,
         AddonUnseen,
+        AddonUserVariable,
+        AddonRoomVariable,
+        AddonFurniVariable,
         SpecialHighscore,
 
         // Variable Wireds (from AM Extended)
@@ -123,6 +126,14 @@ namespace Polar.HabboHotel.Items.Wired
         // Additional AM Extended Wireds
         EffectTeleportToRoom,
         EffectGiveHanditem,
-        EffectMoveFurniXYZ
+        EffectMoveFurniXYZ,
+
+        // Selectors
+        SelectorFurniAll,
+        SelectorFurniRandom,
+        SelectorUserAll,
+        SelectorUserRandom,
+        SelectorFurniByType,
+        SelectorFurniOnTop
     }
 }
