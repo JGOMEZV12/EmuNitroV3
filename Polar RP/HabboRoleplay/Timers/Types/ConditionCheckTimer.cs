@@ -147,6 +147,9 @@ namespace Polar.HabboRoleplay.Timers.Types
                 // Passive Check
                 if (Effect == EffectsList.Passive && !base.Client.GetRoleplay().PassiveMode)
                     base.Client.GetRoomUser().ApplyEffect(EffectsList.None);
+                // Passive Check
+                if (Effect == EffectsList.Twinkle)
+                    base.Client.GetRoomUser().ApplyEffect(EffectsList.None);
                 #endregion
 
                 #region Main Checks

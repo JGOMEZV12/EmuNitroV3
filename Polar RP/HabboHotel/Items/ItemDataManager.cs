@@ -99,7 +99,7 @@ namespace Polar.HabboHotel.Items
                             }
                             catch (Exception e)
                             {
-                                Console.WriteLine(e.ToString());
+                                Logging.LogItemException(e.ToString());
                                 Console.ReadKey();
                                 Logging.WriteLine("Could not load item #" + Convert.ToInt32(Row[0]) + ", please verify the data is okay.");
                             }
@@ -255,7 +255,7 @@ namespace Polar.HabboHotel.Items
                         }
                         catch (Exception e)
                         {
-                            Console.WriteLine(e.ToString());
+                            Logging.LogItemException(e.ToString());
                         }
                         #endregion
 
@@ -301,7 +301,7 @@ namespace Polar.HabboHotel.Items
                         }
                         catch (Exception e)
                         {
-                            Console.WriteLine(e.ToString());
+                            Logging.LogItemException(e.ToString());
                         }
                         #endregion
                     }
@@ -338,7 +338,7 @@ namespace Polar.HabboHotel.Items
                         }
                         catch (Exception e)
                         {
-                            Console.WriteLine(e.ToString());
+                            Logging.LogItemException(e.ToString());
                         }
                         #endregion
 
@@ -384,7 +384,7 @@ namespace Polar.HabboHotel.Items
                         }
                         catch (Exception e)
                         {
-                            Console.WriteLine(e.ToString());
+                            Logging.LogItemException(e.ToString());
                         }
                         #endregion
                     }
@@ -416,7 +416,7 @@ namespace Polar.HabboHotel.Items
             }
             catch (Exception e)
             {
-                Console.WriteLine(e.ToString());
+                Logging.LogItemException(e.ToString());
             }
 
             log.Info("Updated furnidata special for Room Items");
@@ -437,7 +437,7 @@ namespace Polar.HabboHotel.Items
             }
             catch (Exception e)
             {
-                Console.WriteLine(e.ToString());
+                Logging.LogItemException(e.ToString());
             }
 
             log.Info("Updated furnidata special for Wall Items");
@@ -479,7 +479,7 @@ namespace Polar.HabboHotel.Items
             }
             catch (Exception e)
             {
-                Console.WriteLine(e.ToString());
+                Logging.LogItemException(e.ToString());
             }
 
             log.Info("Created Productdata Dictionary for Room Items");
@@ -508,7 +508,7 @@ namespace Polar.HabboHotel.Items
             }
             catch (Exception e)
             {
-                Console.WriteLine(e.ToString());
+                Logging.LogItemException(e.ToString());
             }
 
             log.Info("Created Productdata Dictionary for Floor Items");

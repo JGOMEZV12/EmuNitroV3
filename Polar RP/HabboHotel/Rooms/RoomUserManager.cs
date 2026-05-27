@@ -25,6 +25,8 @@ namespace Polar.HabboHotel.Rooms
 {
     public class RoomUserManager
     {
+        private int _movementTick = 0;
+        private readonly HashSet<RoomUser> _updateSeen = new HashSet<RoomUser>();
         private readonly Room _room;
         public ConcurrentDictionary<int, RoomUser> _users;
         public ConcurrentDictionary<int, RoomUser> _bots;
@@ -670,16 +672,13 @@ namespace Polar.HabboHotel.Rooms
             ICollection<RoomUser> RoomUsers = GetUserList();
             if (RoomUsers == null) return;
 
-            // ✅ FIX #8: List<T>.Contains() es O(n) — con 100 usuarios son ~5000 comparaciones.
-            //            HashSet<T>.Contains() es O(1). Reemplazado por HashSet para deduplicar.
-            var seen = new HashSet<RoomUser>();
+            _updateSeen.Clear();   // reutilizar, no new cada tick
             var toUpdate = new List<RoomUser>();
 
             foreach (RoomUser User in RoomUsers)
             {
                 if (User == null || !User.UpdateNeeded) continue;
-                if (!seen.Add(User)) continue;
-
+                if (!_updateSeen.Add(User)) continue;
                 User.UpdateNeeded = false;
                 toUpdate.Add(User);
             }
@@ -713,6 +712,10 @@ namespace Polar.HabboHotel.Rooms
 
         public void OnCycle()
         {
+            _movementTick++;
+            bool processMov = _movementTick >= 4;
+            if (processMov) _movementTick = 0;
+
             int userCounter = 0;
             var usersToRemove = new List<RoomUser>();
 
@@ -732,7 +735,9 @@ namespace Polar.HabboHotel.Rooms
 
                     ProcessCaptureEvents(user);
                     UpdateBasicUserState(user);
-                    ProcessUserMovementOptimized(user, usersToRemove);
+
+                    if (processMov)
+                        ProcessUserMovementOptimized(user, usersToRemove);
 
                     if (user.IsBot && user.BotAI != null)
                         user.BotAI.OnTimerTick();

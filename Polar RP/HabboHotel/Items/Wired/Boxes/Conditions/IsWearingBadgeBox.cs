@@ -1,6 +1,6 @@
 using System;
 using System.Collections.Concurrent;
-using System.Linq;
+using Polar.HabboHotel.Rooms.Instance;
 using Newtonsoft.Json;
 using Polar.Communication.Packets.Incoming;
 using Polar.Communication.Packets.Outgoing;
@@ -24,7 +24,7 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Conditions
         public string ItemsData { get; set; }
 
         protected string badge = "";
-        protected int userSource = WiredBoxTypeUtility.SOURCE_TRIGGER;
+        protected int userSource = WiredSourceUtil.SOURCE_TRIGGER;
         protected int quantifier = QUANTIFIER_ANY;
 
         public IsWearingBadgeBox(Room instance, Item item)
@@ -38,7 +38,7 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Conditions
         public void HandleSave(ClientPacket packet)
         {
             int paramsCount = packet.PopInt();
-            int rawSource = paramsCount > 0 ? packet.PopInt() : WiredBoxTypeUtility.SOURCE_TRIGGER;
+            int rawSource = paramsCount > 0 ? packet.PopInt() : WiredSourceUtil.SOURCE_TRIGGER;
             int rawQuant = paramsCount > 1 ? packet.PopInt() : QUANTIFIER_ANY;
 
             string rawBadge = packet.PopString();
@@ -64,7 +64,7 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Conditions
         public void LoadWiredData(string wiredData)
         {
             this.badge = "";
-            this.userSource = WiredBoxTypeUtility.SOURCE_TRIGGER;
+            this.userSource = WiredSourceUtil.SOURCE_TRIGGER;
             this.quantifier = QUANTIFIER_ANY;
 
             if (string.IsNullOrEmpty(wiredData)) return;
@@ -82,7 +82,7 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Conditions
             {
                 // Retrocompatibilidad: formato viejo era solo el badge code
                 this.badge = wiredData;
-                this.userSource = WiredBoxTypeUtility.SOURCE_TRIGGER;
+                this.userSource = WiredSourceUtil.SOURCE_TRIGGER;
                 this.quantifier = QUANTIFIER_ANY;
             }
 

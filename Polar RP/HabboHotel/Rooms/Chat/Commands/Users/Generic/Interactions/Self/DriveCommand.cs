@@ -14,6 +14,7 @@ using Polar.HabboHotel.GameClients;
 using Polar.HabboHotel.Users.Inventory.Bots;
 using System.Drawing;
 using System.Diagnostics.Eventing.Reader;
+using Polar.Core;
 
 namespace Polar.HabboHotel.Rooms.Chat.Commands.Users.Generic.Interactions.Self
 {
@@ -421,21 +422,17 @@ namespace Polar.HabboHotel.Rooms.Chat.Commands.Users.Generic.Interactions.Self
         {
             try
             {
-                //Console.WriteLine("Deteniendo vehículo...");
+                if (Session?.GetRoleplay() == null) return;
 
                 if (Session.GetRoleplay().CarEnableId == 685) // Avión
                 {
-                    // Retornamos a valores predeterminados
                     Session.GetRoleplay().DrivingCar = false;
                     Session.GetRoleplay().DrivingInCar = false;
-
-                    // Combustible System
                     Session.GetRoleplay().CarType = 0;
                     Session.GetRoleplay().CarFuel = 0;
                     Session.GetRoleplay().CarMaxFuel = 0;
                     Session.GetRoleplay().CarTimer = 0;
                     Session.GetRoleplay().CarLife = 0;
-
                     Session.GetRoleplay().CarEnableId = 0;
                     Session.GetRoleplay().CarEffectId = 0;
 
@@ -448,23 +445,24 @@ namespace Polar.HabboHotel.Rooms.Chat.Commands.Users.Generic.Interactions.Self
                     PolarEnvironment.GetGame().GetWebEventManager().ExecuteWebEvent(Session, "event_vehicle", "close");
                     Session.GetRoleplay().CooldownManager.CreateCooldown("avionew", 1000, 30);
                     Session.GetRoleplay().CooldownManager.CreateCooldown("avion", 1000, 30);
-                    //Console.WriteLine("Avión detenido");
                 }
                 else // Vehículo terrestre
                 {
-                    #region Get Position User Vars
                     RoomUser User = Session.GetRoomUser();
-
-                    if (User == null)
-                        return;
+                    if (User == null) return;
 
                     int X = User.X;
                     int Y = User.Y;
-                    double Z = User.Z;
                     int Rot = User.RotBody;
-                    #endregion
 
-                    #region Get Information from VehiclesManager
+                    // FIX: si CarEffectId es 0, no hay nada que detener
+                    if (Session.GetRoleplay().CarEffectId <= 0)
+                    {
+                        PolarEnvironment.GetGame().GetWebEventManager().ExecuteWebEvent(Session, "event_vehicle", "close");
+                        return;
+                    }
+
+                    #region Get Vehicle Info
                     Vehicle vehicle = null;
                     int corp = 0;
                     bool ToDB = true;
@@ -484,86 +482,106 @@ namespace Polar.HabboHotel.Rooms.Chat.Commands.Users.Generic.Interactions.Self
                     if (vehicle == null)
                     {
                         Session.SendWhisper("¡Ha ocurrido un error al buscar los datos del vehículo que conduces!", 1);
-                        return;
+                        // FIX: limpiar estado para no dejar al usuario bloqueado
+                        goto CleanupAndExit;
                     }
                     #endregion
 
-                    // Colocamos Furni en Sala
-                    Session.GetRoleplay().isParking = true;
-                    HabboHotel.Items.Item Item = RoleplayManager.PutItemToRoom(Session, Session.GetRoleplay().DrivingCarItem,
-                        Session.GetRoomUser().RoomId, vehicle.ItemID, X, Y, Rot, ToDB);
-                    Session.GetRoleplay().isParking = false;
-
-                    // Actualizamos datos del auto en el diccionario y DB
-                    VehiclesOwned VOD;
-                    PolarEnvironment.GetGame().GetVehiclesOwnedManager().UpdateVehicleOwner(Session, Item.Id, ToDB, out VOD);
-
-                    #region CorpCar Respawn
-                    if (corp > 0)
+                    // FIX: PutItemToRoom puede devolver null
+                    HabboHotel.Items.Item Item = null;
+                    if (Session.GetRoleplay().DrivingCarItem > 0)
                     {
-                        Session.GetRoleplay().CarJobLastItemId = Item.Id;
+                        Session.GetRoleplay().isParking = true;
+                        Item = RoleplayManager.PutItemToRoom(
+                            Session,
+                            Session.GetRoleplay().DrivingCarItem,
+                            Session.GetRoomUser().RoomId,
+                            vehicle.ItemID,
+                            X, Y, Rot, ToDB);
+                        Session.GetRoleplay().isParking = false;
                     }
-                    #endregion
+
+                    // FIX: solo actualizar owner si el item se colocó correctamente
+                    VehiclesOwned VOD = null;
+                    if (Item != null)
+                    {
+                        PolarEnvironment.GetGame().GetVehiclesOwnedManager()
+                            .UpdateVehicleOwner(Session, Item.Id, ToDB, out VOD);
+
+                        if (corp > 0)
+                            Session.GetRoleplay().CarJobLastItemId = Item.Id;
+                    }
+                    else
+                    {
+                        Logging.LogException($"[StopCar] PutItemToRoom devolvió null. Usuario: {Session.GetHabbo()?.Username}, carItem: {Session.GetRoleplay().DrivingCarItem}");
+                        PolarEnvironment.GetGame().GetVehiclesOwnedManager()
+                            .UpdateVehicleOwner(Session, 0, ToDB, out VOD);
+                    }
 
                     #region Pasajeros
                     string Pasajeros = Session.GetRoleplay().Pasajeros;
                     if (!string.IsNullOrEmpty(Pasajeros))
                     {
-                        string[] pasajerosArray = Pasajeros.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries);
-
-                        foreach (string psjs in pasajerosArray)
+                        foreach (string psjs in Pasajeros.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries))
                         {
                             GameClient PJ = PolarEnvironment.GetGame().GetClientManager().GetClientByUsername(psjs);
-                            if (PJ != null && PJ.GetRoleplay() != null && PJ.GetRoomUser() != null)
-                            {
-                                if (PJ.GetRoleplay().ChoferName == Session.GetHabbo().Username)
-                                {
-                                    RoleplayManager.Shout(PJ, "*Baja del vehículo de " + Session.GetHabbo().Username + "*", 5);
-                                }
+                            if (PJ?.GetRoleplay() == null || PJ.GetRoomUser() == null) continue;
 
-                                // PASAJERO
-                                PJ.GetRoleplay().Pasajero = false;
-                                PJ.GetRoleplay().ChoferName = "";
-                                PJ.GetRoleplay().ChoferID = 0;
-                                PJ.GetRoomUser().CanWalk = true;
-                                PJ.GetRoomUser().FastWalking = false;
-                                PJ.GetRoomUser().TeleportEnabled = false;
-                                PJ.GetRoomUser().AllowOverride = false;
+                            if (PJ.GetRoleplay().ChoferName == Session.GetHabbo().Username)
+                                RoleplayManager.Shout(PJ, "*Baja del vehículo de " + Session.GetHabbo().Username + "*", 5);
 
-                                // SI EL PASAJERO ES COMPAÑERO DE BASURERO
-                                if (PJ.GetRoleplay().IsBasuPasaj)
-                                    PJ.GetRoleplay().IsBasuPasaj = false;
+                            PJ.GetRoleplay().Pasajero = false;
+                            PJ.GetRoleplay().ChoferName = "";
+                            PJ.GetRoleplay().ChoferID = 0;
+                            PJ.GetRoomUser().CanWalk = true;
+                            PJ.GetRoomUser().FastWalking = false;
+                            PJ.GetRoomUser().TeleportEnabled = false;
+                            PJ.GetRoomUser().AllowOverride = false;
 
-                                PolarEnvironment.GetGame().GetWebEventManager().ExecuteWebEvent(PJ, "event_vehicle", "close");
-                            }
+                            if (PJ.GetRoleplay().IsBasuPasaj)
+                                PJ.GetRoleplay().IsBasuPasaj = false;
+
+                            PolarEnvironment.GetGame().GetWebEventManager().ExecuteWebEvent(PJ, "event_vehicle", "close");
                         }
 
-                        // CHOFER 
                         Session.GetRoleplay().PasajerosCount = 0;
                         Session.GetRoleplay().Pasajeros = "";
                         Session.GetRoleplay().Chofer = false;
-                        Session.GetRoomUser().AllowOverride = false;
+                        User.AllowOverride = false;
                     }
                     #endregion
 
-                    #region Check Jobs
                     if (Session.GetRoleplay().BasuTeamId <= 0)
                         Session.GetRoleplay().IsBasuChofer = false;
-                    #endregion
 
-                    #region Online ParkVars
-                    // Retornamos a valores predeterminados
+                    if (vehicle?.FastCar > 0)
+                        Session.GetRoleplay().FastCarNew = 0;
+
+                    RoleplayManager.Shout(Session, "*Detuvo el motor de su vehículo*", 5);
+                    Session.GetRoleplay().CooldownManager.CreateCooldown("park", 1000, 3);
+
+                    // FIX: VOD puede ser null si UpdateVehicleOwner falló
+                    if (corp > 0 && VOD != null && (VOD.CamOwnId == Session.GetHabbo().Id || VOD.CamOwnId == 0))
+                    {
+                        int time = RoleplayManager.VehicleJobTime;
+                        if (vehicle.Model.Contains("Patrulla"))
+                            time = RoleplayManager.VehicleJobPoliTime;
+
+                        Session.SendWhisper("Recuerda no abandonar mucho tiempo tu vehículo de trabajo o será decomisado.", 1);
+                        Session.GetRoleplay().VehicleTimer = time;
+                        Session.GetRoleplay().TimerManager.CreateTimer("vehiclejob", 1000, true);
+                    }
+
+                CleanupAndExit:
+                    // FIX: siempre limpiar el estado de conducción, incluso si algo falló arriba
                     Session.GetRoleplay().DrivingCar = false;
                     Session.GetRoleplay().DrivingInCar = false;
                     Session.GetRoleplay().DrivingCarId = 0;
-
-                    // Combustible System
                     Session.GetRoleplay().CarType = 0;
                     Session.GetRoleplay().CarFuel = 0;
                     Session.GetRoleplay().CarMaxFuel = 0;
                     Session.GetRoleplay().CarTimer = 0;
                     Session.GetRoleplay().CarLife = 0;
-
                     Session.GetRoleplay().CarEnableId = 0;
                     Session.GetRoleplay().CarEffectId = 0;
 
@@ -572,31 +590,13 @@ namespace Polar.HabboHotel.Rooms.Chat.Commands.Users.Generic.Interactions.Self
                         Session.GetRoomUser().ApplyEffect(0);
                         Session.GetRoomUser().FastWalking = false;
                     }
-                    #endregion
 
-                    RoleplayManager.Shout(Session, "*Detuvo el motor de su vehículo*", 5);
                     PolarEnvironment.GetGame().GetWebEventManager().ExecuteWebEvent(Session, "event_vehicle", "close");
-                    Session.GetRoleplay().CooldownManager.CreateCooldown("park", 1000, 3);
-
-                    if (corp > 0 && (VOD.CamOwnId == Session.GetHabbo().Id || VOD.CamOwnId == 0))
-                    {
-                        int time = RoleplayManager.VehicleJobTime; // 5 mins
-                        if (vehicle.Model.Contains("Patrulla"))
-                            time = RoleplayManager.VehicleJobPoliTime; // 10 mins.
-
-                        Session.SendWhisper("Recuerda no abandonar mucho tiempo tu vehículo de trabajo o será decomisado.", 1);
-                        Session.GetRoleplay().VehicleTimer = time;
-                        Session.GetRoleplay().TimerManager.CreateTimer("vehiclejob", 1000, true);
-                    }
-
-                    //Console.WriteLine("Vehículo terrestre detenido");
                 }
             }
             catch (Exception ex)
             {
-                //Console.WriteLine($"ERROR en StopCar: {ex.Message}");
-                //Console.WriteLine($"Stack Trace: {ex.StackTrace}");
-                Session.SendWhisper("Error al detener el vehículo.", 1);
+                Logging.LogException($"Error al detener el vehículo. {ex.Message}\n{ex.StackTrace}");
             }
         }
     }

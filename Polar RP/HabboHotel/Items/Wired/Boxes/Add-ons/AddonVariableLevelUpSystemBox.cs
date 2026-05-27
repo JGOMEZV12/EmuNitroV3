@@ -9,7 +9,7 @@ using Polar.HabboHotel.Rooms;
 
 namespace Polar.HabboHotel.Items.Wired.Boxes.Add_ons
 {
-    class AddonVariableLevelUpSystemBox : IWiredItem, IWiredCustomData
+    public class AddonVariableLevelUpSystemBox : IWiredItem, IWiredCustomData
     {
         public const int MODE_LINEAR = 1;
         public const int MODE_EXPONENTIAL = 2;

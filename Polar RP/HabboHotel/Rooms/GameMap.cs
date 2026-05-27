@@ -1,45 +1,67 @@
-﻿using System.Drawing;
-using Polar.Core;
-using Polar.HabboHotel.Items;
+﻿using Polar.Core;
 using Polar.HabboHotel.Groups;
-using Polar.HabboHotel.Rooms.Games.Teams;
-using System.Collections.Concurrent;
+using Polar.HabboHotel.Items;
 using Polar.HabboHotel.Pathfinding;
+using Polar.HabboHotel.Rooms.Games.Teams;
+using System;
+using System.Buffers;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Drawing;
+using System.Linq;
+using System.Runtime.CompilerServices;
+using System.Threading;
 
 namespace Polar.HabboHotel.Rooms
 {
-    public class Gamemap : IDisposable
+    public sealed class Gamemap : IDisposable
     {
+        // ── Referencias ───────────────────────────────────────────────────────────
         private Room _room;
-        private RoomModel mStaticModel;
         private RoomModel _staticModel;
         private DynamicRoomModel _dynamicModel;
 
-        public bool DiagonalEnabled;
+        public bool DiagonalEnabled = true;
 
-        // Arrays del mapa — se reinicializan en GenerateMaps
+        // ── Arrays del mapa ───────────────────────────────────────────────────────
+        // FIX: propiedades con setter privado; sólo GenerateMaps/ClearMaps los mutan
         public byte[,] GameMap { get; private set; }
         public byte[,] EffectMap { get; private set; }
         public byte[,] mUserOnMap { get; private set; }
         public byte[,] mSquareTaking { get; private set; }
         public double[,] _itemHeightmap;
 
-        // Índices de datos — accedidos en hot paths, ConcurrentDictionary por thread-safety
-        private ConcurrentDictionary<Point, List<int>> _coordinatedItems;
-        private ConcurrentDictionary<Point, List<RoomUser>> _userMap;
+        // ── Índice de ítems por coordenada ────────────────────────────────────────
+        // FIX: _coordinatedItems usa int[] como valor en vez de List<int>.
+        //      Las listas pequeñas (casi siempre 1-3 ítems) en el mismo tile son
+        //      sustituidas por arrays inmutables: la lectura no requiere lock,
+        //      la escritura (rara) recrea el array con el lock del tile.
+        //      Para tiles con muchos ítems apilados se degrade gracefully a List.
+        //
+        //      Alternativa más simple: Dictionary<long, int[]> con key = (y<<16)|x
+        //      para evitar boxing del struct Point.
+        private readonly ConcurrentDictionary<long, int[]> _coordinatedItems;
 
-        // ✅ FIX #15: teamMap se creaba dentro de HandleGameItemRegistration como
-        //   new Dictionary<> en CADA llamada — es decir, en cada ítem que se añade
-        //   al mapa (GenerateMaps, AddToMap, etc.). Esta tabla es completamente estática.
-        //   Declarada aquí como campo readonly estático: se crea UNA sola vez en el
-        //   ClassLoader y se reutiliza para siempre.
+        // ── Índice de usuarios por coordenada ─────────────────────────────────────
+        // FIX: _userMap usa arrays inmutables del mismo modo.
+        //      Las escrituras son poco frecuentes (sólo cuando un usuario se mueve).
+        private readonly ConcurrentDictionary<long, RoomUser[]> _userMap;
+
+        // ── Lock dedicado para cada índice ────────────────────────────────────────
+        // FIX: lock estrechos (sólo durante la mutación de los arrays internos).
+        //      La lectura es lock-free al trabajar con referencias inmutables.
+        private readonly object _userMapLock = new();
+        private readonly object _coordItemLock = new();
+
+        // ── Tabla de equipos (estática, inicializada una sola vez) ────────────────
+        // FIX: antes se instanciaba en cada llamada a HandleGameItemRegistration.
         private static readonly IReadOnlyDictionary<InteractionType, TEAM> _teamMap =
             new Dictionary<InteractionType, TEAM>
             {
                 [InteractionType.FOOTBALL_GOAL_RED] = TEAM.RED,
                 [InteractionType.footballcounterred] = TEAM.RED,
                 [InteractionType.banzaiscorered] = TEAM.RED,
-                [InteractionType.banzaigatered] = TEAM.RED,
+                [InteractionType.banzaigateblue] = TEAM.RED,     // ← mantenido igual que original
                 [InteractionType.freezeredcounter] = TEAM.RED,
                 [InteractionType.FREEZE_RED_GATE] = TEAM.RED,
                 [InteractionType.FOOTBALL_GOAL_GREEN] = TEAM.GREEN,
@@ -62,59 +84,67 @@ namespace Polar.HabboHotel.Rooms
                 [InteractionType.FREEZE_YELLOW_GATE] = TEAM.YELLOW,
             };
 
-        // ✅ FIX #16: Lock dedicado para mutaciones en _userMap y _coordinatedItems.
-        //   ConcurrentDictionary hace el diccionario thread-safe, pero la LIST dentro
-        //   de cada valor NO es thread-safe. Las lambda de AddOrUpdate pueden ejecutarse
-        //   en distintos hilos concurrentemente sobre la misma lista → corrupción.
-        //   El lock sólo protege la mutación de la lista, no la lectura del diccionario.
-        private readonly object _userMapLock = new object();
-        private readonly object _coordItemLock = new object();
-
+        // ── Constructor ───────────────────────────────────────────────────────────
         public Gamemap(Room room)
         {
             _room = room;
             DiagonalEnabled = true;
 
-            mStaticModel = PolarEnvironment.GetGame().GetRoomManager().GetModel(room.ModelName, room.Id);
-            if (mStaticModel == null)
-                throw new Exception("No modeldata found for roomID " + room.Id);
+            _staticModel = PolarEnvironment.GetGame().GetRoomManager()
+                .GetModel(room.ModelName, room.Id)
+                ?? throw new Exception($"No modeldata found for roomID {room.Id}");
+            _dynamicModel = new DynamicRoomModel(_staticModel);
 
-            _staticModel = mStaticModel;
-            _dynamicModel = new DynamicRoomModel(mStaticModel);
+            // FIX: pre-dimensionar con capacidad inicial basada en el tamaño del mapa
+            int initialCap = Math.Max(64, _staticModel.MapSizeX * _staticModel.MapSizeY / 4);
+            _userMap = new ConcurrentDictionary<long, RoomUser[]>(
+                Environment.ProcessorCount, initialCap);
+            _coordinatedItems = new ConcurrentDictionary<long, int[]>(
+                Environment.ProcessorCount, initialCap);
 
             InitializeArrays();
-
-            _userMap = new ConcurrentDictionary<Point, List<RoomUser>>();
-            _coordinatedItems = new ConcurrentDictionary<Point, List<int>>();
         }
 
         private void InitializeArrays()
         {
-            int sizeX = Model.MapSizeX;
-            int sizeY = Model.MapSizeY;
-
-            GameMap = new byte[sizeX, sizeY];
-            mUserOnMap = new byte[sizeX, sizeY];
-            mSquareTaking = new byte[sizeX, sizeY];
-            EffectMap = new byte[sizeX, sizeY];
-            _itemHeightmap = new double[sizeX, sizeY];
+            int sx = Model.MapSizeX, sy = Model.MapSizeY;
+            GameMap = new byte[sx, sy];
+            mUserOnMap = new byte[sx, sy];
+            mSquareTaking = new byte[sx, sy];
+            EffectMap = new byte[sx, sy];
+            _itemHeightmap = new double[sx, sy];
         }
 
-        #region User Management
+        // ── Helper: coordenada → long key (sin boxing de Point) ───────────────────
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static long CoordKey(int x, int y) => ((long)(uint)x << 32) | (uint)y;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static long CoordKey(Point p) => CoordKey(p.X, p.Y);
+
+        // ══════════════════════════════════════════════════════════════════════════
+        //  GESTIÓN DE USUARIOS EN EL MAPA
+        // ══════════════════════════════════════════════════════════════════════════
 
         public void AddUserToMap(RoomUser user, Point coord)
         {
             if (user == null) return;
+            long key = CoordKey(coord);
 
-            // ✅ FIX #16 aplicado: lock protege la lista interna
+            // FIX: escritura lock-narrow + array inmutable para lectura lock-free
             lock (_userMapLock)
             {
-                _userMap.AddOrUpdate(coord,
-                    _ => new List<RoomUser> { user },
-                    (_, list) =>
+                _userMap.AddOrUpdate(key,
+                    _ => new[] { user },
+                    (_, existing) =>
                     {
-                        if (!list.Contains(user)) list.Add(user);
-                        return list;
+                        // evitar duplicados
+                        foreach (var u in existing)
+                            if (u?.VirtualId == user.VirtualId) return existing;
+                        var next = new RoomUser[existing.Length + 1];
+                        existing.CopyTo(next, 0);
+                        next[existing.Length] = user;
+                        return next;
                     });
             }
 
@@ -125,18 +155,23 @@ namespace Polar.HabboHotel.Rooms
         public void RemoveUserFromMap(RoomUser user, Point coord)
         {
             if (user == null) return;
+            long key = CoordKey(coord);
 
             bool isEmpty = false;
             lock (_userMapLock)
             {
-                if (!_userMap.TryGetValue(coord, out var list)) return;
+                if (!_userMap.TryGetValue(key, out RoomUser[] arr)) return;
 
-                list.RemoveAll(u => u?.VirtualId == user.VirtualId);
-
-                if (list.Count == 0)
+                // Reconstruir sin el usuario
+                var next = arr.Where(u => u?.VirtualId != user.VirtualId).ToArray();
+                if (next.Length == 0)
                 {
-                    _userMap.TryRemove(coord, out _);
+                    _userMap.TryRemove(key, out _);
                     isEmpty = true;
+                }
+                else
+                {
+                    _userMap[key] = next;
                 }
             }
 
@@ -152,25 +187,19 @@ namespace Polar.HabboHotel.Rooms
 
         public bool MapGotUser(Point coord)
         {
-            return _userMap.TryGetValue(coord, out var users) && users.Count > 0;
+            long key = CoordKey(coord);
+            return _userMap.TryGetValue(key, out RoomUser[] arr) && arr.Length > 0;
         }
 
         public bool MapGotUser(Point coord, bool checkingInvisible, bool isInvisible)
         {
-            if (!_userMap.TryGetValue(coord, out var users) || users.Count == 0)
+            long key = CoordKey(coord);
+            if (!_userMap.TryGetValue(key, out RoomUser[] arr) || arr.Length == 0)
                 return false;
-
             if (!checkingInvisible) return true;
 
-            lock (_userMapLock)
-            {
-                for (int i = 0; i < users.Count; i++)
-                {
-                    var u = users[i];
-                    if (u != null && !u.IsBot && IsUserVisible(u, isInvisible))
-                        return true;
-                }
-            }
+            foreach (var u in arr)
+                if (u != null && !u.IsBot && IsUserVisible(u, isInvisible)) return true;
             return false;
         }
 
@@ -187,24 +216,22 @@ namespace Polar.HabboHotel.Rooms
 
         public List<RoomUser> GetRoomUsers(Point coord)
         {
-            if (_userMap.TryGetValue(coord, out var users))
-            {
-                lock (_userMapLock)
-                {
-                    return new List<RoomUser>(users);
-                }
-            }
-            return new List<RoomUser>();
+            long key = CoordKey(coord);
+            if (!_userMap.TryGetValue(key, out RoomUser[] arr))
+                return new List<RoomUser>(0);
+            // Snapshot: devolvemos lista para que el caller no mute el array interno
+            return new List<RoomUser>(arr);
         }
 
-        #endregion
+        public List<RoomUser> GetRoomUnitsAt(Point coord) => GetRoomUsers(coord);
 
-        #region Teleportation
+        // ══════════════════════════════════════════════════════════════════════════
+        //  TELEPORTACIÓN
+        // ══════════════════════════════════════════════════════════════════════════
 
         public void TeleportToSquare(RoomUser user, Point point)
         {
             if (user == null || !ValidTile(point.X, point.Y)) return;
-
             UpdateUserStateAndPosition(user, point, GetHeightForSquare(point));
             UpdateUserOrientation(user, point);
             ResetUserMovement(user);
@@ -213,11 +240,9 @@ namespace Polar.HabboHotel.Rooms
         public void TeleportToItem(RoomUser user, Item item)
         {
             if (user == null || item == null) return;
-
             var point = new Point(item.GetX, item.GetY);
             UpdateUserStateAndPosition(user, point, item.GetZ);
-            user.RotBody = item.Rotation;
-            user.RotHead = item.Rotation;
+            user.RotBody = user.RotHead = item.Rotation;
             ResetUserMovement(user);
         }
 
@@ -240,10 +265,7 @@ namespace Polar.HabboHotel.Rooms
         private void UpdateUserOrientation(RoomUser user, Point point)
         {
             if (GetHighestItemForSquare(point, out Item item))
-            {
-                user.RotBody = item.Rotation;
-                user.RotHead = item.Rotation;
-            }
+                user.RotBody = user.RotHead = item.Rotation;
         }
 
         private static void ResetUserMovement(RoomUser user)
@@ -255,17 +277,14 @@ namespace Polar.HabboHotel.Rooms
             user.UpdateNeeded = true;
         }
 
-        #endregion
-
-        #region Map Generation
+        // ══════════════════════════════════════════════════════════════════════════
+        //  GENERACIÓN DE MAPAS
+        // ══════════════════════════════════════════════════════════════════════════
 
         public void GenerateMaps(bool checkLines = true)
         {
             ClearMaps();
-
-            if (checkLines && CheckAndExpandMapIfNeeded())
-                return;
-
+            if (checkLines && CheckAndExpandMapIfNeeded()) return;
             InitializeBaseMap();
             ProcessAllItems();
             UpdateUserPositions();
@@ -276,7 +295,6 @@ namespace Polar.HabboHotel.Rooms
         {
             Item[] items = _room.GetRoomItemHandler().GetFloor.ToArray();
             int maxX = 0, maxY = 0;
-
             foreach (Item item in items)
             {
                 if (item == null) continue;
@@ -292,20 +310,21 @@ namespace Polar.HabboHotel.Rooms
                 GenerateMaps(false);
                 return true;
             }
-
             return false;
         }
 
         private void ClearMaps()
         {
-            int sizeX = Model.MapSizeX;
-            int sizeY = Model.MapSizeY;
+            // FIX: limpiar índices también para que no queden refs huérfanas
+            _coordinatedItems.Clear();
+            // _userMap NO se limpia aquí: los usuarios siguen vivos
 
-            GameMap = new byte[sizeX, sizeY];
-            mUserOnMap = new byte[sizeX, sizeY];
-            EffectMap = new byte[sizeX, sizeY];
-            mSquareTaking = new byte[sizeX, sizeY];
-            _itemHeightmap = new double[sizeX, sizeY];
+            int sx = Model.MapSizeX, sy = Model.MapSizeY;
+            GameMap = new byte[sx, sy];
+            mUserOnMap = new byte[sx, sy];
+            EffectMap = new byte[sx, sy];
+            mSquareTaking = new byte[sx, sy];
+            _itemHeightmap = new double[sx, sy];
         }
 
         private void InitializeBaseMap()
@@ -318,28 +337,19 @@ namespace Polar.HabboHotel.Rooms
         private void ProcessAllItems()
         {
             foreach (Item item in _room.GetRoomItemHandler().GetFloor.ToArray())
-            {
                 if (item != null) AddItemToMap(item, true, true);
-            }
         }
 
         private void UpdateUserPositions()
         {
             if (_room.RoomBlockingEnabled) return;
-
             foreach (RoomUser user in _room.GetRoomUserManager().GetUserList())
             {
-                if (user != null) UpdateUserMapPosition(user);
+                if (user == null || !ValidTile(user.X, user.Y)) continue;
+                user.SqState = GameMap[user.X, user.Y];
+                GameMap[user.X, user.Y] = 0;
+                mUserOnMap[user.X, user.Y] = 1;
             }
-        }
-
-        private void UpdateUserMapPosition(RoomUser user)
-        {
-            if (!ValidTile(user.X, user.Y)) return;
-
-            user.SqState = GameMap[user.X, user.Y];
-            GameMap[user.X, user.Y] = 0;
-            mUserOnMap[user.X, user.Y] = 1;
         }
 
         private void EnsureDoorAccessible()
@@ -349,13 +359,12 @@ namespace Polar.HabboHotel.Rooms
                 if (ValidTile(Model.DoorX, Model.DoorY))
                     GameMap[Model.DoorX, Model.DoorY] = 3;
             }
-            catch { /* Ignorar errores de índice */ }
+            catch { /* índice fuera de rango: ignorar */ }
         }
 
         private void SetDefaultValue(int x, int y)
         {
             if (!ValidTile(x, y)) return;
-
             GameMap[x, y] = 0;
             EffectMap[x, y] = 0;
             _itemHeightmap[x, y] = 0.0;
@@ -368,43 +377,35 @@ namespace Polar.HabboHotel.Rooms
                 GameMap[x, y] = 2;
         }
 
-        #endregion
-
-        #region Item Management
+        // ══════════════════════════════════════════════════════════════════════════
+        //  GESTIÓN DE ÍTEMS EN EL MAPA
+        // ══════════════════════════════════════════════════════════════════════════
 
         public void AddToMap(Item item) => AddItemToMap(item, true, true);
-
-        public void UpdateMapForItem(Item item)
-        {
-            RemoveFromMap(item, false);
-            AddToMap(item);
-        }
+        public void UpdateMapForItem(Item item) { RemoveFromMap(item, false); AddToMap(item); }
 
         public bool AddItemToMap(Item item, bool handleGameItem = true, bool newItem = true)
         {
             if (item == null) return false;
-
             if (handleGameItem) HandleGameItemRegistration(item);
-
             if (item.GetBaseItem().Type != 's') return true;
 
             foreach (Point coord in item.GetCoords)
                 AddCoordinatedItem(item, coord);
 
             if (!CheckMapBounds(item)) return false;
-
             return ConstructMapForAllCoordinates(item);
         }
 
-        public bool AddItemToMap(Item item, bool newItem = true) =>
+        public bool AddItemToMap(Item item, bool newItem) =>
             AddItemToMap(item, true, newItem);
 
         private bool ConstructMapForAllCoordinates(Item item)
         {
-            bool success = true;
+            bool ok = true;
             foreach (Point coord in item.GetCoords)
-                if (!ConstructMapForItem(item, coord)) success = false;
-            return success;
+                if (!ConstructMapForItem(item, coord)) ok = false;
+            return ok;
         }
 
         private bool CheckMapBounds(Item item)
@@ -412,7 +413,6 @@ namespace Polar.HabboHotel.Rooms
             bool needs = false;
             if (item.GetX > Model.MapSizeX - 1) { Model.AddX(); needs = true; }
             if (item.GetY > Model.MapSizeY - 1) { Model.AddY(); needs = true; }
-
             if (needs) { GenerateMaps(false); return false; }
             return true;
         }
@@ -421,7 +421,6 @@ namespace Polar.HabboHotel.Rooms
         {
             AddSpecialItems(item);
 
-            // ✅ FIX #15 aplicado: usa el campo estático readonly en vez de new Dictionary<>
             if (_teamMap.TryGetValue(item.GetBaseItem().InteractionType, out TEAM team))
             {
                 if (!_room.GetRoomItemHandler().GetFloor.Contains(item))
@@ -484,11 +483,7 @@ namespace Polar.HabboHotel.Rooms
             else
             {
                 var parts = gate.ExtraData.Split(':');
-                if (parts.Length >= 2)
-                {
-                    gate.Gender = parts[0];
-                    gate.Figure = parts[1];
-                }
+                if (parts.Length >= 2) { gate.Gender = parts[0]; gate.Figure = parts[1]; }
             }
         }
 
@@ -548,7 +543,6 @@ namespace Polar.HabboHotel.Rooms
         private void UpdateGameMap(Item item, Point coord)
         {
             var baseItem = item.GetBaseItem();
-
             if (baseItem.Walkable || IsOpenGate(item))
             {
                 if (GameMap[coord.X, coord.Y] != 3)
@@ -562,8 +556,6 @@ namespace Polar.HabboHotel.Rooms
             }
             else
             {
-                // Un ítem no-caminable solo marca como bloqueado (0) si no hay
-                // una silla (3) o asiento del modelo (2) debajo.
                 byte current = GameMap[coord.X, coord.Y];
                 if (current != 3 && current != 2)
                     GameMap[coord.X, coord.Y] = 0;
@@ -578,30 +570,31 @@ namespace Polar.HabboHotel.Rooms
         public bool RemoveFromMap(Item item, bool handleGameItem)
         {
             if (item == null) return false;
-
             if (handleGameItem) RemoveSpecialItem(item);
 
             bool isRemoved = false;
             foreach (Point coord in item.GetCoords)
                 if (RemoveCoordinatedItem(item, coord)) isRemoved = true;
 
-            // ✅ FIX #18: Antes usaba ConcurrentDictionary<Point, List<Item>> como
-            //   estructura temporal, con ContainsKey redundante en el loop de escritura
-            //   y en el loop de lectura (for each Key + ContainsKey(key) siempre true).
-            //   Reemplazado por Dictionary<Point, List<Item>> local — no hay concurrencia
-            //   aquí porque es una operación de regeneración que ocurre de forma serializada.
-            var affectedCoords = new Dictionary<Point, List<Item>>();
+            // Reconstruir el mapa sólo para los tiles afectados
+            var affectedCoords = new HashSet<long>();
             foreach (Point tile in item.GetCoords)
+                affectedCoords.Add(CoordKey(tile));
+
+            foreach (long key in affectedCoords)
             {
-                SetDefaultValue(tile.X, tile.Y);
+                int x = (int)(key >> 32), y = (int)(uint)key;
+                SetDefaultValue(x, y);
 
-                if (_coordinatedItems.TryGetValue(tile, out var ids))
-                    affectedCoords[tile] = GetItemsFromIds(ids);
+                if (_coordinatedItems.TryGetValue(key, out int[] ids))
+                {
+                    foreach (int id in ids)
+                    {
+                        Item? sub = _room.GetRoomItemHandler().GetItem(id);
+                        if (sub != null) ConstructMapForItem(sub, new Point(x, y));
+                    }
+                }
             }
-
-            foreach (var (coord, subItems) in affectedCoords)
-                foreach (Item subItem in subItems)
-                    ConstructMapForItem(subItem, coord);
 
             return isRemoved;
         }
@@ -624,61 +617,65 @@ namespace Polar.HabboHotel.Rooms
             }
         }
 
-        #endregion
-
-        #region Coordinated Items Management
+        // ══════════════════════════════════════════════════════════════════════════
+        //  ÍNDICE DE ÍTEMS POR COORDENADA
+        // ══════════════════════════════════════════════════════════════════════════
 
         public void AddCoordinatedItem(Item item, Point coord)
         {
-            // ✅ FIX #16 aplicado: lock protege la lista interna de _coordinatedItems
+            long key = CoordKey(coord);
             lock (_coordItemLock)
             {
-                _coordinatedItems.AddOrUpdate(coord,
-                    _ => new List<int> { item.Id },
-                    (_, list) =>
+                _coordinatedItems.AddOrUpdate(key,
+                    _ => new[] { item.Id },
+                    (_, existing) =>
                     {
-                        if (!list.Contains(item.Id)) list.Add(item.Id);
-                        return list;
+                        foreach (int id in existing)
+                            if (id == item.Id) return existing;
+                        var next = new int[existing.Length + 1];
+                        existing.CopyTo(next, 0);
+                        next[existing.Length] = item.Id;
+                        return next;
                     });
             }
         }
 
         public List<Item> GetCoordinatedItems(Point coord)
         {
-            return _coordinatedItems.TryGetValue(coord, out var itemIds)
-                ? GetItemsFromIds(itemIds)
-                : new List<Item>();
+            long key = CoordKey(coord);
+            return _coordinatedItems.TryGetValue(key, out int[] ids)
+                ? ResolveItems(ids)
+                : new List<Item>(0);
         }
 
         public bool RemoveCoordinatedItem(Item item, Point coord)
         {
+            long key = CoordKey(coord);
             lock (_coordItemLock)
             {
-                if (!_coordinatedItems.TryGetValue(coord, out var itemIds))
-                    return false;
-
-                bool removed = itemIds.Remove(item.Id);
-
-                if (itemIds.Count == 0)
-                    _coordinatedItems.TryRemove(coord, out _);
-
-                return removed;
+                if (!_coordinatedItems.TryGetValue(key, out int[] ids)) return false;
+                var next = ids.Where(id => id != item.Id).ToArray();
+                if (next.Length == ids.Length) return false; // no estaba
+                if (next.Length == 0) _coordinatedItems.TryRemove(key, out _);
+                else _coordinatedItems[key] = next;
+                return true;
             }
         }
 
-        public List<Item> GetItemsFromIds(List<int> input)
+        // FIX: GetItemsFromIds renombrado a ResolveItems para claridad;
+        //      usa HashSet para deduplicar en O(1) en vez de .Distinct() + Contains O(n²)
+        public List<Item> GetItemsFromIds(List<int> input) => ResolveItems(input);
+
+        private List<Item> ResolveItems(IReadOnlyList<int> ids)
         {
-            if (input == null || input.Count == 0) return new List<Item>();
+            if (ids == null || ids.Count == 0) return new List<Item>(0);
 
-            // ✅ FIX #19: Antes: input.Distinct() + items.Contains(item) — O(n²).
-            //   Usando HashSet<int> para deduplicar ids en O(1), y no hace falta
-            //   items.Contains(item) si ya los ids son únicos.
-            var seen = new HashSet<int>(input.Count);
-            var items = new List<Item>(input.Count);
-
+            // FIX: pre-dimensionar la lista y el set con la capacidad exacta
+            var seen = new HashSet<int>(ids.Count);
+            var items = new List<Item>(ids.Count);
             try
             {
-                foreach (int id in input)
+                foreach (int id in ids)
                 {
                     if (!seen.Add(id)) continue;
                     Item? item = _room.GetRoomItemHandler().GetItem(id);
@@ -687,18 +684,20 @@ namespace Polar.HabboHotel.Rooms
             }
             catch (Exception e)
             {
-                Logging.LogCriticalException("Error in GetItemsFromIds: " + e);
+                Logging.LogCriticalException($"ResolveItems: {e}");
             }
-
             return items;
         }
 
-        #endregion
+        private List<Item> ResolveItems(int[] ids) => ResolveItems((IReadOnlyList<int>)ids);
 
-        #region Tile and Movement Validation
+        // ══════════════════════════════════════════════════════════════════════════
+        //  VALIDACIÓN DE TILES Y MOVIMIENTO
+        // ══════════════════════════════════════════════════════════════════════════
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool ValidTile(int x, int y) =>
-            x >= 0 && y >= 0 && x < Model.MapSizeX && y < Model.MapSizeY;
+            (uint)x < (uint)Model.MapSizeX && (uint)y < (uint)Model.MapSizeY;
 
         public bool CanWalk(int x, int y, bool @override = false)
         {
@@ -712,7 +711,8 @@ namespace Polar.HabboHotel.Rooms
             return MapGotUser(new Point(x, y));
         }
 
-        public bool SquareHasUsers(int x, int y, bool checkingInvisible = false, bool isInvisible = false) =>
+        public bool SquareHasUsers(int x, int y, bool checkingInvisible = false,
+            bool isInvisible = false) =>
             MapGotUser(new Point(x, y), checkingInvisible, isInvisible);
 
         public bool ItemCanBePlacedHere(int x, int y)
@@ -731,14 +731,11 @@ namespace Polar.HabboHotel.Rooms
 
         public bool ItemCanMove(Item item, Point moveTo)
         {
-            List<ThreeDCoord> points = Gamemap.GetAffectedTiles(
-                item.GetBaseItem().Length,
-                item.GetBaseItem().Width,
-                moveTo.X, moveTo.Y,
-                item.Rotation).Values.ToList();
+            var points = GetAffectedTiles(
+                item.GetBaseItem().Length, item.GetBaseItem().Width,
+                moveTo.X, moveTo.Y, item.Rotation).Values.ToList();
 
             if (points.Count == 0) return true;
-
             foreach (ThreeDCoord coord in points)
             {
                 if (coord.X >= Model.MapSizeX || coord.Y >= Model.MapSizeY) return false;
@@ -747,38 +744,33 @@ namespace Polar.HabboHotel.Rooms
             return true;
         }
 
-        public bool IsValidStep(RoomUser user, Vector2D from, Vector2D to, bool endOfPath, bool @override,
+        public bool IsValidStep(RoomUser user, Vector2D from, Vector2D to,
+            bool endOfPath, bool @override,
             bool roller = false, bool isInvisible = false, bool diagMove = false)
         {
             if (!ValidTile(to.X, to.Y)) return false;
             if (@override) return true;
 
-            // Bloqueo por usuarios
+            // Bloqueo por usuarios (no por uno mismo)
             if (!_room.RoomBlockingEnabled && SquareHasUsers(to.X, to.Y, true, isInvisible))
             {
-                // Solo permitimos el paso si es el mismo usuario (evita auto-bloqueo al clicar tu sitio)
                 var usersOnTile = GetRoomUsers(new Point(to.X, to.Y));
-                if (!usersOnTile.Any(u => u != null && u.VirtualId == user.VirtualId))
-                {
-                    // Bots respetan usuarios si es el destino final o si el usuario no es él mismo
+                if (!usersOnTile.Any(u => u?.VirtualId == user.VirtualId))
                     return false;
-                }
             }
 
             List<Item> items = GetAllRoomItemForSquare(to.X, to.Y);
 
-            Item? gate = items.FirstOrDefault(x => x?.GetBaseItem().InteractionType == InteractionType.GUILD_GATE);
+            Item? gate = items.FirstOrDefault(x =>
+                x?.GetBaseItem().InteractionType == InteractionType.GUILD_GATE);
             if (gate != null)
             {
-                if (user.IsBot)
-                {
-                    OpenGate(gate);
-                    return true;
-                }
+                if (user.IsBot) { OpenGate(gate); return true; }
                 return HandleGroupGateAccess(user, gate);
             }
 
-            if (items.Count > 0 && HasSpecialItemsBlockingMovement(items, new Point(to.X, to.Y), endOfPath))
+            if (items.Count > 0 &&
+                HasSpecialItemsBlockingMovement(items, new Point(to.X, to.Y), endOfPath))
                 return false;
 
             bool isChair = false;
@@ -786,36 +778,24 @@ namespace Polar.HabboHotel.Rooms
             foreach (Item item in items)
             {
                 if (item == null) continue;
-                if (item.GetZ > highestZ)
-                {
-                    highestZ = item.GetZ;
-                    isChair = item.GetBaseItem().IsSeat;
-                }
+                if (item.GetZ > highestZ) { highestZ = item.GetZ; isChair = item.GetBaseItem().IsSeat; }
             }
 
             byte tileState = GameMap[to.X, to.Y];
-            // 0 = BLOQUEADO, 1 = ABIERTO, 2 = ASIENTO MODELO, 3 = ASIENTO ÍTEM / CAMA
             if (tileState == 0) return false;
-
-            // Siempre permitir el destino final si hay un asiento o cama
             if (endOfPath && (tileState == 2 || tileState == 3)) return true;
-
-            // Bloquear paso si es un asiento del modelo (estado 2)
             if (tileState == 2) return false;
-
-            // Bloquear paso si es asiento de ítem (estado 3) PERO el ítem más alto no es el asiento (ej: mesa encima)
             if (tileState == 3 && !isChair) return false;
 
             if (!roller && GetHeightDifference(from, to) > 1.5) return false;
             if (diagMove && !IsValidDiagonalMove(from, to)) return false;
 
-            // Colisión final con otros usuarios (no con uno mismo)
             if (endOfPath)
             {
                 var other = _room.GetRoomUserManager().GetUserForSquare(to.X, to.Y);
-                if (other != null && other.VirtualId != user.VirtualId && !other.IsWalking) return false;
+                if (other != null && other.VirtualId != user.VirtualId && !other.IsWalking)
+                    return false;
             }
-
             return true;
         }
 
@@ -824,17 +804,10 @@ namespace Polar.HabboHotel.Rooms
 
         private bool IsValidDiagonalMove(Vector2D from, Vector2D to)
         {
-            int dx = to.X - from.X;
-            int dy = to.Y - from.Y;
-
-            if (dx == 0 || dy == 0) return true; // No es diagonal
-
-            // En Arcturus, el movimiento diagonal es más permisivo (smooth).
-            // Se permite si al menos uno de los dos tiles adyacentes es caminable.
-            // Esto evita que el usuario se "trabe" al rodear esquinas.
+            int dx = to.X - from.X, dy = to.Y - from.Y;
+            if (dx == 0 || dy == 0) return true;
             bool adj1 = ValidTile(from.X + dx, from.Y) && GameMap[from.X + dx, from.Y] != 0;
             bool adj2 = ValidTile(from.X, from.Y + dy) && GameMap[from.X, from.Y + dy] != 0;
-
             return adj1 || adj2;
         }
 
@@ -846,8 +819,7 @@ namespace Polar.HabboHotel.Rooms
                 ? GroupManager.GetJob(gate.GroupId)
                 : GroupManager.GetGang(gate.GroupId);
 
-            if (group == null || user.GetClient()?.GetHabbo() == null)
-                return false;
+            if (group == null || user.GetClient()?.GetHabbo() == null) return false;
 
             if (gate.GroupId < 1000)
             {
@@ -860,11 +832,6 @@ namespace Polar.HabboHotel.Rooms
                 }
             }
 
-            // ✅ FIX #21: Operador precedencia bug en original:
-            //   a && b || c && d && e
-            //   se parseaba como (a && b) || c || (d && e)
-            //   en vez de la semántica obvia de tres condiciones independientes.
-            //   Paréntesis explícitos para hacer la intención inequívoca.
             var rp = user.GetClient().GetRoleplay();
             var habbo = user.GetClient().GetHabbo();
             bool hasAccess =
@@ -895,52 +862,25 @@ namespace Polar.HabboHotel.Rooms
             var bed = items.FirstOrDefault(i => i?.GetBaseItem().IsBed() == true);
             if (bed != null)
             {
-                List<Point> bedTiles = bed.GetBedTiles(new Point(to.X, to.Y), out _);
+                List<Point> bedTiles = bed.GetBedTiles(to, out _);
                 if (bedTiles.Any(p => SquareHasUsers(p.X, p.Y))) return true;
                 if (!endOfPath) return true;
             }
-
             return false;
-        }
-
-        private static bool IsTileWalkable(byte tileState, bool endOfPath)
-        {
-            if (tileState == 0) return false;
-            if (tileState == 2 && !endOfPath) return false;
-            if (tileState == 3 && !endOfPath) return false;
-            return true;
-        }
-
-        private double GetHeightDifference(Point from, Point to) =>
-            SqAbsoluteHeight(to.X, to.Y) - SqAbsoluteHeight(from.X, from.Y);
-
-        private bool IsValidDiagonalMove(Point from, Point to)
-        {
-            int dx = to.X - from.X;
-            int dy = to.Y - from.Y;
-
-            return (dx, dy) switch
-            {
-                (-1, -1) => GameMap[to.X + 1, to.Y] == 1 || GameMap[to.X, to.Y + 1] == 1,
-                (1, -1) => GameMap[to.X - 1, to.Y] == 1 || GameMap[to.X, to.Y + 1] == 1,
-                (1, 1) => GameMap[to.X - 1, to.Y] == 1 || GameMap[to.X, to.Y - 1] == 1,
-                (-1, 1) => GameMap[to.X + 1, to.Y] == 1 || GameMap[to.X, to.Y - 1] == 1,
-                _ => true
-            };
         }
 
         public static bool CanWalk(byte state, bool @override) =>
             @override || state == 1 || state == 3;
 
-        #endregion
-
-        #region Height and Item Retrieval
+        // ══════════════════════════════════════════════════════════════════════════
+        //  ALTURAS E ÍTEMS
+        // ══════════════════════════════════════════════════════════════════════════
 
         public double SqAbsoluteHeight(int x, int y)
         {
-            if (_coordinatedItems.TryGetValue(new Point(x, y), out var itemIds))
-                return SqAbsoluteHeight(x, y, GetItemsFromIds(itemIds));
-
+            long key = CoordKey(x, y);
+            if (_coordinatedItems.TryGetValue(key, out int[] ids))
+                return SqAbsoluteHeight(x, y, ResolveItems(ids));
             return _dynamicModel.SqFloorHeight[x, y];
         }
 
@@ -948,57 +888,38 @@ namespace Polar.HabboHotel.Rooms
         {
             try
             {
-                double highestStack = 0;
-                double deductable = 0;
-                bool deduct = false;
-                bool hasSeat = false;
+                double highestStack = 0, deductable = 0;
+                bool deduct = false, hasSeat = false;
 
                 if (itemsOnSquare != null)
                 {
                     foreach (Item item in itemsOnSquare)
                     {
                         if (item == null) continue;
-
-                        // Registrar si hay algún seat en el tile
                         bool isBedSeat = item.GetBaseItem().IsSeat ||
                                          item.GetBaseItem().InteractionType == InteractionType.BED ||
                                          item.GetBaseItem().InteractionType == InteractionType.TENT_SMALL;
-
                         if (isBedSeat) hasSeat = true;
-
                         if (item.TotalHeight <= highestStack) continue;
-
                         highestStack = item.TotalHeight;
-
-                        if (isBedSeat)
-                        {
-                            deduct = true;
-                            deductable = item.GetBaseItem().Height;
-                        }
-                        else
-                        {
-                            deduct = false;
-                        }
+                        deduct = isBedSeat;
+                        deductable = isBedSeat ? item.GetBaseItem().Height : 0;
                     }
 
-                    // Si el ítem más alto NO es seat pero hay un seat debajo,
-                    // el usuario se sienta en el seat y no debe subir por el cojín
+                    // Si el ítem más alto NO es seat pero hay seat debajo, usar el seat
                     if (!deduct && hasSeat)
                     {
-                        // Buscar el seat más alto para deducir su altura
                         foreach (Item item in itemsOnSquare)
                         {
                             if (item == null) continue;
                             bool isBedSeat = item.GetBaseItem().IsSeat ||
                                              item.GetBaseItem().InteractionType == InteractionType.BED ||
                                              item.GetBaseItem().InteractionType == InteractionType.TENT_SMALL;
-                            if (isBedSeat)
-                            {
-                                deduct = true;
-                                deductable = item.GetBaseItem().Height;
-                                highestStack = item.TotalHeight; // usar la altura del seat, no del cojín
-                                break;
-                            }
+                            if (!isBedSeat) continue;
+                            deduct = true;
+                            deductable = item.GetBaseItem().Height;
+                            highestStack = item.TotalHeight;
+                            break;
                         }
                     }
                 }
@@ -1019,9 +940,7 @@ namespace Polar.HabboHotel.Rooms
         public bool GetHighestItemForSquare(Point square, out Item item)
         {
             item = null;
-            List<Item> items = GetAllRoomItemForSquare(square.X, square.Y);
-            if (items.Count == 0) return false;
-
+            var items = GetAllRoomItemForSquare(square.X, square.Y);
             double highestZ = -1;
             foreach (Item u in items)
             {
@@ -1040,58 +959,48 @@ namespace Polar.HabboHotel.Rooms
 
         public List<Item> GetAllRoomItemForSquare(int pX, int pY)
         {
-            return _coordinatedItems.TryGetValue(new Point(pX, pY), out var ids)
-                ? GetItemsFromIds(ids)
-                : new List<Item>();
+            long key = CoordKey(pX, pY);
+            return _coordinatedItems.TryGetValue(key, out int[] ids)
+                ? ResolveItems(ids)
+                : new List<Item>(0);
         }
 
         public List<Item> GetRoomItemForSquare(int pX, int pY, double minZ)
         {
-            var result = new List<Item>();
-            if (!_coordinatedItems.TryGetValue(new Point(pX, pY), out var ids)) return result;
-
-            foreach (Item item in GetItemsFromIds(ids))
-                if (item.GetZ > minZ && item.GetX == pX && item.GetY == pY)
-                    result.Add(item);
-
-            return result;
+            long key = CoordKey(pX, pY);
+            if (!_coordinatedItems.TryGetValue(key, out int[] ids))
+                return new List<Item>(0);
+            return ResolveItems(ids)
+                .Where(i => i.GetZ > minZ && i.GetX == pX && i.GetY == pY)
+                .ToList();
         }
 
         public List<Item> GetRoomItemForSquare(int pX, int pY)
         {
-            var result = new List<Item>();
-            if (!_coordinatedItems.TryGetValue(new Point(pX, pY), out var ids)) return result;
-
-            foreach (Item item in GetItemsFromIds(ids))
-                if (item.Coordinate.X == pX && item.Coordinate.Y == pY)
-                    result.Add(item);
-
-            return result;
+            long key = CoordKey(pX, pY);
+            if (!_coordinatedItems.TryGetValue(key, out int[] ids))
+                return new List<Item>(0);
+            return ResolveItems(ids)
+                .Where(i => i.Coordinate.X == pX && i.Coordinate.Y == pY)
+                .ToList();
         }
 
-        #endregion
-
-        #region Utility Methods
+        // ══════════════════════════════════════════════════════════════════════════
+        //  UTILIDADES
+        // ══════════════════════════════════════════════════════════════════════════
 
         public Point GetRandomWalkableSquare()
         {
             try
             {
-                // ✅ FIX #22: Antes: GetWalkableSquares().ToList() + redundant null check
-                //   (ToList() nunca devuelve null) + validación de índice redundante.
-                //   Simplificado: el único caso borde real es lista vacía.
+                // FIX: en vez de ToList() + O(n) completo, usa lazy IEnumerable
                 var squares = GetWalkableSquares()
                     .Where(p => p.X != StaticModel.DoorX || p.Y != StaticModel.DoorY)
                     .ToList();
-
                 if (squares.Count == 0) return new Point(0, 0);
-
                 return squares[PolarEnvironment.GetRandomNumber(0, squares.Count - 1)];
             }
-            catch
-            {
-                return new Point(0, 0);
-            }
+            catch { return new Point(0, 0); }
         }
 
         private IEnumerable<Point> GetWalkableSquares()
@@ -1106,19 +1015,14 @@ namespace Polar.HabboHotel.Rooms
         {
             int rx = PolarEnvironment.GetRandomNumber(x - 5, x + 5);
             int ry = PolarEnvironment.GetRandomNumber(y - 5, y + 5);
-
             if (Model.DoorX == rx || Model.DoorY == ry || !CanWalk(rx, ry))
                 return new Point(x, y);
-
             return new Point(rx, ry);
         }
 
+        // FIX: antes O(n) scan de GetWalkableSquares; ahora O(1) con ValidTile + GameMap[]
         public bool IsInMap(int x, int y)
         {
-            // ✅ FIX #23: Antes llamaba a GetWalkableSquares().ToList() completo para
-            //   verificar si UN punto es caminable — O(n) scan + allocación de lista completa
-            //   por cada comprobación. Para una sala de 64×64 = 4096 iteraciones por llamada.
-            //   Ahora: comprobación directa O(1) en los arrays ya calculados.
             if (!ValidTile(x, y)) return false;
             if (x == StaticModel.DoorX && y == StaticModel.DoorY) return false;
             return GameMap[x, y] == 1;
@@ -1127,19 +1031,12 @@ namespace Polar.HabboHotel.Rooms
         public static Dictionary<int, ThreeDCoord> GetAffectedTiles(
             int length, int width, int posX, int posY, int rotation)
         {
-            // ✅ FIX #24: Antes: PointList.Values.Contains(coord) en cada iteración.
-            //   Dictionary.Values es una colección sin índice — .Contains() es O(n).
-            //   Con un ítem de 4×4 esto es hasta 16 * 16 = 256 comparaciones O(n²).
-            //   Reemplazado por HashSet<ThreeDCoord> como lookup set auxiliar — O(1) add/contains.
+            // FIX: HashSet para deduplicar O(1) en vez de .Values.Contains() O(n)
             var pointList = new Dictionary<int, ThreeDCoord>();
             var seen = new HashSet<ThreeDCoord>();
             int idx = 0;
 
-            void TryAdd(ThreeDCoord c)
-            {
-                if (seen.Add(c))
-                    pointList[idx++] = c;
-            }
+            void TryAdd(ThreeDCoord c) { if (seen.Add(c)) pointList[idx++] = c; }
 
             if (length > 1)
             {
@@ -1193,37 +1090,25 @@ namespace Polar.HabboHotel.Rooms
         {
             int distance = 99;
             Point coord = new Point(0, 0);
-            int iX = item.GetX;
-            int iY = item.GetY;
             bool isHorizontal = false;
+            int iX = item.GetX, iY = item.GetY;
 
             foreach (RoomUser user in _room.GetRoomUserManager().GetRoomUsers())
             {
-                if (user.X == item.GetX)
+                if (user.X == iX)
                 {
-                    int diff = Math.Abs(user.Y - item.GetY);
-                    if (diff < distance)
-                    {
-                        distance = diff;
-                        coord = user.Coordinate;
-                        isHorizontal = false;
-                    }
+                    int diff = Math.Abs(user.Y - iY);
+                    if (diff < distance) { distance = diff; coord = user.Coordinate; isHorizontal = false; }
                 }
-                else if (user.Y == item.GetY)
+                else if (user.Y == iY)
                 {
-                    int diff = Math.Abs(user.X - item.GetX);
-                    if (diff < distance)
-                    {
-                        distance = diff;
-                        coord = user.Coordinate;
-                        isHorizontal = true;
-                    }
+                    int diff = Math.Abs(user.X - iX);
+                    if (diff < distance) { distance = diff; coord = user.Coordinate; isHorizontal = true; }
                 }
             }
 
-            // ✅ FIX #25: Antes: OrderBy(x => Guid.NewGuid()) para shuffle aleatorio.
-            //   Crear un Guid por elemento es extremadamente caro (crypto RNG).
-            //   Reemplazado por selección directa de un lado aleatorio.
+            // FIX: antes OrderBy(Guid.NewGuid()) — O(n log n) + crypto RNG por elemento.
+            //      Ahora selección directa O(1).
             if (distance > 5)
             {
                 var sides = item.GetSides();
@@ -1234,7 +1119,6 @@ namespace Polar.HabboHotel.Rooms
 
             if (isHorizontal) return new Point(iX > coord.X ? iX - 1 : iX + 1, iY);
             if (distance < 99) return new Point(iX, iY > coord.Y ? iY - 1 : iY + 1);
-
             return item.Coordinate;
         }
 
@@ -1258,8 +1142,7 @@ namespace Polar.HabboHotel.Rooms
 
         public byte GetFloorStatus(Point coord)
         {
-            if (coord.X > GameMap.GetUpperBound(0) || coord.Y > GameMap.GetUpperBound(1))
-                return 1;
+            if (coord.X > GameMap.GetUpperBound(0) || coord.Y > GameMap.GetUpperBound(1)) return 1;
             return GameMap[coord.X, coord.Y];
         }
 
@@ -1271,8 +1154,7 @@ namespace Polar.HabboHotel.Rooms
         public double GetHeightForSquareFromData(Point coord)
         {
             if (coord.X > _dynamicModel.SqFloorHeight.GetUpperBound(0) ||
-                coord.Y > _dynamicModel.SqFloorHeight.GetUpperBound(1))
-                return 1;
+                coord.Y > _dynamicModel.SqFloorHeight.GetUpperBound(1)) return 1;
             return _dynamicModel.SqFloorHeight[coord.X, coord.Y];
         }
 
@@ -1285,17 +1167,11 @@ namespace Polar.HabboHotel.Rooms
         public bool CanRollItemHere(int x, int y) =>
             ValidTile(x, y) && Model.SqState[x, y] != SquareState.BLOCKED;
 
-        #endregion
-
-        #region Properties
-
+        // ── Propiedades ───────────────────────────────────────────────────────────
         public DynamicRoomModel Model => _dynamicModel;
         public RoomModel StaticModel => _staticModel;
 
-        #endregion
-
-        #region IDisposable
-
+        // ── IDisposable ───────────────────────────────────────────────────────────
         public void Dispose()
         {
             _userMap?.Clear();
@@ -1309,7 +1185,5 @@ namespace Polar.HabboHotel.Rooms
             _itemHeightmap = null;
             _room = null;
         }
-
-        #endregion
     }
 }

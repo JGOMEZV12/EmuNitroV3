@@ -15,6 +15,7 @@ namespace Polar.Communication.Packets.Outgoing.Rooms.Engine
 
             var interactionType = item.Data.InteractionType;
             string zStr = item.GetZ.ToString("G", System.Globalization.CultureInfo.InvariantCulture);
+            string stackHeightStr = item.TotalHeight.ToString("G", System.Globalization.CultureInfo.InvariantCulture);
 
             WriteInteger(item.Id);
             WriteInteger(item.GetBaseItem().SpriteId);
@@ -23,7 +24,7 @@ namespace Polar.Communication.Packets.Outgoing.Rooms.Engine
             WriteInteger(item.Rotation);
             WriteString(zStr);
 
-             WriteString(item.GetZ.ToString("G", System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty);
+             WriteString(stackHeightStr);
 
             if (interactionType == InteractionType.GIFT)
             {

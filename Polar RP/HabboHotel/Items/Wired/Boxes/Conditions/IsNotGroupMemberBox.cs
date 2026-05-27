@@ -1,4 +1,4 @@
-using System;
+using Polar.HabboHotel.Rooms.Instance;
 using System.Collections.Concurrent;
 using Newtonsoft.Json;
 using Polar.Communication.Packets.Incoming;
@@ -23,7 +23,7 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Conditions
         public bool BoolData { get; set; }
         public string ItemsData { get; set; }
 
-        private int userSource = WiredBoxTypeUtility.SOURCE_TRIGGER;
+        private int userSource = WiredSourceUtil.SOURCE_TRIGGER;
         private int groupType = GROUP_CURRENT_ROOM;
         private int selectedGroupId = 0;
         private int quantifier = QUANTIFIER_ALL;
@@ -38,7 +38,7 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Conditions
         public void HandleSave(ClientPacket packet)
         {
             int paramsCount = packet.PopInt();
-            int rawUserSource = paramsCount > 0 ? packet.PopInt() : WiredBoxTypeUtility.SOURCE_TRIGGER;
+            int rawUserSource = paramsCount > 0 ? packet.PopInt() : WiredSourceUtil.SOURCE_TRIGGER;
             int rawGroupType = paramsCount > 1 ? packet.PopInt() : GROUP_CURRENT_ROOM;
             int rawSelectedGroup = paramsCount > 2 ? packet.PopInt() : 0;
             int rawQuantifier = paramsCount > 3 ? packet.PopInt() : QUANTIFIER_ALL;
@@ -140,7 +140,7 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Conditions
 
         private void ResetSettings()
         {
-            this.userSource = WiredBoxTypeUtility.SOURCE_TRIGGER;
+            this.userSource = WiredSourceUtil.SOURCE_TRIGGER;
             this.groupType = GROUP_CURRENT_ROOM;
             this.selectedGroupId = 0;
             this.quantifier = QUANTIFIER_ALL;

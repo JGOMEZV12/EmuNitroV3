@@ -26,9 +26,7 @@ namespace Polar.HabboRoleplay.Combat.Types
         /// Executes this type of combat
         /// </summary>
         ///
-        private static Dictionary<int, DateTime> _lastShotTime = new Dictionary<int, DateTime>();
-        private static readonly TimeSpan ShotCooldown = TimeSpan.FromMilliseconds(500); // 500ms entre disparos
-        public void Execute(GameClient Client, GameClient TargetClient, bool HitClosest = false)
+       public void Execute(GameClient Client, GameClient TargetClient, bool HitClosest = false)
         {
             if (!CanCombat(Client, TargetClient))
                 return;
@@ -347,18 +345,6 @@ namespace Polar.HabboRoleplay.Combat.Types
                 // Diccionario estático para rastrear el último disparo por usuario
 
 
-        // Dentro de tu método de disparo:
-        int userId = Client.GetHabbo().Id;
-        DateTime now = DateTime.Now;
-
-// Verificar cooldown
-if (_lastShotTime.ContainsKey(userId) && (now - _lastShotTime[userId]) < ShotCooldown)
-{
-    return; // Ignorar el disparo si está en cooldown
-}
-
-// Actualizar tiempo del último disparo
-_lastShotTime[userId] = now;
 
 string Text = Weapon.FiringText.Split(':')[0];
         string GunName = Weapon.PublicName;
@@ -1003,11 +989,11 @@ else
             #endregion
 
             #region Cooldown Conditions
-            if (Client.GetRoleplay().TryGetCooldown("reload", false))
+            /*if (Client.GetRoleplay().TryGetCooldown("reload", false))
                 return false;
 
             if (Client.GetRoleplay().TryGetCooldown("gun", false))
-                return false;
+                return false;*/
             #endregion
 
             #region Main Conditions

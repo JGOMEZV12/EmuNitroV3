@@ -1,136 +1,250 @@
-using Polar.Communication.Packets.Outgoing;
-using System;
-using System.Linq;
-using System.Text;
-using System.Drawing;
-using System.Collections;
-using System.Collections.Generic;
-using System.Collections.Concurrent;
-
-using Polar.HabboHotel.Rooms;
-using Polar.HabboHotel.Users;
+using Newtonsoft.Json;
 using Polar.Communication.Packets.Incoming;
+using Polar.Communication.Packets.Outgoing;
+using Polar.HabboHotel.Rooms;
+using Polar.HabboHotel.Rooms.Instance;
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Drawing;
+using System.Linq;
 
 namespace Polar.HabboHotel.Items.Wired.Boxes.Effects
 {
-    class BotMovesToFurniBox : IWiredItem
+    internal class BotMovesToFurniBox : IWiredItem, IWiredCycle, IWiredCustomData
     {
         public Room Instance { get; set; }
         public Item Item { get; set; }
-        public WiredBoxType Type { get { return WiredBoxType.EffectBotMovesToFurniBox; } }
+        public WiredBoxType Type => WiredBoxType.EffectBotMovesToFurniBox;
         public ConcurrentDictionary<int, Item> SetItems { get; set; }
         public string StringData { get; set; }
         public bool BoolData { get; set; }
         public string ItemsData { get; set; }
 
-        public BotMovesToFurniBox(Room Instance, Item Item)
+        public int Delay
         {
-            this.Instance = Instance;
-            this.Item = Item;
-            this.SetItems = new ConcurrentDictionary<int, Item>();
+            get => _delay;
+            set { _delay = value; TickCount = value + 1; }
         }
 
-        public void HandleSave(ClientPacket Packet)
+        public int TickCount { get; set; }
+
+        private int _delay;
+        private int _furniSource = WiredSourceUtil.SOURCE_TRIGGER;
+        private int _botSource = WiredBotSourceUtil.SOURCE_BOT_NAME;
+        private bool _requested;
+
+        public BotMovesToFurniBox(Room instance, Item item)
         {
-            int IntCount = Packet.PopInt();
-            int FurniSource = Packet.PopInt();
-            int BotSource = Packet.PopInt();
-            string BotName = Packet.PopString();
+            Instance = instance;
+            Item = item;
+            SetItems = new ConcurrentDictionary<int, Item>();
+            TickCount = Delay;
+            _requested = false;
+        }
 
-            if (this.SetItems.Count > 0) this.SetItems.Clear();
+        // ── IWiredCustomData ───────────────────────────────────────────────────
 
-            int FurniCount = Packet.PopInt();
-            for (int i = 0; i < FurniCount; i++)
+        public string GetWiredData()
+        {
+            return JsonConvert.SerializeObject(new JsonData
             {
-                Item selected = Instance.GetRoomItemHandler().GetItem(Packet.PopInt());
+                bot_name = StringData ?? "",
+                items = SetItems.Keys.ToList(),
+                delay = Delay,
+                furniSource = _furniSource,
+                botSource = _botSource
+            });
+        }
+
+        public void LoadWiredData(string wiredData)
+        {
+            StringData = "";
+            _furniSource = WiredSourceUtil.SOURCE_TRIGGER;
+            _botSource = WiredBotSourceUtil.SOURCE_BOT_NAME;
+            Delay = 0;
+            SetItems.Clear();
+
+            if (string.IsNullOrEmpty(wiredData)) return;
+
+            if (wiredData.StartsWith("{"))
+            {
+                var data = JsonConvert.DeserializeObject<JsonData>(wiredData);
+                if (data == null) return;
+
+                StringData = data.bot_name ?? "";
+                _furniSource = data.furniSource;
+                _botSource = WiredBotSourceUtil.NormalizeBotSource(
+                                   data.botSource ?? WiredBotSourceUtil.SOURCE_BOT_NAME);
+                Delay = data.delay;
+
+                foreach (int id in data.items ?? new List<int>())
+                {
+                    var it = Instance.GetRoomItemHandler().GetItem(id);
+                    if (it != null)
+                        SetItems.TryAdd(it.Id, it);
+                }
+
+                if (_furniSource == WiredSourceUtil.SOURCE_TRIGGER && SetItems.Count > 0)
+                    _furniSource = WiredSourceUtil.SOURCE_SELECTED;
+            }
+            else
+            {
+                // Retrocompatibilidad: formato viejo "furniSource;botSource;botName"
+                // con items guardados por separado en ItemsData
+                var parts = wiredData.Split(';');
+                if (parts.Length >= 3)
+                {
+                    int.TryParse(parts[0], out _furniSource);
+                    _botSource = WiredBotSourceUtil.NormalizeBotSource(
+                        int.TryParse(parts[1], out int bs) ? bs : WiredBotSourceUtil.SOURCE_BOT_NAME);
+                    StringData = parts[2];
+                }
+
+                // Cargar ítems desde ItemsData si existe
+                if (!string.IsNullOrEmpty(ItemsData))
+                {
+                    foreach (var s in ItemsData.Split(';'))
+                    {
+                        if (!int.TryParse(s, out int id)) continue;
+                        var it = Instance.GetRoomItemHandler().GetItem(id);
+                        if (it != null) SetItems.TryAdd(it.Id, it);
+                    }
+                }
+
+                if (_furniSource == WiredSourceUtil.SOURCE_TRIGGER && SetItems.Count > 0)
+                    _furniSource = WiredSourceUtil.SOURCE_SELECTED;
+            }
+
+            ItemsData = string.Join(";", SetItems.Keys);
+            TickCount = Delay;
+        }
+
+        // ── Packet handling ────────────────────────────────────────────────────
+
+        public void HandleSave(ClientPacket packet)
+        {
+            SetItems.Clear();
+
+            int intCount = packet.PopInt();
+            _furniSource = intCount > 0
+                ? packet.PopInt()
+                : WiredSourceUtil.SOURCE_TRIGGER;
+            _botSource = intCount > 1
+                ? WiredBotSourceUtil.NormalizeBotSource(packet.PopInt())
+                : WiredBotSourceUtil.SOURCE_BOT_NAME;
+            for (int i = 2; i < intCount; i++) packet.PopInt();
+
+            StringData = packet.PopString();
+
+            int furniCount = packet.PopInt();
+            for (int i = 0; i < furniCount; i++)
+            {
+                var selected = Instance.GetRoomItemHandler().GetItem(packet.PopInt());
                 if (selected != null)
                     SetItems.TryAdd(selected.Id, selected);
             }
 
-            this.StringData = FurniSource + ";" + BotSource + ";" + BotName;
+            Delay = packet.PopInt();
+
+            if (SetItems.Count > 0 && _furniSource == WiredSourceUtil.SOURCE_TRIGGER)
+                _furniSource = WiredSourceUtil.SOURCE_SELECTED;
         }
 
-        public void Serialize(ServerPacket Packet)
+        public void Serialize(ServerPacket packet)
         {
-            string botName = "";
-            int furniSource = 0;
-            int botSource = 0;
+            // Limpiar ítems que ya no están en la sala
+            foreach (var id in SetItems.Keys
+                .Where(id => Instance.GetRoomItemHandler().GetItem(id) == null)
+                .ToList())
+                SetItems.TryRemove(id, out _);
 
-            if (!string.IsNullOrEmpty(this.StringData))
-            {
-                string[] parts = this.StringData.Split(';');
-                if (parts.Length == 3)
-                {
-                    furniSource = int.Parse(parts[0]);
-                    botSource = int.Parse(parts[1]);
-                    botName = parts[2];
-                }
-            }
+            packet.WriteBoolean(false);
+            packet.WriteInteger(5); // MAXIMUM_FURNI_SELECTION
+            packet.WriteInteger(SetItems.Count);
+            foreach (var id in SetItems.Keys)
+                packet.WriteInteger(id);
 
-            Packet.WriteBoolean(false);
-            Packet.WriteInteger(100); // max furni
-            Packet.WriteInteger(SetItems.Count);
-            foreach (Item i in SetItems.Values.ToList())
-                Packet.WriteInteger(i.Id);
-
-            Packet.WriteInteger(Item.GetBaseItem().SpriteId);
-            Packet.WriteInteger(Item.Id);
-            Packet.WriteString(botName);
-            Packet.WriteInteger(2);
-            Packet.WriteInteger(furniSource);
-            Packet.WriteInteger(botSource);
-            Packet.WriteInteger(0);
-            Packet.WriteInteger(WiredBoxTypeUtility.GetWiredId(Type));
-            Packet.WriteInteger(0);
-            Packet.WriteInteger(0);
+            packet.WriteInteger(Item.GetBaseItem().SpriteId);
+            packet.WriteInteger(Item.Id);
+            packet.WriteString(StringData ?? "");
+            packet.WriteInteger(2);
+            packet.WriteInteger(_furniSource);
+            packet.WriteInteger(_botSource);
+            packet.WriteInteger(0);
+            packet.WriteInteger(WiredBoxTypeUtility.GetWiredId(Type));
+            packet.WriteInteger(Delay);
+            packet.WriteInteger(0);
         }
+
+        // ── Lógica ─────────────────────────────────────────────────────────────
 
         public bool Execute(params object[] Params)
         {
-            if (Params == null || Params.Length == 0 || String.IsNullOrEmpty(this.StringData))
-                return false;
+            if (string.IsNullOrEmpty(StringData)) return false;
+            if (SetItems.Count == 0) return false;
 
-            RoomUser User = this.Instance.GetRoomUserManager().GetBotByName(this.StringData);
-            if (User == null)
-                return false;
-
-            Random rand = new Random();
-            List<Item> Items = SetItems.Values.ToList();
-            Items = Items.OrderBy(x => rand.Next()).ToList();
-
-            if (Items.Count == 0)
-                return false;
-
-            Item Item = Items.First();
-            if (Item == null)
-                return false;
-
-            if (!Instance.GetRoomItemHandler().GetFloor.Contains(Item))
+            if (!_requested)
             {
-                SetItems.TryRemove(Item.Id, out Item);
+                TickCount = Delay;
+                _requested = true;
+            }
+            return true;
+        }
 
-                if (Items.Contains(Item))
-                    Items.Remove(Item);
+        public bool OnCycle()
+        {
+            if (Instance == null || !_requested) return false;
 
-                if (SetItems.Count == 0 || Items.Count == 0)
-                    return false;
+            _requested = false;
 
-                Item = Items.First();
-                if (Item == null)
-                    return false;
+            var bots = WiredBotSourceUtil.ResolveBots(Instance, _botSource, StringData);
+            if (bots == null || bots.Count == 0) return false;
+
+            // Limpiar ítems que ya no están en la sala (igual que Java removeIf)
+            foreach (var id in SetItems.Keys
+                .Where(id => Instance.GetRoomItemHandler().GetItem(id) == null)
+                .ToList())
+                SetItems.TryRemove(id, out _);
+
+            var validItems = SetItems.Values
+                .Where(i => i != null && Instance.GetRoomItemHandler().GetFloor.Contains(i))
+                .ToList();
+
+            if (validItems.Count == 0) return false;
+            if (Instance.GetGameMap() == null) return false;
+
+            foreach (var bot in bots)
+            {
+                if (bot.RoomId != Instance.RoomId) continue;
+
+                // Preferir ítems que el bot no esté pisando ya (port de possibleItems)
+                var candidates = validItems
+                    .Where(i => !(bot.X == i.GetX && bot.Y == i.GetY))
+                    .ToList();
+
+                // Si todos están ocupados por el bot, usar la lista completa
+                var pool = candidates.Count > 0 ? candidates : validItems;
+                var target = pool[Random.Shared.Next(pool.Count)];
+
+                if (bot.IsWalking)
+                    bot.ClearMovement(true);
+
+                bot.MoveTo(target.GetX, target.GetY);
             }
 
-            if (this.Instance.GetGameMap() == null)
-                return false;
-
-            if (User.IsWalking)
-                User.ClearMovement(true);
-
-            User.BotData.ForcedMovement = true;
-            User.BotData.TargetCoordinate = new Point(Item.GetX, Item.GetY);
-            User.MoveTo(Item.GetX, Item.GetY);
-
             return true;
+        }
+
+        // ── DTO JSON ───────────────────────────────────────────────────────────
+
+        private class JsonData
+        {
+            public string bot_name { get; set; }
+            public List<int> items { get; set; }
+            public int delay { get; set; }
+            public int furniSource { get; set; }
+            public int? botSource { get; set; }
         }
     }
 }

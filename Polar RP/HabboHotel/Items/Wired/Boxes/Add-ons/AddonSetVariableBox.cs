@@ -1,6 +1,6 @@
 ﻿using System;
 using System.Collections.Concurrent;
-using Polar.HabboHotel.Items.Wired.Config;
+using Polar.HabboHotel.Items.Wired;
 using Newtonsoft.Json;
 using Polar.Communication.Packets.Incoming;
 using Polar.Communication.Packets.Outgoing;

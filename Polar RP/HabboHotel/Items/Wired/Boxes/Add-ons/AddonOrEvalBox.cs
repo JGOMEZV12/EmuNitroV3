@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Linq;
+using Polar.HabboHotel.Rooms.Instance;
 using Newtonsoft.Json;
 using Polar.Communication.Packets.Incoming;
 using Polar.Communication.Packets.Outgoing;
@@ -29,7 +29,7 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Add_ons
         public string ItemsData { get; set; }
 
         private int _evaluationMode = MODE_ALL;
-        private int _furniSource = WiredBoxTypeUtility.SOURCE_TRIGGER;
+        private int _furniSource = WiredSourceUtil.SOURCE_TRIGGER;
         private int _compareValue = 1;
 
         public int EvaluationMode => _evaluationMode;
@@ -49,7 +49,7 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Add_ons
             // intParams → string → furnis
             int paramsCount = packet.PopInt();
             int rawMode = paramsCount > 0 ? packet.PopInt() : MODE_ALL;
-            int rawSource = paramsCount > 1 ? packet.PopInt() : WiredBoxTypeUtility.SOURCE_TRIGGER;
+            int rawSource = paramsCount > 1 ? packet.PopInt() : WiredSourceUtil.SOURCE_TRIGGER;
             int rawCompare = paramsCount > 2 ? packet.PopInt() : 1;
 
             string strParam = packet.PopString();
@@ -85,7 +85,7 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Add_ons
         public void LoadWiredData(string wiredData)
         {
             _evaluationMode = MODE_ALL;
-            _furniSource = WiredBoxTypeUtility.SOURCE_TRIGGER;
+            _furniSource = WiredSourceUtil.SOURCE_TRIGGER;
             _compareValue = 1;
             SetItems.Clear();
 
@@ -120,7 +120,7 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Add_ons
                 catch
                 {
                     _evaluationMode = MODE_ALL;
-                    _furniSource = WiredBoxTypeUtility.SOURCE_TRIGGER;
+                    _furniSource = WiredSourceUtil.SOURCE_TRIGGER;
                     _compareValue = 1;
                 }
             }

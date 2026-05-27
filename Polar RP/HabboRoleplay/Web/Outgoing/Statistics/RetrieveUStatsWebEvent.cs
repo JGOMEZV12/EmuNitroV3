@@ -38,6 +38,8 @@ namespace Polar.HabboRoleplay.Web.Outgoing.Statistics
             if (String.IsNullOrEmpty(CachedTargetString))
                 return;
 
+            Client.GetRoleplay().Target = TargetClient.GetHabbo().Username; // Definimos Target si no tiene Fijado uno
+
             Socket.SendWS( "compose_characterbar|" + CachedTargetString);
             #region Hospital
             Socket.SendWS( "compose_hospital|close_actionbtn|");

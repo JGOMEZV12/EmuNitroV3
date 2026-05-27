@@ -7,7 +7,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 
-namespace Polar.HabboHotel.Items.Wired.Config
+namespace Polar.HabboHotel.Items.Wired
 {
     static class WiredVariableNameValidator
     {

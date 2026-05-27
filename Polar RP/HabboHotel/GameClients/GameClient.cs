@@ -232,6 +232,7 @@ namespace Polar.HabboHotel.GameClients
                     //GetRoleplay().UpdateTimerDialogue("Stop-Intro", "remove", 0, 0);
 
                     userData.user.Init(this, userData);
+                    _habbo.Look = PolarEnvironment.GetGame().GetFigureManager().ProcessFigure(_habbo.Look, _habbo.Gender, true);
                     SendMessage(new AuthenticationOKComposer());
                     if (!RoleplayManager.PreLoadedRooms)
                     {

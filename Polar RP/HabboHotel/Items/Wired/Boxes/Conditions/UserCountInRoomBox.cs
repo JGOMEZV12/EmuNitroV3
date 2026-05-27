@@ -1,4 +1,4 @@
-using System;
+using Polar.HabboHotel.Rooms.Instance;
 using System.Collections.Concurrent;
 using Newtonsoft.Json;
 using Polar.Communication.Packets.Incoming;
@@ -19,7 +19,7 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Conditions
 
         protected int lowerLimit = 0;
         protected int upperLimit = 50;
-        protected int userSource = WiredBoxTypeUtility.SOURCE_TRIGGER;
+        protected int userSource = WiredSourceUtil.SOURCE_TRIGGER;
 
         public UserCountInRoomBox(Room instance, Item item)
         {
@@ -34,7 +34,7 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Conditions
             int paramsCount = packet.PopInt();
             int rawLower = paramsCount > 0 ? packet.PopInt() : 0;
             int rawUpper = paramsCount > 1 ? packet.PopInt() : 50;
-            int rawSource = paramsCount > 2 ? packet.PopInt() : WiredBoxTypeUtility.SOURCE_TRIGGER;
+            int rawSource = paramsCount > 2 ? packet.PopInt() : WiredSourceUtil.SOURCE_TRIGGER;
 
             string strParam = packet.PopString();
 
@@ -60,7 +60,7 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Conditions
         {
             this.lowerLimit = 0;
             this.upperLimit = 50;
-            this.userSource = WiredBoxTypeUtility.SOURCE_TRIGGER;
+            this.userSource = WiredSourceUtil.SOURCE_TRIGGER;
 
             if (string.IsNullOrEmpty(wiredData)) return;
 
@@ -82,7 +82,7 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Conditions
                     int.TryParse(parts[0], out this.lowerLimit);
                     int.TryParse(parts[1], out this.upperLimit);
                 }
-                this.userSource = WiredBoxTypeUtility.SOURCE_TRIGGER;
+                this.userSource = WiredSourceUtil.SOURCE_TRIGGER;
             }
 
             this.StringData = $"{lowerLimit};{upperLimit}";

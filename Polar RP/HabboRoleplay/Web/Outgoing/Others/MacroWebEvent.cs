@@ -105,6 +105,7 @@ namespace Polar.HabboHotel.Roleplay.Web.Outgoing.Misc
                     case "update": HandleUpdate(Socket, Client, payload); break;
                     case "delete": HandleDelete(Socket, userId, payload); break;
                     case "execute": HandleExecute(Socket, Client, payload); break;
+                    case "execute_cmd": HandleExecuteCmd(Socket, Client, payload); break;
                     default:
                         Send(Socket, "error", $"Acción desconocida: {action}");
                         break;
@@ -118,6 +119,76 @@ namespace Polar.HabboHotel.Roleplay.Web.Outgoing.Misc
             }
         }
 
+        private void HandleExecuteCmd(ConnectionInformation socket, GameClient client, string payload)
+        {
+            int comma = payload.IndexOf(',');
+            if (comma < 0) return;
+
+            string cmd = payload.Substring(comma + 1).Trim();
+            if (string.IsNullOrEmpty(cmd)) return;
+
+            Task.Run(async () =>
+            {
+                try
+                {
+                    if (cmd.StartsWith(":", StringComparison.CurrentCulture))
+                    {
+                        // ✅ Es comando — parsear directamente
+                        await PolarEnvironment.GetGame().GetChatManager().GetCommands().Parse(client, cmd);
+                    }
+                    else
+                    {
+                        // ✅ No es comando — simular escritura en chat pasando por el flujo completo
+                        // Resolver "x" como LastCommand
+                        string finalCmd = cmd;
+                        if (cmd == "x" && client.GetRoleplay()?.LastCommand != "")
+                            finalCmd = client.GetRoleplay().LastCommand;
+
+                        // Si después de resolver sigue siendo comando, parsear
+                        if (finalCmd.StartsWith(":", StringComparison.CurrentCulture))
+                        {
+                            await PolarEnvironment.GetGame().GetChatManager().GetCommands().Parse(client, finalCmd);
+                            return;
+                        }
+
+                        // Si es texto normal, enviarlo como chat visible en la sala
+                        if (!RoleplayManager.GenerateRoom(client.GetRoomUser()?.RoomId ?? 0, out Room room))
+                            return;
+
+                        var roomUser = room.GetRoomUserManager().GetRoomUserByHabbo(client.GetHabbo().Id);
+                        if (roomUser == null) return;
+
+                        // Pasar por el mismo flujo que ChatEvent usa
+                        var roleplay = client.GetRoleplay();
+                        if (roleplay != null)
+                        {
+                            if (roleplay.IsWorking && HabboHotel.Groups.GroupManager.HasJobCommand(client, "guide"))
+                                roomUser.OnChat(37, finalCmd, false, string.Empty);
+                            else if (roleplay.StaffOnDuty && client.GetHabbo().GetPermissions().HasRight("mod_tool"))
+                                roomUser.OnChat(23, finalCmd, false, string.Empty);
+                            else if (roleplay.AmbassadorOnDuty && client.GetHabbo().GetPermissions().HasRight("ambassador"))
+                                roomUser.OnChat(37, finalCmd, false, string.Empty);
+                            else if (roleplay.CurHealth > 25 && roleplay.CurHealth <= 40 && !roleplay.IsDead)
+                                roomUser.OnChat(5, finalCmd, false, string.Empty);
+                            else if (roleplay.CurHealth <= 25 && !roleplay.IsDead)
+                                roomUser.OnChat(3, finalCmd, false, string.Empty);
+                            else if (roleplay.IsDead)
+                                roomUser.OnChat(3, "[ " + finalCmd + " ]", false, string.Empty);
+                            else
+                                roomUser.OnChat(roomUser.LastBubble, finalCmd, false, string.Empty);
+                        }
+                        else
+                        {
+                            roomUser.OnChat(roomUser.LastBubble, finalCmd, false, string.Empty);
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"HandleExecuteCmd Error: {ex.Message}");
+                }
+            });
+        }
         // ================================================================
         //  OPEN — devuelve todos los macros del usuario
         // ================================================================
@@ -217,14 +288,13 @@ namespace Polar.HabboHotel.Roleplay.Web.Outgoing.Misc
             if (roomUser == null)
             { Send(socket, "error", "No se encontró tu personaje en la sala"); return; }
 
-            // Ejecutar cada comando con delay usando Task.Run para no bloquear el hilo WS
-            int delayMs = Math.Clamp(macro.DelayMs, MinDelayMs, MaxDelayMs);
             int loopCount = Math.Clamp(macro.LoopCount, 1, MaxLoops);
             var commands = macro.Commands
                                  .Where(c => !string.IsNullOrWhiteSpace(c))
                                  .Take(MaxCommandsPerMacro)
                                  .ToList();
 
+            // ✅ Sin await, sin delay — disparo inmediato en hilo separado
             Task.Run(async () =>
             {
                 for (int loop = 0; loop < loopCount; loop++)
@@ -233,29 +303,40 @@ namespace Polar.HabboHotel.Roleplay.Web.Outgoing.Misc
                     {
                         try
                         {
-                            // Determinar el comando a ejecutar (posiblemente reemplazado por LastCommand si el original es "x")
-                            string cmdToExecute = originalCmd;
+                            string cmd = originalCmd;
 
-                            // Si el comando original es "x", usar LastCommand
-                            if (cmdToExecute == "x" && client.GetRoleplay().LastCommand != "")
-                            {
-                                cmdToExecute = client.GetRoleplay().LastCommand;
-                            }
+                            // Resolver "x" como LastCommand
+                            if (cmd == "x" && client.GetRoleplay()?.LastCommand != "")
+                                cmd = client.GetRoleplay().LastCommand;
 
-                            if (cmdToExecute.StartsWith(":", StringComparison.CurrentCulture))
+                            if (cmd.StartsWith(":", StringComparison.CurrentCulture))
                             {
-                                if (await PolarEnvironment.GetGame().GetChatManager().GetCommands().Parse(client, cmdToExecute))
-                                    return;
+                                // ✅ Comando — parsear sin await para no bloquear
+                                _ = PolarEnvironment.GetGame().GetChatManager()
+                                        .GetCommands().Parse(client, cmd);
                             }
                             else
                             {
-                                // Enviar el comando como si el usuario lo escribiera en el chat
-                                roomUser.OnChat(roomUser.LastBubble, cmdToExecute, false, string.Empty, true);
+                                // ✅ Texto normal — mismo flujo que ChatEvent
+                                var roleplay = client.GetRoleplay();
+                                if (roleplay != null)
+                                {
+                                    if (roleplay.IsDead)
+                                        roomUser.OnChat(3, "[ " + cmd + " ]", false, string.Empty);
+                                    else if (roleplay.CurHealth <= 25)
+                                        roomUser.OnChat(3, cmd, false, string.Empty);
+                                    else if (roleplay.CurHealth <= 40)
+                                        roomUser.OnChat(5, cmd, false, string.Empty);
+                                    else
+                                        roomUser.OnChat(roomUser.LastBubble, cmd, false, string.Empty);
+                                }
+                                else
+                                {
+                                    roomUser.OnChat(roomUser.LastBubble, cmd, false, string.Empty);
+                                }
                             }
                         }
-                        catch { /* ignorar errores por comando individual */ }
-
-                        await System.Threading.Tasks.Task.Delay(delayMs);
+                        catch { }
                     }
                 }
             });

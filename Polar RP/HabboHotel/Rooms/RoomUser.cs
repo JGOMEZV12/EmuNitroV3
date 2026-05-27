@@ -21,6 +21,9 @@ namespace Polar.HabboHotel.Rooms
 {
     public class RoomUser
     {
+        // Agregar estos campos a RoomUser
+        public long LastStepTick = 0;      // timestamp del último paso (ms)
+        public int MsPerStep = 430;
         // ────────────────────────────────────────────────
         //  Campos de estado del usuario
         // ────────────────────────────────────────────────

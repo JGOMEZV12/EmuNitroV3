@@ -1,5 +1,5 @@
 using System.Collections.Concurrent;
-using System.Collections.Generic;
+using Polar.HabboHotel.Rooms.Instance;
 using System.Linq;
 using Newtonsoft.Json;
 using Polar.Communication.Packets.Incoming;
@@ -20,8 +20,8 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Conditions
         public string ItemsData { get; set; }
 
         // En TriggererOnFurniBox:
-        protected int _furniSource = WiredBoxTypeUtility.SOURCE_TRIGGER;
-        protected int _userSource = WiredBoxTypeUtility.SOURCE_TRIGGER;
+        protected int _furniSource = WiredSourceUtil.SOURCE_TRIGGER;
+        protected int _userSource = WiredSourceUtil.SOURCE_TRIGGER;
         protected int _quantifier = QUANTIFIER_ALL;
         protected const int QUANTIFIER_ALL = 0;
         protected const int QUANTIFIER_ANY = 1;
@@ -40,8 +40,8 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Conditions
             SetItems.Clear();
 
             int intCount = packet.PopInt();
-            _furniSource = intCount > 0 ? packet.PopInt() : WiredBoxTypeUtility.SOURCE_TRIGGER;
-            _userSource = intCount > 1 ? packet.PopInt() : WiredBoxTypeUtility.SOURCE_TRIGGER;
+            _furniSource = intCount > 0 ? packet.PopInt() : WiredSourceUtil.SOURCE_TRIGGER;
+            _userSource = intCount > 1 ? packet.PopInt() : WiredSourceUtil.SOURCE_TRIGGER;
             _quantifier = intCount > 2 ? NormalizeQuantifier(packet.PopInt()) : QUANTIFIER_ALL;
             for (int i = 3; i < intCount; i++) packet.PopInt();
 
@@ -55,8 +55,8 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Conditions
                     SetItems.TryAdd(selected.Id, selected);
             }
 
-            if (SetItems.Count > 0 && _furniSource == WiredBoxTypeUtility.SOURCE_TRIGGER)
-                _furniSource = WiredBoxTypeUtility.SOURCE_SELECTED;
+            if (SetItems.Count > 0 && _furniSource == WiredSourceUtil.SOURCE_TRIGGER)
+                _furniSource = WiredSourceUtil.SOURCE_SELECTED;
         }
 
         public string GetWiredData()
@@ -73,8 +73,8 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Conditions
         public void LoadWiredData(string wiredData)
         {
             SetItems.Clear();
-            _furniSource = WiredBoxTypeUtility.SOURCE_TRIGGER;
-            _userSource = WiredBoxTypeUtility.SOURCE_TRIGGER;
+            _furniSource = WiredSourceUtil.SOURCE_TRIGGER;
+            _userSource = WiredSourceUtil.SOURCE_TRIGGER;
             _quantifier = QUANTIFIER_ALL;
 
             if (string.IsNullOrEmpty(wiredData)) return;
@@ -109,12 +109,12 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Conditions
                 }
 
                 _furniSource = SetItems.Count == 0
-                    ? WiredBoxTypeUtility.SOURCE_TRIGGER
-                    : WiredBoxTypeUtility.SOURCE_SELECTED;
+                    ? WiredSourceUtil.SOURCE_TRIGGER
+                    : WiredSourceUtil.SOURCE_SELECTED;
             }
 
-            if (SetItems.Count > 0 && _furniSource == WiredBoxTypeUtility.SOURCE_TRIGGER)
-                _furniSource = WiredBoxTypeUtility.SOURCE_SELECTED;
+            if (SetItems.Count > 0 && _furniSource == WiredSourceUtil.SOURCE_TRIGGER)
+                _furniSource = WiredSourceUtil.SOURCE_SELECTED;
 
             ItemsData = string.Join(";", SetItems.Keys);
         }

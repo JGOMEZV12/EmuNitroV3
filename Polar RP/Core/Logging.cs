@@ -62,6 +62,11 @@ namespace Polar.Core
             Writer.LogWiredException(logText);
         }
 
+        public static void LogItemException(string logText)
+        {
+            Writer.LogItemException(logText);
+        }
+
         public static void LogCacheException(string logText)
         {
             Writer.LogCacheException(logText);

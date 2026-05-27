@@ -16,15 +16,31 @@ namespace Polar.HabboHotel.Items.Wired
     }
     static class WiredBoxTypeUtility
     {
-        public const int SOURCE_TRIGGER = 0;
-        public const int SOURCE_SELECTED = 100;
-        public const int SOURCE_SECONDARY_SELECTED = 101;
-        public const int SOURCE_SELECTOR = 200;
         
         public static WiredBoxType FromInteractionType(string type)
         {
             switch (type.ToLower())
             {
+                case "wf_slc_furni_area": return WiredBoxType.SelectorFurniArea;
+                case "wf_slc_furni_neighborhood": return WiredBoxType.SelectorFurniNeighborhood;
+                case "wf_slc_furni_bytype": return WiredBoxType.SelectorFurniByType;
+                case "wf_slc_furni_altitude": return WiredBoxType.SelectorFurniAltitude;
+                case "wf_slc_furni_onfurni": return WiredBoxType.SelectorFurniOnFurni;
+                case "wf_slc_furni_picks": return WiredBoxType.SelectorFurniPicks;
+                case "wf_slc_furni_signal": return WiredBoxType.SelectorFurniSignal;
+                case "wf_slc_furni_with_var": return WiredBoxType.SelectorFurniWithVariable;
+                case "wf_slc_users_area": return WiredBoxType.SelectorUsersArea;
+                case "wf_slc_users_neighborhood": return WiredBoxType.SelectorUsersNeighborhood;
+                case "wf_slc_users_signal": return WiredBoxType.SelectorUsersSignal;
+                case "wf_slc_users_bytype": return WiredBoxType.SelectorUsersByType;
+                case "wf_slc_users_team": return WiredBoxType.SelectorUsersTeam;
+                case "wf_slc_users_byaction": return WiredBoxType.SelectorUsersByAction;
+                case "wf_slc_users_byname": return WiredBoxType.SelectorUsersByName;
+                case "wf_slc_users_handitem": return WiredBoxType.SelectorUsersHandItem;
+                case "wf_slc_users_onfurni": return WiredBoxType.SelectorUsersOnFurni;
+                case "wf_slc_users_group": return WiredBoxType.SelectorUsersGroup;
+                case "wf_slc_users_with_var": return WiredBoxType.SelectorUsersWithVariable;
+
                 case "wf_trg_enter_room": return WiredBoxType.TriggerRoomEnter;
                 case "wf_trg_leave_room":
                 case "wf_trg_exit_room":
@@ -112,6 +128,8 @@ namespace Polar.HabboHotel.Items.Wired
                 case "wf_act_effect_mpu":
                     return WiredBoxType.EffectMoveAndRotate;
 
+                case "wf_act_move_furni_to":
+                    return WiredBoxType.EffectMoveFurniXYZ;
                 case "wf_act_move_to_dir":
                 case "wf_act_move_furni_xyz_slide":
                     return WiredBoxType.EffectMoveAndRotate;
@@ -145,7 +163,7 @@ namespace Polar.HabboHotel.Items.Wired
                 case "wf_act_exe_super":
                 case "wf_act_control":
                 case "wf_act_control_id":
-                
+
                     return WiredBoxType.EffectExecuteWiredStacks;
 
                 case "wf_act_neg_call_stacks":
@@ -154,7 +172,7 @@ namespace Polar.HabboHotel.Items.Wired
                 case "wf_act_dont_chase_top":
                 case "wf_act_collisioncase":
                     return WiredBoxType.EffectCollisionCase;
-                case "wf_act_join_team": 
+                case "wf_act_join_team":
                     return WiredBoxType.EffectAddActorToTeam;
                 case "wf_act_leave_team": return WiredBoxType.EffectRemoveActorFromTeam;
 
@@ -266,6 +284,7 @@ namespace Polar.HabboHotel.Items.Wired
                 case "wf_xtra_mov_no_animation": return WiredBoxType.AddonMoveNoAnimation;
                 case "wf_xtra_mov_physics": return WiredBoxType.AddonMovePhysics;
                 case "wf_xtra_or_eval": return WiredBoxType.AddonOrEval;
+                case "wf_trg_var_changed": return WiredBoxType.TriggerRoomVariableChanged;
                 case "wf_var_user": return WiredBoxType.AddonSetVariable;
                 case "wf_var_lvlup_system": return WiredBoxType.AddonVariableLevelUpSystem;
                 case "wf_var_reference": return WiredBoxType.AddonVariableReference;
@@ -348,6 +367,8 @@ namespace Polar.HabboHotel.Items.Wired
                     return 11;
                 case WiredBoxType.TriggerLeaveRoom:
                     return 16;
+                case WiredBoxType.TriggerRoomVariableChanged:
+                    return 23;
 
                 case WiredBoxType.EffectToggleFurniState:
                     return 0;
@@ -374,6 +395,8 @@ namespace Polar.HabboHotel.Items.Wired
                     return 11;
                 case WiredBoxType.EffectMoveFurniFromNearestUser:
                     return 12;
+                case WiredBoxType.EffectMoveFurniXYZ:
+                    return 16;
                 case WiredBoxType.EffectGiveReward:
                     return 17;
                 case WiredBoxType.EffectExecuteWiredStacks:
@@ -537,12 +560,30 @@ namespace Polar.HabboHotel.Items.Wired
                     return 93;
                 case WiredBoxType.ConditionVariableIsLessThan:
                     return 94;
-                case WiredBoxType.EffectMoveFurniXYZ:
-                    return 95;
                 case WiredBoxType.EffectGiveHanditem:
                     return 96;
                 case WiredBoxType.EffectTeleportToRoom:
                     return 97;
+
+                case WiredBoxType.SelectorFurniArea: return 28;
+                case WiredBoxType.SelectorFurniNeighborhood: return 29;
+                case WiredBoxType.SelectorFurniByType: return 30;
+                case WiredBoxType.SelectorFurniAltitude: return 44;
+                case WiredBoxType.SelectorFurniOnFurni: return 45;
+                case WiredBoxType.SelectorFurniPicks: return 46;
+                case WiredBoxType.SelectorFurniSignal: return 47;
+                case WiredBoxType.SelectorFurniWithVariable: return 75;
+                case WiredBoxType.SelectorUsersArea: return 31;
+                case WiredBoxType.SelectorUsersNeighborhood: return 32;
+                case WiredBoxType.SelectorUsersSignal: return 48;
+                case WiredBoxType.SelectorUsersByType: return 49;
+                case WiredBoxType.SelectorUsersTeam: return 50;
+                case WiredBoxType.SelectorUsersByAction: return 51;
+                case WiredBoxType.SelectorUsersByName: return 52;
+                case WiredBoxType.SelectorUsersOnFurni: return 53;
+                case WiredBoxType.SelectorUsersGroup: return 54;
+                case WiredBoxType.SelectorUsersHandItem: return 55;
+                case WiredBoxType.SelectorUsersWithVariable: return 76;
             }
             return 0;
         }

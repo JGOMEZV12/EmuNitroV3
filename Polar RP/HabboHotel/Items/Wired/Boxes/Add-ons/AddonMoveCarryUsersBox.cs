@@ -4,6 +4,7 @@ using Newtonsoft.Json;
 using Polar.Communication.Packets.Incoming;
 using Polar.Communication.Packets.Outgoing;
 using Polar.HabboHotel.Rooms;
+using Polar.HabboHotel.Rooms.Instance;
 
 namespace Polar.HabboHotel.Items.Wired.Boxes.Add_ons
 {
@@ -22,7 +23,7 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Add_ons
         public string ItemsData { get; set; }
 
         private int carryMode = MODE_DIRECTLY_ON_FURNI;
-        private int userSource = WiredBoxTypeUtility.SOURCE_TRIGGER;
+        private int userSource = WiredSourceUtil.SOURCE_TRIGGER;
 
         public int CarryMode => carryMode;
         public int UserSource => userSource;
@@ -39,7 +40,7 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Add_ons
         {
             int paramsCount = packet.PopInt();
             int rawCarryMode = paramsCount > 0 ? packet.PopInt() : MODE_DIRECTLY_ON_FURNI;
-            int rawSource = paramsCount > 1 ? packet.PopInt() : WiredBoxTypeUtility.SOURCE_TRIGGER;
+            int rawSource = paramsCount > 1 ? packet.PopInt() : WiredSourceUtil.SOURCE_TRIGGER;
 
             string strParam = packet.PopString();
 
@@ -62,7 +63,7 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Add_ons
         public void LoadWiredData(string wiredData)
         {
             this.carryMode = MODE_DIRECTLY_ON_FURNI;
-            this.userSource = WiredBoxTypeUtility.SOURCE_TRIGGER;
+            this.userSource = WiredSourceUtil.SOURCE_TRIGGER;
 
             if (string.IsNullOrEmpty(wiredData)) return;
 
@@ -111,10 +112,10 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Add_ons
 
         private static int NormalizeUserSource(int value) =>
             value == SOURCE_ALL_ROOM_USERS ||
-            value == WiredBoxTypeUtility.SOURCE_SELECTOR ||
-            value == WiredBoxTypeUtility.SOURCE_TRIGGER
+            value == WiredSourceUtil.SOURCE_SELECTOR ||
+            value == WiredSourceUtil.SOURCE_TRIGGER
                 ? value
-                : WiredBoxTypeUtility.SOURCE_TRIGGER;
+                : WiredSourceUtil.SOURCE_TRIGGER;
 
         private class JsonData
         {

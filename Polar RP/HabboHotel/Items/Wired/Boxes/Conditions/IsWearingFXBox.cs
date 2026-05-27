@@ -1,4 +1,4 @@
-using System;
+using Polar.HabboHotel.Rooms.Instance;
 using System.Collections.Concurrent;
 using Newtonsoft.Json;
 using Polar.Communication.Packets.Incoming;
@@ -22,7 +22,7 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Conditions
         public string ItemsData { get; set; }
 
         protected int effectId = 0;
-        protected int userSource = WiredBoxTypeUtility.SOURCE_TRIGGER;
+        protected int userSource = WiredSourceUtil.SOURCE_TRIGGER;
         protected int quantifier = QUANTIFIER_ANY;
 
         public IsWearingFXBox(Room instance, Item item)
@@ -37,7 +37,7 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Conditions
         {
             int paramsCount = packet.PopInt();
             int rawEffect = paramsCount > 0 ? packet.PopInt() : 0;
-            int rawSource = paramsCount > 1 ? packet.PopInt() : WiredBoxTypeUtility.SOURCE_TRIGGER;
+            int rawSource = paramsCount > 1 ? packet.PopInt() : WiredSourceUtil.SOURCE_TRIGGER;
             int rawQuant = paramsCount > 2 ? packet.PopInt() : QUANTIFIER_ANY;
 
             string strParam = packet.PopString();
@@ -63,7 +63,7 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Conditions
         public void LoadWiredData(string wiredData)
         {
             this.effectId = 0;
-            this.userSource = WiredBoxTypeUtility.SOURCE_TRIGGER;
+            this.userSource = WiredSourceUtil.SOURCE_TRIGGER;
             this.quantifier = QUANTIFIER_ANY;
 
             if (string.IsNullOrEmpty(wiredData)) return;
@@ -83,7 +83,7 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Conditions
                 if (int.TryParse(wiredData, out int old))
                     this.effectId = old;
 
-                this.userSource = WiredBoxTypeUtility.SOURCE_TRIGGER;
+                this.userSource = WiredSourceUtil.SOURCE_TRIGGER;
                 this.quantifier = QUANTIFIER_ANY;
             }
 

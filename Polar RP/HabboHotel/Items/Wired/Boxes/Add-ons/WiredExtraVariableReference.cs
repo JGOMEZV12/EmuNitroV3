@@ -1,7 +1,7 @@
 ﻿using Newtonsoft.Json;
 using Polar.Communication.Packets.Incoming;
 using Polar.Communication.Packets.Outgoing;
-using Polar.HabboHotel.Items.Wired.Config;
+using Polar.HabboHotel.Items.Wired;
 using Polar.HabboHotel.Rooms;
 using System;
 using System.Collections.Concurrent;
@@ -9,7 +9,7 @@ using System.Collections.Generic;
 
 namespace Polar.HabboHotel.Items.Wired.Boxes.Add_ons
 {
-    class AddonVariableReferenceBox : IWiredItem, IWiredCustomData
+    public class AddonVariableReferenceBox : IWiredItem, IWiredCustomData
     {
 
         public Room Instance { get; set; }

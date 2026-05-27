@@ -28,7 +28,7 @@ namespace Polar.Communication.Packets.Incoming.Rooms.Chat
                     return;
 
                 RoomUser User = Room.GetRoomUserManager().GetRoomUserByHabbo(Session.GetHabbo().Id);
-                if (User == null/* || (Session.GetHabbo().Rank > 3 && !Session.GetHabbo().StaffOk)*/)
+                if (User == null)
                     return;
 
                 if (Session.LoggingOut)
@@ -41,11 +41,9 @@ namespace Polar.Communication.Packets.Incoming.Rooms.Chat
                 int Bubble = Packet.PopInt();
                 string Colour = Packet.PopString();
 
-                // Validación adicional: si el mensaje es nulo o vacío después del filtrado
                 if (string.IsNullOrEmpty(Message))
                     return;
 
-                //Console.WriteLine(Colour + " / " + Bubble + " / " + Message + " / ");
                 if (Bubble != 0 && !User.GetClient().GetHabbo().GetPermissions().HasRight("use_any_bubble"))
                     Bubble = 0;
 
@@ -53,46 +51,44 @@ namespace Polar.Communication.Packets.Incoming.Rooms.Chat
                 if (!PolarEnvironment.GetGame().GetChatManager().GetChatStyles().TryGetStyle(Bubble, out Style) || (Style.RequiredRight.Length > 0 && !Session.GetHabbo().GetPermissions().HasRight(Style.RequiredRight)))
                     Bubble = 0;
 
-                if (PolarEnvironment.GetUnixTimestamp() < Session.GetHabbo().FloodTime && Session.GetHabbo().FloodTime != 0)
-                    return;
+                // ✅ Si es comando salta el flood, si no lo aplica
+                bool isCommand = Message.StartsWith(":", StringComparison.CurrentCulture);
 
-                if (Session.GetHabbo().TimeMuted > 0)
+                if (!isCommand)
                 {
-                    Session.SendMessage(new MutedComposer(Session.GetHabbo().TimeMuted));
-                    return;
+                    if (PolarEnvironment.GetUnixTimestamp() < Session.GetHabbo().FloodTime && Session.GetHabbo().FloodTime != 0)
+                        return;
+
+                    if (Session.GetHabbo().TimeMuted > 0)
+                    {
+                        Session.SendMessage(new MutedComposer(Session.GetHabbo().TimeMuted));
+                        return;
+                    }
+
+                    if (!Session.GetHabbo().GetPermissions().HasRight("room_ignore_mute") && Room.CheckMute(Session))
+                    {
+                        Session.SendWhisper("No puedes escribir, usted ha sido muteado por favor espere...", 1);
+                        return;
+                    }
                 }
-
-                if (!Session.GetHabbo().GetPermissions().HasRight("room_ignore_mute") && Room.CheckMute(Session))
+                else
                 {
-                    Session.SendWhisper("No puedes escribir, usted ha sido muteado por favor espere...", 1);
-                    return;
+                    // Comandos solo verifican mute, no flood
+                    if (Session.GetHabbo().TimeMuted > 0)
+                    {
+                        Session.SendMessage(new MutedComposer(Session.GetHabbo().TimeMuted));
+                        return;
+                    }
                 }
 
                 User.LastBubble = Session.GetHabbo().CustomBubbleId == 0 ? Bubble : Session.GetHabbo().CustomBubbleId;
 
-                if (Message == "x")
-                {
-                    if (Session.GetRoleplay().LastCommand != "")
-                        Message = Session.GetRoleplay().LastCommand.ToString();
-                }
-
                 if (!Session.GetHabbo().GetPermissions().HasRight("mod_tool"))
                 {
                     int MuteTime;
-                    /*bool commandParsed = false;
-                    if (Message.StartsWith(":", StringComparison.CurrentCulture))
-                    {
-                        commandParsed = await PolarEnvironment.GetGame().GetChatManager().GetCommands().Parse(Session, Message);
-                    }
-
-                    if (User.IncrementAndCheckFlood(out MuteTime))
-                    {
-                        Session.SendMessage(new FloodControlComposer(MuteTime));
-                        return;
-                    }*/
                 }
 
-                if (Message.StartsWith(":", StringComparison.CurrentCulture))
+                if (isCommand)
                 {
                     if (await PolarEnvironment.GetGame().GetChatManager().GetCommands().Parse(Session, Message))
                         return;
@@ -107,7 +103,6 @@ namespace Polar.Communication.Packets.Incoming.Rooms.Chat
                     Session.GetHabbo().BannedPhraseCount++;
                     if (Session.GetHabbo().BannedPhraseCount >= 1)
                     {
-
                         User.MoveTo(Room.GetGameMap().Model.DoorX, Room.GetGameMap().Model.DoorY);
                         Session.GetHabbo().TimeMuted = 25;
                         Session.SendNotification("¡Has sido silenciad@ mientras un moderador revisa tu caso, al parecer nombraste un hotel! <b>Aviso: " + Session.GetHabbo().BannedPhraseCount + "/5</b>");
@@ -127,8 +122,6 @@ namespace Polar.Communication.Packets.Incoming.Rooms.Chat
                     Session.SendMessage(new ChatComposer(User.VirtualId, "Mensaje inapropiado", 0, Bubble, Colour));
                     return;
                 }
-
-
 
                 if (Message.ToLower().Equals("o/"))
                 {
@@ -168,12 +161,10 @@ namespace Polar.Communication.Packets.Incoming.Rooms.Chat
 
                 User.UnIdle();
 
-                // 🔧 CORRECCIÓN CRÍTICA: Verificar que GetRoleplay() no sea null ANTES de usarlo
                 var roleplay = Session.GetRoleplay();
 
                 if (roleplay != null)
                 {
-                    // Verificar también que el RoomUser todavía existe (no haya sido removido)
                     if (User != null && Room != null)
                     {
                         if (roleplay.IsWorking && HabboHotel.Groups.GroupManager.HasJobCommand(Session, "guide"))
@@ -193,35 +184,23 @@ namespace Polar.Communication.Packets.Incoming.Rooms.Chat
                     }
                     else
                     {
-                        // Si el User es null pero el roleplay existe, al menos intentar enviar sin efectos especiales
-                        // Esto previene el NullReferenceException
                         if (Room != null && Session.GetHabbo() != null)
-                        {
                             Room.SendMessage(new ChatComposer(Session.GetHabbo().Id, Message, 0, Bubble, Colour));
-                        }
                     }
                 }
                 else
                 {
-                    // Fallback seguro si GetRoleplay() es null
                     if (User != null && Room != null)
-                    {
                         User.OnChat(User.LastBubble, Message, false, Colour);
-                    }
                 }
             }
             catch (Exception ex)
             {
-                // Loggear el error pero no dejar que crashee el servidor
                 Console.WriteLine($"ChatEvent Error: {ex.Message}\nStackTrace: {ex.StackTrace}");
 
-                // Opcional: enviar un mensaje al usuario para que sepa que algo salió mal
                 if (Session != null && Session.GetHabbo() != null)
-                {
                     Session.SendWhisper("Ocurrió un error al procesar tu mensaje. Por favor, intenta de nuevo.", 1);
-                }
             }
-
         }
     }
 }

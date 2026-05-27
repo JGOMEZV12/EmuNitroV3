@@ -1,22 +1,148 @@
+using Polar.HabboHotel.Rooms.Instance;
+using Newtonsoft.Json;
+using Polar.Core;
+using Polar.HabboHotel.Items;
+using Polar.HabboHotel.Items.Wired;
+using Polar.HabboHotel.Items.Wired.Boxes;
+using Polar.HabboHotel.Items.Wired.Boxes.Add_ons;
+using Polar.HabboHotel.Items.Wired.Boxes.Conditions;
+using Polar.HabboHotel.Items.Wired.Boxes.Effects;
+using Polar.HabboHotel.Items.Wired.Boxes.Selectors;
+using Polar.HabboHotel.Items.Wired.Boxes.Triggers;
+using Polar.HabboHotel.Rooms.Wired;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Data;
-using Newtonsoft.Json;
-using Polar.HabboHotel.Items;
-using Polar.HabboHotel.Items.Wired;
-using Polar.HabboHotel.Items.Wired.Boxes;
-using Polar.HabboHotel.Items.Wired.Boxes.Conditions;
-using Polar.HabboHotel.Items.Wired.Boxes.Effects;
-using Polar.HabboHotel.Items.Wired.Boxes.Triggers;
-using Polar.HabboHotel.Items.Wired.Boxes.Add_ons;
-using Polar.HabboHotel.Rooms;
 
 namespace Polar.HabboHotel.Rooms.Instance;
 
+public static class WiredBotSourceUtil
+{
+    public const int SOURCE_BOT_NAME = 100;
+
+    public static int NormalizeBotSource(int value) =>
+        NormalizeBotSource(value, SOURCE_BOT_NAME);
+
+    public static int NormalizeBotSource(int value, int fallback) =>
+        value switch
+        {
+            WiredSourceUtil.SOURCE_TRIGGER => value,
+            SOURCE_BOT_NAME => value,
+            WiredSourceUtil.SOURCE_SELECTOR => value,
+            WiredSourceUtil.SOURCE_SIGNAL => value,
+            _ => fallback
+        };
+
+    /// <summary>
+    /// Resuelve los bots a afectar según el botSource.
+    /// Sin WiredContext: usa directamente la sala y el nombre.
+    /// </summary>
+    public static List<RoomUser> ResolveBots(Room room, int botSource, string botName)
+    {
+        if (room == null) return new List<RoomUser>();
+
+        if (botSource == SOURCE_BOT_NAME)
+        {
+            var bot = room.GetRoomUserManager().GetBotByName(botName);
+            return bot != null
+                ? new List<RoomUser> { bot }
+                : new List<RoomUser>();
+        }
+
+        // SOURCE_TRIGGER / SOURCE_SELECTOR / SOURCE_SIGNAL:
+        // devolver todos los bots de la sala
+        return room.GetRoomUserManager()
+                   .GetRoomUsers()
+                   .Where(u => u != null && u.IsBot)
+                   .ToList();
+    }
+
+    public static bool RequiresTriggeringUser(int botSource) =>
+        botSource == WiredSourceUtil.SOURCE_TRIGGER;
+}
+#region WiredSourceUtil (partial port)
+
+public static class WiredSourceUtil
+{
+    // Tipos de fuente — mirrors Java WiredSourceUtil constants
+    public const int SOURCE_TRIGGER = 0;
+    public const int SOURCE_CLICKED_USER = 11;
+    public const int SOURCE_SELECTED = 100;
+    public const int SOURCE_SECONDARY_SELECTED = 101;
+    public const int SOURCE_SELECTOR = 200;
+    public const int SOURCE_SIGNAL = 201;
+
+    /// <summary>
+    /// Resuelve la lista de ítems de furni según el tipo de fuente indicado.
+    /// Versión simplificada para Polar (sin WiredContext completo).
+    /// </summary>
+    public static System.Collections.Generic.List<Item> ResolveItems(
+        Room room,
+        Item triggerItem,
+        int sourceType,
+        System.Collections.Generic.ICollection<Item> selectedItems)
+    {
+        if (room == null) return new System.Collections.Generic.List<Item>();
+
+        switch (sourceType)
+        {
+            case SOURCE_SELECTED:
+                return selectedItems != null
+                    ? new System.Collections.Generic.List<Item>(selectedItems)
+                    : new System.Collections.Generic.List<Item>();
+
+            case SOURCE_TRIGGER:
+            default:
+                return triggerItem != null
+                    ? new System.Collections.Generic.List<Item> { triggerItem }
+                    : new System.Collections.Generic.List<Item>();
+        }
+    }
+
+    /// <summary>
+    /// Resuelve la lista de RoomUsers según el tipo de fuente indicado.
+    /// </summary>
+    public static System.Collections.Generic.List<RoomUser> ResolveUsers(
+        Room room,
+        RoomUser actor,
+        int sourceType,
+        System.Collections.Generic.ICollection<RoomUser> selectedUsers)
+    {
+        if (room == null) return new System.Collections.Generic.List<RoomUser>();
+
+        switch (sourceType)
+        {
+            case SOURCE_SELECTED:
+                return selectedUsers != null
+                    ? new System.Collections.Generic.List<RoomUser>(selectedUsers)
+                    : new System.Collections.Generic.List<RoomUser>();
+
+            case SOURCE_TRIGGER:
+            default:
+                return actor != null
+                    ? new System.Collections.Generic.List<RoomUser> { actor }
+                    : new System.Collections.Generic.List<RoomUser>();
+        }
+    }
+
+    public static bool IsDefaultUserSource(int value) =>
+        value == SOURCE_TRIGGER ||
+        value == SOURCE_CLICKED_USER ||
+        value == SOURCE_SELECTOR ||
+        value == SOURCE_SIGNAL;
+
+    public static bool IsSelectableUserSource(int value) =>
+        value == SOURCE_SELECTED || IsDefaultUserSource(value);
+}
+
+#endregion
 public class WiredComponent
 {
     private readonly Room _room;
+    private RoomFurniVariableManager _furniVariableManager;
+    private RoomUserVariableManager _userVariableManager;
+    private RoomVariableManager _roomVariableManager;
     private readonly ConcurrentDictionary<int, IWiredItem> _wiredItems;
 
     // Índice secundario: (x,y) → lista de wired en esa celda
@@ -35,6 +161,9 @@ public class WiredComponent
         _wiredItems = new();
         _byCoord = new();
         _byType = new();
+        _furniVariableManager = new RoomFurniVariableManager(_room);
+        _userVariableManager = new RoomUserVariableManager(_room);
+        _roomVariableManager = new RoomVariableManager(_room);
     }
 
     // ── OnCycle ────────────────────────────────────────────────────────────
@@ -43,7 +172,6 @@ public class WiredComponent
     {
         foreach (var kvp in _wiredItems)
         {
-            // Validar que el furni sigue en la sala (barato: dict lookup)
             if (_room.GetRoomItemHandler().GetItem(kvp.Key) == null)
             {
                 TryRemove(kvp.Key);
@@ -53,7 +181,18 @@ public class WiredComponent
             if (kvp.Value is IWiredCycle cycle)
             {
                 if (cycle.TickCount <= 0)
-                    cycle.OnCycle();
+                {
+                    try
+                    {
+                        cycle.OnCycle();
+                    }
+                    catch (Exception ex)
+                    {
+                        Logging.LogWiredException($"[WIRED] OnCycle crash itemId={kvp.Key}: {ex.Message}");
+                        // Forzar un delay para no ejecutar en cada tick si crashea
+                        cycle.TickCount = 10;
+                    }
+                }
                 else
                     cycle.TickCount--;
             }
@@ -172,12 +311,31 @@ public class WiredComponent
         WiredBoxType.AddonSetVariable => new AddonSetVariableBox(_room, item),
         WiredBoxType.AddonVariableLevelUpSystem => new AddonVariableLevelUpSystemBox(_room, item),
         WiredBoxType.AddonVariableReference => new AddonVariableReferenceBox(_room, item),
+        WiredBoxType.SelectorFurniArea => new FurniAreaBox(_room, item),
+        WiredBoxType.SelectorFurniNeighborhood => new FurniNeighborhoodBox(_room, item),
+        WiredBoxType.SelectorFurniByType => new FurniByTypeBox(_room, item),
+        WiredBoxType.SelectorFurniAltitude => new FurniAltitudeBox(_room, item),
+        WiredBoxType.SelectorFurniOnFurni => new FurniOnFurniBox(_room, item),
+        WiredBoxType.SelectorFurniPicks => new FurniPicksBox(_room, item),
+        WiredBoxType.SelectorFurniSignal => new FurniSignalBox(_room, item),
+        WiredBoxType.SelectorFurniWithVariable => new FurniWithVariableBox(_room, item),
+        WiredBoxType.SelectorUsersArea => new UsersAreaBox(_room, item),
+        WiredBoxType.SelectorUsersNeighborhood => new UsersNeighborhoodBox(_room, item),
+        WiredBoxType.SelectorUsersSignal => new UsersSignalBox(_room, item),
+        WiredBoxType.SelectorUsersByType => new UsersByTypeBox(_room, item),
+        WiredBoxType.SelectorUsersTeam => new UsersTeamBox(_room, item),
+        WiredBoxType.SelectorUsersByAction => new UsersByActionBox(_room, item),
+        WiredBoxType.SelectorUsersByName => new UsersByNameBox(_room, item),
+        WiredBoxType.SelectorUsersHandItem => new UsersHandItemBox(_room, item),
+        WiredBoxType.SelectorUsersOnFurni => new UsersOnFurniBox(_room, item),
+        WiredBoxType.SelectorUsersGroup => new UsersGroupBox(_room, item),
+        WiredBoxType.SelectorUsersWithVariable => new UsersWithVariableBox(_room, item),
         _ => LogAndReturnNull(item)
     };
 
     private IWiredItem LogAndReturnNull(Item item)
     {
-        Console.WriteLine($"[WIRED] Tipo no registrado: {item.GetBaseItem().WiredType} (itemId={item.Id})");
+        Logging.LogWiredException($"[WIRED] Tipo no registrado: {item.GetBaseItem().WiredType} (itemId={item.Id})");
         return null;
     }
 
@@ -233,21 +391,35 @@ public class WiredComponent
         catch { return false; }
     }
 
-    public ICollection<IWiredItem> GetTriggers(IWiredItem item) =>
-        _wiredItems.Values
-            .Where(i => IsTrigger(i.Item) && i.Item.GetX == item.Item.GetX && i.Item.GetY == item.Item.GetY)
-            .ToList();
+    public ICollection<IWiredItem> GetEffects(IWiredItem item)
+    {
+        var key = CoordKey(item.Item.GetX, item.Item.GetY);
+        if (!_byCoord.TryGetValue(key, out var list))
+            return new List<IWiredItem>();
 
-    public ICollection<IWiredItem> GetEffects(IWiredItem item) =>
-        _wiredItems.Values
-            .Where(i => IsEffect(i.Item) && i.Item.GetX == item.Item.GetX && i.Item.GetY == item.Item.GetY)
-            .OrderBy(i => i.Item.GetZ)
-            .ToList();
+        lock (list)
+            return list.Where(i => IsEffect(i.Item)).OrderBy(i => i.Item.GetZ).ToList();
+    }
 
-    public ICollection<IWiredItem> GetConditions(IWiredItem item) =>
-        _wiredItems.Values
-            .Where(i => IsCondition(i.Item) && i.Item.GetX == item.Item.GetX && i.Item.GetY == item.Item.GetY)
-            .ToList();
+    public ICollection<IWiredItem> GetConditions(IWiredItem item)
+    {
+        var key = CoordKey(item.Item.GetX, item.Item.GetY);
+        if (!_byCoord.TryGetValue(key, out var list))
+            return new List<IWiredItem>();
+
+        lock (list)
+            return list.Where(i => IsCondition(i.Item)).ToList();
+    }
+
+    public ICollection<IWiredItem> GetTriggers(IWiredItem item)
+    {
+        var key = CoordKey(item.Item.GetX, item.Item.GetY);
+        if (!_byCoord.TryGetValue(key, out var list))
+            return new List<IWiredItem>();
+
+        lock (list)
+            return list.Where(i => IsTrigger(i.Item)).ToList();
+    }
 
     // FIX: Random.Shared.Next() — O(1) vs el anterior OrderBy(Guid.NewGuid()) que era O(n log n)
     public IWiredItem GetRandomEffect(ICollection<IWiredItem> effects)
@@ -331,7 +503,9 @@ public class WiredComponent
         dbClient.AddParameter("json", json);
         dbClient.RunQuery();
     }
-
+    public RoomFurniVariableManager GetFurniVariableManager() => _furniVariableManager;
+    public RoomUserVariableManager GetUserVariableManager() => _userVariableManager;
+    public RoomVariableManager GetRoomVariableManager() => _roomVariableManager;
     // ── LoadWiredBox — sin cambios de lógica, solo usa nuevo AddBox ────────
     public IWiredItem LoadWiredBox(Item item) { LoadWiredBoxes(new[] { item }); TryGet(item.Id, out var box); return box; }
 
@@ -417,7 +591,7 @@ public class WiredComponent
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[WIRED] Error deserializing wired data for item {newBox.Item.Id}: {ex.Message}");
+            Logging.LogWiredException($"[WIRED] Error deserializing wired data for item {newBox.Item.Id}: {ex.Message}");
         }
     }
 
@@ -450,10 +624,184 @@ public class WiredComponent
     }
     // En WiredComponent:
     public IEnumerable<IWiredItem> GetAllItems() => _wiredItems.Values;
-    public bool TryRemove(int itemId) => _wiredItems.TryRemove(itemId, out _);
+    public bool TryRemove(int itemId)
+    {
+        if (!_wiredItems.TryRemove(itemId, out var item))
+            return false;
+
+        // Limpiar índice por coordenada
+        var key = CoordKey(item.Item.GetX, item.Item.GetY);
+        if (_byCoord.TryGetValue(key, out var coordList))
+            lock (coordList) { coordList.Remove(item); }
+
+        // Limpiar índice por tipo
+        if (_byType.TryGetValue(item.Type, out var typeList))
+            lock (typeList) { typeList.Remove(item); }
+
+        return true;
+    }
+
+    public bool TryRemoveByCoord(int itemId, int oldX, int oldY)
+    {
+        if (!_wiredItems.TryRemove(itemId, out var item))
+            return false;
+
+        // Usar las coordenadas viejas que nos pasan, no las del ítem (ya actualizadas)
+        var key = CoordKey(oldX, oldY);
+        if (_byCoord.TryGetValue(key, out var coordList))
+            lock (coordList) { coordList.Remove(item); }
+
+        if (_byType.TryGetValue(item.Type, out var typeList))
+            lock (typeList) { typeList.Remove(item); }
+
+        return true;
+    }
     public bool TryGet(int id, out IWiredItem item) => _wiredItems.TryGetValue(id, out item);
     public bool IsTrigger(Item item) => item.GetBaseItem().InteractionType == InteractionType.WIRED_TRIGGER;
     public bool IsEffect(Item item) => item.GetBaseItem().InteractionType == InteractionType.WIRED_EFFECT;
     public bool IsCondition(Item item) => item.GetBaseItem().InteractionType == InteractionType.WIRED_CONDITION;
+
     public bool IsAddon(Item item) => item.GetBaseItem().InteractionType == InteractionType.WIRED_ADDON;
+
+
+    #region Variable Triggers (mirrors WiredManager.trigger*VariableChanged)
+
+    /// <summary>
+    /// Dispara el evento WiredBoxType.TriggerUserVariableChanged en la sala.
+    /// Llamado por RoomUserVariableManager después de cualquier cambio.
+    /// </summary>
+    public static void TriggerUserVariableChanged(
+        Room room, int userId, int definitionItemId,
+        bool created, bool deleted, VariableChangeKind changeKind)
+    {
+        if (room == null || definitionItemId <= 0) return;
+
+        // Obtener el RoomUser a partir del userId para enviarlo como actor
+        RoomUser roomUser = room.GetRoomUserManager().GetRoomUserByHabbo(userId);
+
+        // Disparar el evento wired correspondiente
+        room.GetWired().TriggerEvent(
+            WiredBoxType.TriggerRoomVariableChanged,
+            roomUser?.GetClient()?.GetHabbo(),
+            null,  // no hay un ítem de furni involucrado
+            new object[] { userId, definitionItemId, created, deleted, (int)changeKind });
+    }
+
+    /// <summary>
+    /// Dispara el evento WiredBoxType.TriggerFurniVariableChanged en la sala.
+    /// Llamado por RoomFurniVariableManager después de cualquier cambio.
+    /// </summary>
+    public static void TriggerFurniVariableChanged(
+        Room room, int furniId, int definitionItemId,
+        bool created, bool deleted, VariableChangeKind changeKind)
+    {
+        if (room == null || furniId <= 0 || definitionItemId <= 0) return;
+
+        Item furni = room.GetRoomItemHandler().GetItem(furniId);
+
+        room.GetWired().TriggerEvent(
+            WiredBoxType.TriggerFurniVariableChanged,
+            null,
+            furni,
+            new object[] { furniId, definitionItemId, created, deleted, (int)changeKind });
+    }
+
+    /// <summary>
+    /// Dispara el evento WiredBoxType.TriggerRoomVariableChanged en la sala.
+    /// Llamado por RoomVariableManager después de cualquier cambio.
+    /// </summary>
+    public static void TriggerRoomVariableChanged(
+        Room room, int definitionItemId, VariableChangeKind changeKind)
+    {
+        if (room == null || definitionItemId <= 0) return;
+
+        room.GetWired().TriggerEvent(
+            WiredBoxType.TriggerRoomVariableChanged,
+            null,
+            null,
+            new object[] { definitionItemId, (int)changeKind });
+    }
+
+    #endregion
+
+
+    // ── 6. Diagnósticos (equivalentes a WiredManager.getDiagnosticsSnapshot / clear) ──
+
+    #region Diagnostics (mirrors WiredManager.getDiagnosticsSnapshot / clearDiagnosticsLogs)
+
+    // En Java, WiredManager delega en un WiredEngine interno.
+    // En Polar, lo simplificamos con un log en memoria por sala.
+
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<int, System.Collections.Generic.List<string>>
+        _diagnosticsLogs = new();
+
+    public static void LogDiagnostic(int roomId, string message)
+    {
+        var list = _diagnosticsLogs.GetOrAdd(roomId,
+            _ => new System.Collections.Generic.List<string>());
+        lock (list)
+        {
+            list.Add($"[{DateTime.Now:HH:mm:ss}] {message}");
+            if (list.Count > 200) list.RemoveAt(0); // cap en 200 entradas
+        }
+    }
+
+    /// <summary>Returns a snapshot (copy) of the diagnostics log for a room.</summary>
+    public static System.Collections.Generic.IReadOnlyList<string> GetDiagnosticsSnapshot(int roomId)
+    {
+        if (!_diagnosticsLogs.TryGetValue(roomId, out var list))
+            return System.Array.Empty<string>();
+
+        lock (list)
+            return list.ToArray();
+    }
+
+    /// <summary>Clears the diagnostics log for a room.</summary>
+    public static void ClearDiagnosticsLogs(int roomId)
+    {
+        if (_diagnosticsLogs.TryGetValue(roomId, out var list))
+            lock (list)
+                list.Clear();
+    }
+
+    #endregion
+
+
+    // ── 7. Index helpers (mirrors WiredManager.invalidateRoom / invalidateTile / rebuildRoom) ──
+
+    #region Index helpers
+
+    /// <summary>
+    /// Invalida el caché de stacks wired para toda la sala.
+    /// Llamar cuando se añade, mueve o elimina un ítem wired.
+    /// </summary>
+    public void InvalidateRoom()
+    {
+        // Si tienes un índice interno de stacks (similar a RoomWiredStackIndex en Java),
+        // llama aquí a su método de invalidación.
+        // Ejemplo mínimo: limpiar el caché de wired boxes cargados.
+        LoadWiredBoxes(_room.GetRoomItemHandler().GetFloor);
+    }
+
+    /// <summary>
+    /// Invalida el caché de stacks wired para un tile concreto.
+    /// </summary>
+    public void InvalidateTile(int x, int y)
+    {
+        // Solo recarga los items wired de ese tile específico
+        var items = _room.GetRoomItemHandler().GetFloor
+            .Where(i => i.IsWired && i.GetX == x && i.GetY == y);
+        LoadWiredBoxes(items);
+    }
+
+    /// <summary>
+    /// Reconstruye el índice wired completo para la sala.
+    /// </summary>
+    public void RebuildRoom()
+    {
+        LoadWiredBoxes(_room.GetRoomItemHandler().GetFloor);
+    }
+
+    #endregion
+
 }

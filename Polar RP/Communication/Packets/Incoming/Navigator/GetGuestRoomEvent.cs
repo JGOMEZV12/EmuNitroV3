@@ -172,11 +172,11 @@ namespace Polar.Communication.Packets.Incoming.Navigator
             #endregion
 
             #region Products
-            if (roleplay.DrivingCar)
+           /* if (roleplay.DrivingCar)
             {
                 Session.SendWhisper("¡No puedes agarrar un taxi mientras conduces, AntiRolero!", 1);
                 return;
-            }
+            }*/
             #endregion
 
             #region Change Name

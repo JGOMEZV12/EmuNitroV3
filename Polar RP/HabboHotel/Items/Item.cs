@@ -261,7 +261,8 @@ namespace Polar.HabboHotel.Items
             get => _updateNeeded;
             set
             {
-                if (value && GetRoom() != null)
+                // Solo encolar si pasa de false → true
+                if (value && !_updateNeeded && GetRoom() != null)
                     GetRoom().GetRoomItemHandler().QueueRoomItemUpdate(this);
                 _updateNeeded = value;
             }
@@ -1197,7 +1198,8 @@ namespace Polar.HabboHotel.Items
         public void RequestUpdate(int cycles, bool setUpdate)
         {
             UpdateCounter = cycles;
-            if (setUpdate) UpdateNeeded = true;
+            if (setUpdate && !_updateNeeded) // solo si no está ya encolado
+                UpdateNeeded = true;
         }
 
         public void ReqUpdate(int cycles)

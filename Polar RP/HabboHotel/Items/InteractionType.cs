@@ -697,10 +697,9 @@ namespace Polar.HabboHotel.Items
                             return InteractionType.WIRED_TRIGGER;
                         if (pType.StartsWith("wf_cnd_"))
                             return InteractionType.WIRED_CONDITION;
-                        if (pType.StartsWith("wf_xtra_"))
+                        if (pType.StartsWith("wf_xtra_") || pType.StartsWith("wf_var_") || pType.StartsWith("wf_slc_"))
                             return InteractionType.WIRED_ADDON;
-                        if (pType.StartsWith("wf_var_"))
-                            return InteractionType.WIRED_ADDON;
+
 
                         //Logging.WriteLine("Unknown interaction type in parse code: " + pType, ConsoleColor.Yellow);
                         return InteractionType.NONE;

@@ -4,6 +4,7 @@ using Newtonsoft.Json;
 using Polar.Communication.Packets.Incoming;
 using Polar.Communication.Packets.Outgoing;
 using Polar.HabboHotel.Rooms;
+using Polar.HabboHotel.Rooms.Instance;
 
 namespace Polar.HabboHotel.Items.Wired.Boxes.Add_ons
 {
@@ -23,9 +24,9 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Add_ons
         private bool moveThroughFurni = false;
         private bool moveThroughUsers = false;
         private bool blockByFurni = false;
-        private int moveThroughFurniSource = WiredBoxTypeUtility.SOURCE_TRIGGER;
-        private int blockByFurniSource = WiredBoxTypeUtility.SOURCE_TRIGGER;
-        private int moveThroughUsersSource = WiredBoxTypeUtility.SOURCE_TRIGGER;
+        private int moveThroughFurniSource = WiredSourceUtil.SOURCE_TRIGGER;
+        private int blockByFurniSource = WiredSourceUtil.SOURCE_TRIGGER;
+        private int moveThroughUsersSource = WiredSourceUtil.SOURCE_TRIGGER;
 
         public bool KeepAltitude => keepAltitude;
         public bool MoveThroughFurni => moveThroughFurni;
@@ -52,9 +53,9 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Add_ons
             bool rawMoveFurni = ReadFlag(packet, paramsCount, 1);
             bool rawMoveUsers = ReadFlag(packet, paramsCount, 2);
             bool rawBlockFurni = ReadFlag(packet, paramsCount, 3);
-            int rawMoveFurniSrc = ReadInt(packet, paramsCount, 4, WiredBoxTypeUtility.SOURCE_TRIGGER);
-            int rawBlockFurniSrc = ReadInt(packet, paramsCount, 5, WiredBoxTypeUtility.SOURCE_TRIGGER);
-            int rawMoveUsersSrc = ReadInt(packet, paramsCount, 6, WiredBoxTypeUtility.SOURCE_TRIGGER);
+            int rawMoveFurniSrc = ReadInt(packet, paramsCount, 4, WiredSourceUtil.SOURCE_TRIGGER);
+            int rawBlockFurniSrc = ReadInt(packet, paramsCount, 5, WiredSourceUtil.SOURCE_TRIGGER);
+            int rawMoveUsersSrc = ReadInt(packet, paramsCount, 6, WiredSourceUtil.SOURCE_TRIGGER);
 
             string strParam = packet.PopString();
 
@@ -110,9 +111,9 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Add_ons
                 this.moveThroughFurni = ReadLegacyFlag(parts, 1);
                 this.moveThroughUsers = ReadLegacyFlag(parts, 2);
                 this.blockByFurni = ReadLegacyFlag(parts, 3);
-                this.moveThroughFurniSource = NormalizeSource(ReadLegacyInt(parts, 4, WiredBoxTypeUtility.SOURCE_TRIGGER));
-                this.blockByFurniSource = NormalizeSource(ReadLegacyInt(parts, 5, WiredBoxTypeUtility.SOURCE_TRIGGER));
-                this.moveThroughUsersSource = NormalizeSource(ReadLegacyInt(parts, 6, WiredBoxTypeUtility.SOURCE_TRIGGER));
+                this.moveThroughFurniSource = NormalizeSource(ReadLegacyInt(parts, 4, WiredSourceUtil.SOURCE_TRIGGER));
+                this.blockByFurniSource = NormalizeSource(ReadLegacyInt(parts, 5, WiredSourceUtil.SOURCE_TRIGGER));
+                this.moveThroughUsersSource = NormalizeSource(ReadLegacyInt(parts, 6, WiredSourceUtil.SOURCE_TRIGGER));
             }
         }
 
@@ -146,9 +147,9 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Add_ons
             moveThroughFurni = false;
             moveThroughUsers = false;
             blockByFurni = false;
-            moveThroughFurniSource = WiredBoxTypeUtility.SOURCE_TRIGGER;
-            moveThroughUsersSource = WiredBoxTypeUtility.SOURCE_TRIGGER;
-            blockByFurniSource = WiredBoxTypeUtility.SOURCE_TRIGGER;
+            moveThroughFurniSource = WiredSourceUtil.SOURCE_TRIGGER;
+            moveThroughUsersSource = WiredSourceUtil.SOURCE_TRIGGER;
+            blockByFurniSource = WiredSourceUtil.SOURCE_TRIGGER;
         }
 
         private static bool ReadFlag(ClientPacket packet, int count, int index) =>
@@ -168,10 +169,10 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Add_ons
 
         private static int NormalizeSource(int value) =>
             value == SOURCE_ALL_ROOM ||
-            value == WiredBoxTypeUtility.SOURCE_TRIGGER ||
-            value == WiredBoxTypeUtility.SOURCE_SELECTOR
+            value == WiredSourceUtil.SOURCE_TRIGGER ||
+            value == WiredSourceUtil.SOURCE_SELECTOR
                 ? value
-                : WiredBoxTypeUtility.SOURCE_TRIGGER;
+                : WiredSourceUtil.SOURCE_TRIGGER;
 
         private class JsonData
         {

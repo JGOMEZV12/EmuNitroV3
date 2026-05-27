@@ -1,12 +1,13 @@
-using System;
-using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.Linq;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using Polar.Communication.Packets.Incoming;
 using Polar.Communication.Packets.Outgoing;
 using Polar.Communication.Packets.Outgoing.Rooms.Engine;
 using Polar.HabboHotel.Rooms;
+using System;
+using System.Collections.Concurrent;
+using Polar.HabboHotel.Rooms.Instance;
+
 
 namespace Polar.HabboHotel.Items.Wired.Boxes.Effects
 {
@@ -34,7 +35,7 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Effects
         private bool _direction;
         private bool _position;
         private bool _altitude;
-        private int _furniSource = WiredBoxTypeUtility.SOURCE_TRIGGER;
+        private int _furniSource = WiredSourceUtil.SOURCE_TRIGGER;
         private List<FurniSetting> _settings = new List<FurniSetting>();
 
         public MatchPositionBox(Room instance, Item item)
@@ -56,7 +57,7 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Effects
             _direction = intCount > 1 && packet.PopInt() == 1;
             _position = intCount > 2 && packet.PopInt() == 1;
             _altitude = intCount > 3 && packet.PopInt() == 1;
-            _furniSource = intCount > 4 ? packet.PopInt() : WiredBoxTypeUtility.SOURCE_TRIGGER;
+            _furniSource = intCount > 4 ? packet.PopInt() : WiredSourceUtil.SOURCE_TRIGGER;
             for (int i = 5; i < intCount; i++) packet.PopInt();
 
             packet.PopString();
@@ -81,8 +82,8 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Effects
 
             Delay = packet.PopInt();
 
-            if (SetItems.Count > 0 && _furniSource == WiredBoxTypeUtility.SOURCE_TRIGGER)
-                _furniSource = WiredBoxTypeUtility.SOURCE_SELECTED;
+            if (SetItems.Count > 0 && _furniSource == WiredSourceUtil.SOURCE_TRIGGER)
+                _furniSource = WiredSourceUtil.SOURCE_SELECTED;
         }
 
         public string GetWiredData()
@@ -107,81 +108,119 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Effects
             _direction = false;
             _position = false;
             _altitude = false;
-            _furniSource = WiredBoxTypeUtility.SOURCE_TRIGGER;
+            _furniSource = WiredSourceUtil.SOURCE_TRIGGER;
             Delay = 0;
 
             if (string.IsNullOrEmpty(wiredData)) return;
 
             if (wiredData.StartsWith("{"))
             {
-                var data = JsonConvert.DeserializeObject<JsonData>(wiredData);
-                if (data == null) return;
+                // Deserializar como diccionario genérico primero para detectar el tipo de "items"
+                var raw = JsonConvert.DeserializeObject<Newtonsoft.Json.Linq.JObject>(wiredData);
+                if (raw == null) return;
 
-                _state = data.state;
-                _direction = data.direction;
-                _position = data.position;
-                _altitude = data.altitude;
-                _furniSource = data.furniSource;
-                Delay = data.delay;
+                // Leer campos escalares
+                _state = raw["state"]?.Value<bool>() ?? false;
+                _direction = raw["direction"]?.Value<bool>() ?? false;
+                _position = raw["position"]?.Value<bool>() ?? false;
+                _altitude = raw["altitude"]?.Value<bool>() ?? false;
+                _furniSource = raw["furniSource"]?.Value<int>() ?? WiredSourceUtil.SOURCE_TRIGGER;
+                Delay = raw["delay"]?.Value<int>() ?? 0;
 
-                foreach (var setting in data.items ?? new List<FurniSetting>())
+                var itemsToken = raw["items"];
+
+                if (itemsToken != null && itemsToken.Type == Newtonsoft.Json.Linq.JTokenType.String)
                 {
-                    var item = Instance.GetRoomItemHandler().GetItem(setting.itemId);
-                    if (item == null) continue;
-
-                    SetItems.TryAdd(item.Id, item);
-                    _settings.Add(setting);
+                    // Formato viejo: items es un string "id:x,y,z,rot,state;"
+                    ParseLegacyItemsString(itemsToken.Value<string>());
+                }
+                else if (itemsToken != null && itemsToken.Type == Newtonsoft.Json.Linq.JTokenType.Array)
+                {
+                    // Formato nuevo: items es un array de objetos
+                    var settings = itemsToken.ToObject<List<FurniSetting>>();
+                    foreach (var setting in settings ?? new List<FurniSetting>())
+                    {
+                        var item = Instance.GetRoomItemHandler().GetItem(setting.itemId);
+                        if (item == null) continue;
+                        SetItems.TryAdd(item.Id, item);
+                        _settings.Add(setting);
+                    }
                 }
 
-                if (SetItems.Count > 0 && _furniSource == WiredBoxTypeUtility.SOURCE_TRIGGER)
-                    _furniSource = WiredBoxTypeUtility.SOURCE_SELECTED;
+                if (SetItems.Count > 0 && _furniSource == WiredSourceUtil.SOURCE_TRIGGER)
+                    _furniSource = WiredSourceUtil.SOURCE_SELECTED;
             }
             else
             {
-                // Retrocompatibilidad: "itemCount:id-x-y-z-rot-state;...:state:dir:pos:delay"
-                var parts = wiredData.Split(':');
-                if (parts.Length >= 6)
-                {
-                    foreach (var s in parts[1].Split(';'))
-                    {
-                        if (string.IsNullOrEmpty(s)) continue;
-                        var f = s.Split('-');
-                        if (f.Length < 5) continue;
-                        if (!int.TryParse(f[0], out int id)) continue;
-
-                        var item = Instance.GetRoomItemHandler().GetItem(id);
-                        if (item == null) continue;
-
-                        SetItems.TryAdd(item.Id, item);
-                        _settings.Add(new FurniSetting
-                        {
-                            itemId = id,
-                            extraData = f[1],
-                            rotation = int.TryParse(f[2], out int rot) ? rot : 0,
-                            x = int.TryParse(f[3], out int x) ? x : 0,
-                            y = int.TryParse(f[4], out int y) ? y : 0,
-                            z = f.Length > 5 && double.TryParse(f[5],
-                                            System.Globalization.NumberStyles.Any,
-                                            System.Globalization.CultureInfo.InvariantCulture,
-                                            out double z) ? z : 0
-                        });
-                    }
-
-                    _state = parts[2] == "1";
-                    _direction = parts[3] == "1";
-                    _position = parts[4] == "1";
-                    _altitude = false;
-                    if (int.TryParse(parts[5], out int delay)) Delay = delay;
-                    _furniSource = _settings.Count == 0
-                        ? WiredBoxTypeUtility.SOURCE_TRIGGER
-                        : WiredBoxTypeUtility.SOURCE_SELECTED;
-                }
+                // Formato muy viejo: "itemCount:id-x-y-z-rot-state;...:state:dir:pos:delay"
+                ParseLegacyFullString(wiredData);
             }
 
             ItemsData = string.Join(";", SetItems.Keys);
             TickCount = Delay;
         }
 
+        private void ParseLegacyItemsString(string itemsStr)
+        {
+            if (string.IsNullOrEmpty(itemsStr)) return;
+
+            foreach (var entry in itemsStr.Split(';'))
+            {
+                if (string.IsNullOrEmpty(entry)) continue;
+
+                // formato: "itemId:x,y,z,rotation,extraData"
+                var colonIdx = entry.IndexOf(':');
+                if (colonIdx < 0) continue;
+
+                if (!int.TryParse(entry.Substring(0, colonIdx), out int id)) continue;
+
+                var item = Instance.GetRoomItemHandler().GetItem(id);
+                if (item == null) continue;
+
+                var coords = entry.Substring(colonIdx + 1).Split(',');
+
+                var setting = new FurniSetting { itemId = id };
+
+                // Variables temporales para evitar usar propiedades como out
+                int xTemp = 0, yTemp = 0, rotationTemp = 0;
+                double zTemp = 0.0;
+
+                if (coords.Length > 0) int.TryParse(coords[0], out xTemp);
+                if (coords.Length > 1) int.TryParse(coords[1], out yTemp);
+                if (coords.Length > 2) double.TryParse(coords[2],
+                    System.Globalization.NumberStyles.Any,
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    out zTemp);
+                if (coords.Length > 3) int.TryParse(coords[3], out rotationTemp);
+
+                setting.x = xTemp;
+                setting.y = yTemp;
+                setting.z = zTemp;
+                setting.rotation = rotationTemp;
+                setting.extraData = coords.Length > 4 ? coords[4] : "";
+
+                SetItems.TryAdd(item.Id, item);
+                _settings.Add(setting);
+            }
+        }
+
+        private void ParseLegacyFullString(string wiredData)
+        {
+            var parts = wiredData.Split(':');
+            if (parts.Length < 6) return;
+
+            ParseLegacyItemsString(parts[1]);
+
+            _state = parts[2] == "1";
+            _direction = parts[3] == "1";
+            _position = parts[4] == "1";
+            _altitude = false;
+            if (int.TryParse(parts[5], out int delay)) Delay = delay;
+
+            _furniSource = _settings.Count == 0
+                ? WiredSourceUtil.SOURCE_TRIGGER
+                : WiredSourceUtil.SOURCE_SELECTED;
+        }
         public void Serialize(ServerPacket packet)
         {
             // Limpiar items que ya no están en la sala

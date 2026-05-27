@@ -91,7 +91,7 @@ namespace Polar.HabboHotel.Items
             int wiredId = 0;
             if (ItemName.ToString().StartsWith("wf_trg_") 
                 || ItemName.ToString().StartsWith("wf_cnd_") || ItemName.ToString().StartsWith("wf_act_") 
-                || ItemName.ToString().StartsWith("wf_xtra_") || ItemName.ToString().StartsWith("wf_var_"))
+                || ItemName.ToString().StartsWith("wf_xtra_") || ItemName.ToString().StartsWith("wf_var_") || ItemName.ToString().StartsWith("wf_slc_"))
             {
 
                 //Console.WriteLine(rawInteraction);

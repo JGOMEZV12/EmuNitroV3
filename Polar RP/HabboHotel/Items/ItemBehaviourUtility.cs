@@ -8,6 +8,7 @@ using Polar.Utilities;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net.Sockets;
 
 namespace Polar.HabboHotel.Items
 {
@@ -18,7 +19,7 @@ namespace Polar.HabboHotel.Items
             if (Item.LimitedNo > 0)
             {
                 Message.WriteInteger(0x100);
-                Message.WriteInteger(1);
+                // ← SIN WriteInteger(1) aquí
                 Message.WriteString(Item.ExtraData ?? "");
                 Message.WriteInteger(Item.LimitedNo);
                 Message.WriteInteger(Item.LimitedTot);
@@ -181,6 +182,42 @@ namespace Polar.HabboHotel.Items
                     }
                     break;
 
+                case InteractionType.INFO_TERMINAL:
+                    Message.WriteInteger(1);
+                    Message.WriteInteger(1);
+                    Message.WriteString("internalLink");
+                    Message.WriteString(Item.ExtraData);
+                    break;
+                case InteractionType.PINATA:
+                    Message.WriteInteger(7);
+                    Message.WriteString("6");
+                    if (string.IsNullOrEmpty(Item.ExtraData)) Message.WriteInteger(0);
+                    else Message.WriteInteger(int.Parse(Item.ExtraData));
+                    Message.WriteInteger(100);
+                    break;
+
+                case InteractionType.MAGICEGG:
+                    Message.WriteInteger(7);
+                    Message.WriteString(Item.ExtraData ?? string.Empty);
+                    if (string.IsNullOrEmpty(Item.ExtraData)) Message.WriteInteger(0);
+                    else Message.WriteInteger(int.Parse(Item.ExtraData));
+                    Message.WriteInteger(23);
+                    break;
+
+                case InteractionType.MAGICCHEST:
+                    Message.WriteInteger(0);
+                    Message.WriteInteger(7);
+                    Message.WriteString(Item.ExtraData);
+                    if (Item.ExtraData.Length <= 0)
+                    {
+                        Message.WriteInteger(0);
+                    }
+                    else
+                    {
+                        Message.WriteInteger(int.Parse(Item.ExtraData));
+                    }
+                    Message.WriteInteger(1);
+                    break;
                 case InteractionType.FARMING:
                     int cracks = 0;
                     int.TryParse(Item.ExtraData, out cracks);
@@ -190,11 +227,27 @@ namespace Polar.HabboHotel.Items
                     Message.WriteInteger(4);
                     break;
 
+                case InteractionType.CRACKABLE:
                 case InteractionType.CRACKABLE_EGG:
                     Message.WriteInteger(7);
                     Message.WriteString("8");
                     Message.WriteInteger(9);
                     Message.WriteInteger(12);
+                    break;
+
+                case InteractionType.FX_PROVIDER:
+                    Message.WriteInteger(1);
+                    Message.WriteInteger(1);
+                    Message.WriteString("effectId");
+                    Message.WriteString(Item.ExtraData);
+                    break;
+
+                case InteractionType.PINATATRIGGERED:
+                    Message.WriteInteger(7);  // miran2 grafic xq no c acuerda xdddddd kva men xDDDDDDDD esk me mandaron un guasap menju eeeer xqude popddddduddddddddddddddddxdd
+                    Message.WriteString((Item.ExtraData.Length <= 0) ? "0" : "2");
+                    if (Item.ExtraData.Length <= 0) Message.WriteInteger(0);
+                    else Message.WriteInteger(int.Parse(Item.ExtraData));
+                    Message.WriteInteger(1);
                     break;
 
                 case InteractionType.MANNEQUIN:
@@ -283,7 +336,9 @@ namespace Polar.HabboHotel.Items
 
                 default:
                     Message.WriteInteger(0);
-                    Message.WriteString(Item.GetBaseItem().InteractionType != InteractionType.FOOTBALL_GATE ? Item.ExtraData : string.Empty);
+                    Message.WriteString(Item.GetBaseItem().InteractionType != InteractionType.FOOTBALL_GATE
+                        ? (Item.ExtraData ?? string.Empty)
+                        : string.Empty);
                     break;
             }
         }

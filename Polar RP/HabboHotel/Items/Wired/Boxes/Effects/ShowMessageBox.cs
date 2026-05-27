@@ -1,6 +1,6 @@
 using System;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
+using Polar.HabboHotel.Rooms.Instance;
 using System.Linq;
 using Newtonsoft.Json;
 using Polar.Communication.Packets.Incoming;
@@ -34,7 +34,7 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Effects
         private int _delay;
 
         private string message = "";
-        private int userSource = WiredBoxTypeUtility.SOURCE_TRIGGER;
+        private int userSource = WiredSourceUtil.SOURCE_TRIGGER;
         private int visibilitySelection = VISIBILITY_SOURCE_USERS;
         private int bubbleStyle = DEFAULT_BUBBLE;
 
@@ -47,16 +47,19 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Effects
 
         public void HandleSave(ClientPacket packet)
         {
-            // orden: intParams → string → delay → (sin furnis)
             int paramsCount = packet.PopInt();
-            int rawUserSource = paramsCount > 0 ? packet.PopInt() : WiredBoxTypeUtility.SOURCE_TRIGGER;
+            int rawUserSource = paramsCount > 0 ? packet.PopInt() : WiredSourceUtil.SOURCE_TRIGGER;
             int rawVisibility = paramsCount > 1 ? packet.PopInt() : VISIBILITY_SOURCE_USERS;
             int rawBubble = paramsCount > 2 ? packet.PopInt() : DEFAULT_BUBBLE;
+            for (int i = 3; i < paramsCount; i++) packet.PopInt();
 
             string rawMessage = packet.PopString();
-            int rawDelay = packet.PopInt();
 
-            Console.WriteLine($"[ShowMessageBox] HandleSave — userSource={rawUserSource}, visibility={rawVisibility}, bubble={rawBubble}, delay={rawDelay}, message='{rawMessage}'");
+            int itemCount = packet.PopInt(); // siempre 0
+            for (int i = 0; i < itemCount; i++) packet.PopInt();
+
+            int rawDelay = packet.PopInt();
+            packet.PopInt(); // stuffTypeSelectionCode, ignorar
 
             this.userSource = rawUserSource;
             this.visibilitySelection = rawVisibility == VISIBILITY_ALL_ROOM_USERS
@@ -83,7 +86,7 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Effects
         public void LoadWiredData(string wiredData)
         {
             this.message = "";
-            this.userSource = WiredBoxTypeUtility.SOURCE_TRIGGER;
+            this.userSource = WiredSourceUtil.SOURCE_TRIGGER;
             this.visibilitySelection = VISIBILITY_SOURCE_USERS;
             this.bubbleStyle = DEFAULT_BUBBLE;
             this.Delay = 0;
@@ -113,7 +116,7 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Effects
                     this.message = parts[1];
                 }
 
-                this.userSource = WiredBoxTypeUtility.SOURCE_TRIGGER;
+                this.userSource = WiredSourceUtil.SOURCE_TRIGGER;
                 this.visibilitySelection = VISIBILITY_SOURCE_USERS;
                 this.bubbleStyle = DEFAULT_BUBBLE;
             }

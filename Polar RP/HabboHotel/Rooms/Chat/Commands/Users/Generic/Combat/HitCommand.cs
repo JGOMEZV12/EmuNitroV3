@@ -41,6 +41,7 @@ namespace Polar.HabboHotel.Rooms.Chat.Commands.Users.Generic.Combat
                 return;
             }
 
+            // New Target System
             GameClient TargetClient = PolarEnvironment.GetGame().GetClientManager().GetClientByUsername(((Session.GetRoleplay().Target != "" && Params[1] == "x") || Session.GetRoleplay().TargetLock) ? Session.GetRoleplay().Target : Params[1]);
 
             if (TargetClient == null)
@@ -64,6 +65,13 @@ namespace Polar.HabboHotel.Rooms.Chat.Commands.Users.Generic.Combat
                 Session.SendWhisper("No puedes agredir en modo pasivo.", 1);
                 return;
             }
+
+            if (Session.GetRoleplay().CombatMode)
+            {
+                Session.SendWhisper("No tienes el modo combate activado", 1);
+                return;
+            }
+
             if (TargetClient.GetRoleplay().Cuffed)
             {
                 Session.SendWhisper("¡No puedes golpear a una persona esposada!", 1);

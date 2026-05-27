@@ -1,21 +1,19 @@
-using System;
-using System.Collections.Generic;
-using System.Collections.Concurrent;
-using System.Linq;
 using Newtonsoft.Json;
 using Polar.Communication.Packets.Incoming;
 using Polar.Communication.Packets.Outgoing;
 using Polar.HabboHotel.Rooms;
+using Polar.HabboHotel.Rooms.Instance;
 using Polar.HabboHotel.Users;
-using Polar.HabboHotel.Users.Effects;
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Drawing;
+using System.Linq;
 
 namespace Polar.HabboHotel.Items.Wired.Boxes.Effects
 {
-    class TeleportUserBox : IWiredItem, IWiredCycle, IWiredCustomData
+    internal class TeleportUserBox : IWiredItem, IWiredCycle, IWiredCustomData
     {
-        private const int MAXIMUM_FURNI_SELECTION = 5;
-        private const int TELEPORT_DELAY = 500;
-
         public Room Instance { get; set; }
         public Item Item { get; set; }
         public WiredBoxType Type => WiredBoxType.EffectTeleportToFurni;
@@ -29,75 +27,53 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Effects
             get => _delay;
             set { _delay = value; TickCount = value + 1; }
         }
+
         public int TickCount { get; set; }
 
-        private readonly Queue<RoomUser> _queue;
         private int _delay;
-        private bool _fastTeleport = false;
-        private int _furniSource = WiredBoxTypeUtility.SOURCE_TRIGGER;
-        private int _userSource = WiredBoxTypeUtility.SOURCE_TRIGGER;
+        private int _furniSource = WiredSourceUtil.SOURCE_TRIGGER;
+        private int _userSource = WiredSourceUtil.SOURCE_TRIGGER;
+        private int _walkMode = WALKMODE_CONTINUE;
+        private bool _requested;
+        private Habbo _pendingActor;
+
+        private const int WALKMODE_IF_CLOSER = 0;
+        private const int WALKMODE_CONTINUE = 1;
+        private const int WALKMODE_STOP = 2;
+
+        private int _lastItemIndex = 0;
 
         public TeleportUserBox(Room instance, Item item)
         {
             Instance = instance;
             Item = item;
             SetItems = new ConcurrentDictionary<int, Item>();
-            _queue = new Queue<RoomUser>();
             TickCount = Delay;
+            _requested = false;
         }
 
-        // ── HandleSave — sin cambios, ya funciona ────────────────────────────────
-        public void HandleSave(ClientPacket packet)
-        {
-            int paramsCount = packet.PopInt();
+        // ── IWiredCustomData ───────────────────────────────────────────────────
 
-            bool fastTeleport = false;
-            int furniSource = WiredBoxTypeUtility.SOURCE_TRIGGER;
-            int userSource = WiredBoxTypeUtility.SOURCE_TRIGGER;
-
-            if (paramsCount >= 1) fastTeleport = packet.PopInt() == 1;
-            if (paramsCount >= 2) furniSource = packet.PopInt();
-            if (paramsCount >= 3) userSource = packet.PopInt();
-
-            packet.PopString();
-
-            SetItems.Clear();
-            int furniCount = packet.PopInt();
-            for (int i = 0; i < furniCount; i++)
-            {
-                Item selected = Instance.GetRoomItemHandler().GetItem(packet.PopInt());
-                if (selected != null)
-                    SetItems.TryAdd(selected.Id, selected);
-            }
-
-            if (SetItems.Count > 0 && furniSource == WiredBoxTypeUtility.SOURCE_TRIGGER)
-                furniSource = WiredBoxTypeUtility.SOURCE_SELECTED;
-
-            _fastTeleport = fastTeleport;
-            _furniSource = furniSource;
-            _userSource = userSource;
-            Delay = packet.PopInt();
-        }
-
-        // ── IWiredCustomData ─────────────────────────────────────────────────────
         public string GetWiredData()
         {
             return JsonConvert.SerializeObject(new JsonData
             {
-                delay = this.Delay,
+                delay = Delay,
                 itemIds = SetItems.Keys.ToList(),
-                fastTeleport = this._fastTeleport,
-                furniSource = this._furniSource,
-                userSource = this._userSource
+                furniSource = _furniSource,
+                userSource = _userSource,
+                walkMode = _walkMode
             });
         }
 
         public void LoadWiredData(string wiredData)
         {
             SetItems.Clear();
-            _fastTeleport = false;
-            _furniSource = WiredBoxTypeUtility.SOURCE_TRIGGER;
-            _userSource = WiredBoxTypeUtility.SOURCE_TRIGGER;
+            _furniSource = WiredSourceUtil.SOURCE_TRIGGER;
+            _userSource = WiredSourceUtil.SOURCE_TRIGGER;
+            _walkMode = WALKMODE_CONTINUE;
+            _lastItemIndex = 0;
+            Delay = 0;
 
             if (string.IsNullOrEmpty(wiredData)) return;
 
@@ -107,145 +83,276 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Effects
                 if (data == null) return;
 
                 Delay = data.delay;
-                _fastTeleport = data.fastTeleport;
                 _furniSource = data.furniSource;
                 _userSource = data.userSource;
+                _walkMode = NormalizeWalkMode(data.walkMode ?? WALKMODE_CONTINUE);
 
                 foreach (int id in data.itemIds ?? new List<int>())
                 {
-                    var item = Instance.GetRoomItemHandler().GetItem(id);
-                    if (item != null)
-                        SetItems.TryAdd(item.Id, item);
+                    var it = Instance.GetRoomItemHandler().GetItem(id);
+                    if (it != null) SetItems.TryAdd(it.Id, it);
                 }
 
-                if (_furniSource == WiredBoxTypeUtility.SOURCE_TRIGGER && SetItems.Count > 0)
-                    _furniSource = WiredBoxTypeUtility.SOURCE_SELECTED;
+                if (_furniSource == WiredSourceUtil.SOURCE_TRIGGER && SetItems.Count > 0)
+                    _furniSource = WiredSourceUtil.SOURCE_SELECTED;
             }
-            else
+            else if (wiredData.Contains('\t'))
             {
-                // Retrocompatibilidad: formato viejo "delay\tid1;id2;"
-                var parts = wiredData.Split('\t');
-                if (parts.Length >= 1 && int.TryParse(parts[0], out int delay))
-                    Delay = delay;
+                // Retrocompatibilidad Java legacy: "delay\tid1;id2;id3"
+                var tabs = wiredData.Split('\t');
+                if (tabs.Length >= 1 && int.TryParse(tabs[0], out int delay)) Delay = delay;
 
-                if (parts.Length == 2 && parts[1].Contains(";"))
+                if (tabs.Length == 2)
                 {
-                    foreach (var s in parts[1].Split(';'))
+                    foreach (var s in tabs[1].Split(';'))
                     {
-                        if (string.IsNullOrEmpty(s)) continue;
                         if (!int.TryParse(s, out int id)) continue;
-
-                        var item = Instance.GetRoomItemHandler().GetItem(id);
-                        if (item != null)
-                            SetItems.TryAdd(item.Id, item);
+                        var it = Instance.GetRoomItemHandler().GetItem(id);
+                        if (it != null) SetItems.TryAdd(it.Id, it);
                     }
                 }
 
-                _fastTeleport = false;
-                _furniSource = SetItems.Count == 0 ? WiredBoxTypeUtility.SOURCE_TRIGGER : WiredBoxTypeUtility.SOURCE_SELECTED;
-                _userSource = WiredBoxTypeUtility.SOURCE_TRIGGER;
+                _furniSource = SetItems.Count == 0
+                    ? WiredSourceUtil.SOURCE_TRIGGER
+                    : WiredSourceUtil.SOURCE_SELECTED;
+                _userSource = WiredSourceUtil.SOURCE_TRIGGER;
+                _walkMode = WALKMODE_CONTINUE;
             }
 
             ItemsData = string.Join(";", SetItems.Keys);
             TickCount = Delay;
         }
 
-        // ── Serialize — sin cambios ──────────────────────────────────────────────
+        // ── Packet handling ────────────────────────────────────────────────────
+
+        public void HandleSave(ClientPacket packet)
+        {
+            SetItems.Clear();
+
+            // 1. Int params: furniSource, userSource, walkMode
+            int intCount = packet.PopInt();
+            _furniSource = intCount > 0
+                ? packet.PopInt()
+                : WiredSourceUtil.SOURCE_TRIGGER;
+            _userSource = intCount > 1
+                ? packet.PopInt()
+                : WiredSourceUtil.SOURCE_TRIGGER;
+            _walkMode = intCount > 2
+                ? NormalizeWalkMode(packet.PopInt())
+                : WALKMODE_CONTINUE;
+            for (int i = 3; i < intCount; i++) packet.PopInt();
+
+            // 2. String param (vacío en este wired)
+            packet.PopString();
+
+            // 3. Furni seleccionados
+            int furniCount = packet.PopInt();
+            for (int i = 0; i < furniCount; i++)
+            {
+                var selected = Instance.GetRoomItemHandler().GetItem(packet.PopInt());
+                if (selected != null)
+                    SetItems.TryAdd(selected.Id, selected);
+            }
+
+            // 4. Delay
+            Delay = packet.PopInt();
+
+            // 5. stuffTypeSelectionCode — leer y descartar
+            packet.PopInt();
+
+            if (SetItems.Count > 0 && _furniSource == WiredSourceUtil.SOURCE_TRIGGER)
+                _furniSource = WiredSourceUtil.SOURCE_SELECTED;
+        }
+
         public void Serialize(ServerPacket packet)
         {
-            var itemsList = SetItems.Values.ToList();
+            foreach (var id in SetItems.Keys
+                .Where(id => Instance.GetRoomItemHandler().GetItem(id) == null)
+                .ToList())
+                SetItems.TryRemove(id, out _);
 
             packet.WriteBoolean(false);
-            packet.WriteInteger(MAXIMUM_FURNI_SELECTION);
-            packet.WriteInteger(itemsList.Count);
-            foreach (Item item in itemsList)
-                packet.WriteInteger(item.Id);
+            packet.WriteInteger(5);
+            packet.WriteInteger(SetItems.Count);
+            foreach (var id in SetItems.Keys)
+                packet.WriteInteger(id);
 
             packet.WriteInteger(Item.GetBaseItem().SpriteId);
             packet.WriteInteger(Item.Id);
-            packet.WriteString(StringData ?? string.Empty);
-
+            packet.WriteString("");
             packet.WriteInteger(3);
-            packet.WriteInteger(_fastTeleport ? 1 : 0);
             packet.WriteInteger(_furniSource);
             packet.WriteInteger(_userSource);
-
+            packet.WriteInteger(_walkMode);
             packet.WriteInteger(0);
             packet.WriteInteger(WiredBoxTypeUtility.GetWiredId(Type));
             packet.WriteInteger(Delay);
             packet.WriteInteger(0);
         }
 
-        // ── Execute ──────────────────────────────────────────────────────────────
+        // ── Lógica ─────────────────────────────────────────────────────────────
+
         public bool Execute(params object[] Params)
         {
-            if (Params == null || Params.Length == 0) return false;
+            if (SetItems.Count == 0) return false;
 
-            Habbo player = Params[0] as Habbo;
-            if (player == null) return false;
+            _pendingActor = Params.Length > 0 ? Params[0] as Habbo : null;
 
-            RoomUser user = Instance.GetRoomUserManager().GetRoomUserByHabbo(player.Id);
-            if (user == null) return false;
-
-            player.Effects()?.ApplyEffect(EffectsList.Twinkle);
-            _queue.Enqueue(user);
+            if (!_requested)
+            {
+                TickCount = Delay;
+                _requested = true;
+            }
             return true;
         }
 
-        // ── OnCycle ──────────────────────────────────────────────────────────────
         public bool OnCycle()
         {
-            if (_queue.Count == 0 || SetItems.Count == 0)
+            if (Instance == null || !_requested) return false;
+
+            _requested = false;
+
+            foreach (var id in SetItems.Keys
+                .Where(id => Instance.GetRoomItemHandler().GetItem(id) == null)
+                .ToList())
+                SetItems.TryRemove(id, out _);
+
+            if (SetItems.Count == 0)
             {
-                _queue.Clear();
-                TickCount = Delay;
-                return true;
+                _pendingActor = null;
+                return false;
             }
 
-            while (_queue.Count > 0)
-            {
-                RoomUser user = _queue.Dequeue();
-                if (user == null || user.GetClient()?.GetHabbo()?.CurrentRoom != Instance)
-                    continue;
+            var validItems = SetItems.Values
+                .Where(i => i != null && Instance.GetRoomItemHandler().GetFloor.Contains(i))
+                .ToList();
 
-                TeleportUser(user);
+            if (validItems.Count == 0)
+            {
+                _pendingActor = null;
+                return false;
             }
 
-            TickCount = Delay;
+            _lastItemIndex = _lastItemIndex % validItems.Count;
+            var targetItem = validItems[_lastItemIndex];
+            _lastItemIndex = (_lastItemIndex + 1) % validItems.Count;
+
+            var targets = ResolveTargets();
+
+            foreach (var habbo in targets)
+            {
+                if (habbo?.GetClient() == null) continue;
+                MoveHabboToFurni(habbo, targetItem);
+            }
+
+            _pendingActor = null;
             return true;
         }
 
-        // ── TeleportUser ─────────────────────────────────────────────────────────
-        private void TeleportUser(RoomUser user)
+        // ── Movimiento ────────────────────────────────────────────────────────
+
+        private void MoveHabboToFurni(Habbo habbo, Item targetItem)
         {
-            if (user == null || Instance?.GetGameMap() == null) return;
+            if (habbo == null || targetItem == null) return;
 
-            var invalidIds = SetItems
-                .Where(kv => Instance.GetRoomItemHandler().GetItem(kv.Key) == null)
-                .Select(kv => kv.Key)
-                .ToList();
-            foreach (int id in invalidIds)
-                SetItems.TryRemove(id, out _);
+            var user = Instance.GetRoomUserManager().GetRoomUserByHabbo(habbo.Id);
+            if (user == null) return;
 
-            if (SetItems.Count == 0) return;
+            var map = Instance.GetGameMap();
+            if (map == null) return;
 
-            var items = SetItems.Values.ToList();
-            Item target = items[PolarEnvironment.GetRandomNumber(0, items.Count - 1)];
-            if (target == null) return;
+            var destPoint = new Point(targetItem.GetX, targetItem.GetY);
+            if (!map.ValidTile(destPoint.X, destPoint.Y)) return;
 
-            Instance.GetGameMap().TeleportToItem(user, target);
+            var oldPoint = new Point(user.X, user.Y);
+            var previousGoal = user.IsWalking ? new Point(user.GoalX, user.GoalY) : (Point?)null;
+            bool wasWalking = user.IsWalking;
+
+            if (user.IsWalking) user.ClearMovement(true);
+
+            double newZ = targetItem.TotalHeight;
+            user.SetPos(destPoint.X, destPoint.Y, newZ);
+            user.UpdateNeeded = true;
+
+            ApplyWalkMode(user, oldPoint, previousGoal, destPoint, wasWalking);
+
             Instance.GetRoomUserManager().UpdateUserStatusses();
-            user.GetClient()?.GetHabbo()?.Effects()?.ApplyEffect(0);
         }
 
-        // ── JsonData ─────────────────────────────────────────────────────────────
+        private void ApplyWalkMode(
+            RoomUser user, Point oldLocation, Point? previousGoal,
+            Point targetPoint, bool wasWalking)
+        {
+            if (user == null) return;
+
+            if (_walkMode == WALKMODE_STOP || !wasWalking || previousGoal == null)
+            {
+                user.MoveTo(targetPoint.X, targetPoint.Y);
+                return;
+            }
+
+            if (_walkMode == WALKMODE_IF_CLOSER)
+            {
+                // FIX: operador < correcto (estaba partido en el original)
+                bool closer = DistanceSquared(targetPoint, previousGoal.Value) <
+                              DistanceSquared(oldLocation, previousGoal.Value);
+                if (!closer)
+                {
+                    user.MoveTo(targetPoint.X, targetPoint.Y);
+                    return;
+                }
+            }
+
+            // WALKMODE_CONTINUE o IF_CLOSER donde sí está más cerca
+            user.MoveTo(previousGoal.Value.X, previousGoal.Value.Y);
+        }
+
+        // ── Helpers ────────────────────────────────────────────────────────────
+
+        private List<Habbo> ResolveTargets()
+        {
+            var result = new List<Habbo>();
+
+            if (_userSource == WiredSourceUtil.SOURCE_TRIGGER ||
+                _userSource == WiredSourceUtil.SOURCE_CLICKED_USER)
+            {
+                if (_pendingActor != null)
+                    result.Add(_pendingActor);
+            }
+            else
+            {
+                foreach (var ru in Instance.GetRoomUserManager().GetRoomUsers())
+                {
+                    if (ru == null || ru.IsBot) continue;
+                    var h = ru.GetClient()?.GetHabbo();
+                    if (h != null) result.Add(h);
+                }
+            }
+
+            return result;
+        }
+
+        private static int DistanceSquared(Point a, Point b)
+        {
+            int dx = a.X - b.X;
+            int dy = a.Y - b.Y;
+            return dx * dx + dy * dy;
+        }
+
+        private static int NormalizeWalkMode(int value) =>
+            (value < WALKMODE_IF_CLOSER || value > WALKMODE_STOP)
+                ? WALKMODE_CONTINUE
+                : value;
+
+        // ── DTO JSON ───────────────────────────────────────────────────────────
+
         private class JsonData
         {
             public int delay { get; set; }
             public List<int> itemIds { get; set; }
-            public bool fastTeleport { get; set; }
             public int furniSource { get; set; }
             public int userSource { get; set; }
+            public int? walkMode { get; set; }
         }
     }
 }

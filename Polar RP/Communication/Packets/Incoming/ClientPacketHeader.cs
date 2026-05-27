@@ -68,6 +68,7 @@
         public const int LatencyTestMessageEvent = 295; // PRODUCTION-201611291003-338511768
         public const int InfoRetrieveMessageEvent = 357; // PRODUCTION-201611291003-338511768
         public const int YouTubeGetNextVideo = 3005; // PRODUCTION-201611291003-338511768
+        
         public const int SetObjectDataMessageEvent = 3608; // PRODUCTION-201611291003-338511768
         public const int MessengerInitMessageEvent = 2781; // PRODUCTION-201611291003-338511768
         public const int PickUpBotMessageEvent = 3323; // PRODUCTION-201611291003-338511768

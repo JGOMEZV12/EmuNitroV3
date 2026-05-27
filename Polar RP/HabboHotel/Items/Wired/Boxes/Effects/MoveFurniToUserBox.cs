@@ -8,7 +8,7 @@ using Polar.Communication.Packets.Incoming;
 using Polar.Communication.Packets.Outgoing;
 using Polar.Communication.Packets.Outgoing.Rooms.Engine;
 using Polar.HabboHotel.Rooms;
-using Polar.HabboHotel.Users;
+using Polar.HabboHotel.Rooms.Instance;
 
 namespace Polar.HabboHotel.Items.Wired.Boxes.Effects
 {
@@ -33,7 +33,7 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Effects
         private int _delay = 0;
         private long _next = 0;
         private bool _requested = false;
-        private int _furniSource = WiredBoxTypeUtility.SOURCE_TRIGGER;
+        private int _furniSource = WiredSourceUtil.SOURCE_TRIGGER;
 
         public MoveFurniToUserBox(Room instance, Item item)
         {
@@ -46,7 +46,7 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Effects
         public void HandleSave(ClientPacket packet)
         {
             int intCount = packet.PopInt();
-            int fSource = intCount > 0 ? packet.PopInt() : WiredBoxTypeUtility.SOURCE_TRIGGER;
+            int fSource = intCount > 0 ? packet.PopInt() : WiredSourceUtil.SOURCE_TRIGGER;
             for (int i = 1; i < intCount; i++) packet.PopInt();
 
             packet.PopString();
@@ -63,8 +63,8 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Effects
             Delay = packet.PopInt();
             _furniSource = fSource;
 
-            if (SetItems.Count > 0 && _furniSource == WiredBoxTypeUtility.SOURCE_TRIGGER)
-                _furniSource = WiredBoxTypeUtility.SOURCE_SELECTED;
+            if (SetItems.Count > 0 && _furniSource == WiredSourceUtil.SOURCE_TRIGGER)
+                _furniSource = WiredSourceUtil.SOURCE_SELECTED;
         }
 
         public string GetWiredData()
@@ -80,7 +80,7 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Effects
         public void LoadWiredData(string wiredData)
         {
             SetItems.Clear();
-            _furniSource = WiredBoxTypeUtility.SOURCE_TRIGGER;
+            _furniSource = WiredSourceUtil.SOURCE_TRIGGER;
             Delay = 0;
 
             if (string.IsNullOrEmpty(wiredData)) return;
@@ -100,8 +100,8 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Effects
                         SetItems.TryAdd(item.Id, item);
                 }
 
-                if (SetItems.Count > 0 && _furniSource == WiredBoxTypeUtility.SOURCE_TRIGGER)
-                    _furniSource = WiredBoxTypeUtility.SOURCE_SELECTED;
+                if (SetItems.Count > 0 && _furniSource == WiredSourceUtil.SOURCE_TRIGGER)
+                    _furniSource = WiredSourceUtil.SOURCE_SELECTED;
             }
             else
             {
@@ -124,8 +124,8 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Effects
                 }
 
                 _furniSource = SetItems.Count == 0
-                    ? WiredBoxTypeUtility.SOURCE_TRIGGER
-                    : WiredBoxTypeUtility.SOURCE_SELECTED;
+                    ? WiredSourceUtil.SOURCE_TRIGGER
+                    : WiredSourceUtil.SOURCE_SELECTED;
             }
 
             ItemsData = string.Join(";", SetItems.Keys);

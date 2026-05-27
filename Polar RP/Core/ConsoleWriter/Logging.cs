@@ -72,6 +72,11 @@ namespace ConsoleWriter
             WriteToFile("Logs/wiredexceptions.txt", logText + "\r\n\r\n");
         }
 
+        public static void LogItemException(string logText)
+        {
+            WriteToFile("Logs/itemexceptions.txt", logText + "\r\n\r\n");
+        }
+
         public static void LogCacheException(string logText)
         {
             WriteToFile("Logs/cacheexceptions.txt", logText + "\r\n\r\n");

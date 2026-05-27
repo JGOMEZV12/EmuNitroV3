@@ -2,7 +2,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Linq;
+using Polar.HabboHotel.Rooms.Instance;
 using Newtonsoft.Json;
 using Polar.Communication.Packets.Incoming;
 using Polar.Communication.Packets.Outgoing;
@@ -30,8 +30,8 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Conditions
         // secondaryItems — furnis de referencia (tipos a buscar)
         protected ConcurrentDictionary<int, Item> secondaryItems = new();
 
-        protected int furniSource = WiredBoxTypeUtility.SOURCE_TRIGGER;
-        protected int compareFurniSource = WiredBoxTypeUtility.SOURCE_TRIGGER;
+        protected int furniSource = WiredSourceUtil.SOURCE_TRIGGER;
+        protected int compareFurniSource = WiredSourceUtil.SOURCE_TRIGGER;
         protected int quantifier = QUANTIFIER_ALL;
 
         public FurniTypeMatchesBox(Room instance, Item item)
@@ -49,8 +49,8 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Conditions
 
             // 1. Int params
             int paramsCount = packet.PopInt();
-            int rawFurniSource = paramsCount > 0 ? packet.PopInt() : WiredBoxTypeUtility.SOURCE_TRIGGER;
-            int rawCompareSrc = paramsCount > 1 ? packet.PopInt() : WiredBoxTypeUtility.SOURCE_TRIGGER;
+            int rawFurniSource = paramsCount > 0 ? packet.PopInt() : WiredSourceUtil.SOURCE_TRIGGER;
+            int rawCompareSrc = paramsCount > 1 ? packet.PopInt() : WiredSourceUtil.SOURCE_TRIGGER;
             int rawQuantifier = paramsCount > 2 ? packet.PopInt() : QUANTIFIER_ALL;
 
             // 2. String param — IDs secundarios separados por ";"
@@ -73,8 +73,8 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Conditions
                 SetItems.TryAdd(selected.Id, selected);
             }
 
-            if (primaryItems.Count > 0 && furniSource == WiredBoxTypeUtility.SOURCE_TRIGGER)
-                furniSource = WiredBoxTypeUtility.SOURCE_SELECTED;
+            if (primaryItems.Count > 0 && furniSource == WiredSourceUtil.SOURCE_TRIGGER)
+                furniSource = WiredSourceUtil.SOURCE_SELECTED;
 
             // Parsear IDs secundarios del string param
             foreach (var part in strParam.Split(new[] { ';', ',', '\t' }, StringSplitOptions.RemoveEmptyEntries))
@@ -85,8 +85,8 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Conditions
                     secondaryItems.TryAdd(secItem.Id, secItem);
             }
 
-            if (secondaryItems.Count > 0 && compareFurniSource == WiredBoxTypeUtility.SOURCE_TRIGGER)
-                compareFurniSource = WiredBoxTypeUtility.SOURCE_SECONDARY_SELECTED;
+            if (secondaryItems.Count > 0 && compareFurniSource == WiredSourceUtil.SOURCE_TRIGGER)
+                compareFurniSource = WiredSourceUtil.SOURCE_SECONDARY_SELECTED;
 
             SyncLegacyFields();
         }
@@ -109,8 +109,8 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Conditions
             primaryItems.Clear();
             secondaryItems.Clear();
             SetItems.Clear();
-            this.furniSource = WiredBoxTypeUtility.SOURCE_TRIGGER;
-            this.compareFurniSource = WiredBoxTypeUtility.SOURCE_TRIGGER;
+            this.furniSource = WiredSourceUtil.SOURCE_TRIGGER;
+            this.compareFurniSource = WiredSourceUtil.SOURCE_TRIGGER;
             this.quantifier = QUANTIFIER_ALL;
 
             if (string.IsNullOrEmpty(wiredData)) return;
@@ -120,11 +120,11 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Conditions
                 var data = JsonConvert.DeserializeObject<JsonData>(wiredData);
                 if (data == null) return;
 
-                this.furniSource = NormalizeFurniSource(data.furniSource ?? WiredBoxTypeUtility.SOURCE_TRIGGER);
+                this.furniSource = NormalizeFurniSource(data.furniSource ?? WiredSourceUtil.SOURCE_TRIGGER);
                 this.compareFurniSource = NormalizeFurniSource(data.compareFurniSource ??
                     ((data.secondaryItemIds?.Count > 0 || data.itemIds?.Count > 0)
-                        ? WiredBoxTypeUtility.SOURCE_SECONDARY_SELECTED
-                        : WiredBoxTypeUtility.SOURCE_TRIGGER));
+                        ? WiredSourceUtil.SOURCE_SECONDARY_SELECTED
+                        : WiredSourceUtil.SOURCE_TRIGGER));
                 this.quantifier = (data.quantifier ?? QUANTIFIER_ANY) == QUANTIFIER_ANY ? QUANTIFIER_ANY : QUANTIFIER_ALL;
 
                 LoadItems(data.primaryItemIds ?? new List<int>(), primaryItems);
@@ -142,8 +142,8 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Conditions
                 }
 
                 this.compareFurniSource = secondaryItems.Count == 0
-                    ? WiredBoxTypeUtility.SOURCE_TRIGGER
-                    : WiredBoxTypeUtility.SOURCE_SECONDARY_SELECTED;
+                    ? WiredSourceUtil.SOURCE_TRIGGER
+                    : WiredSourceUtil.SOURCE_SECONDARY_SELECTED;
                 this.quantifier = QUANTIFIER_ANY;
             }
 
@@ -209,7 +209,7 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Conditions
 
         private List<Item> GetMatchTargets(object[] Params)
         {
-            if (furniSource == WiredBoxTypeUtility.SOURCE_SELECTED)
+            if (furniSource == WiredSourceUtil.SOURCE_SELECTED)
                 return primaryItems.Values.ToList();
 
             // SOURCE_TRIGGER: usar el item que disparó
@@ -223,7 +223,7 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Conditions
         {
             var ids = new HashSet<int>();
 
-            if (compareFurniSource == WiredBoxTypeUtility.SOURCE_SECONDARY_SELECTED)
+            if (compareFurniSource == WiredSourceUtil.SOURCE_SECONDARY_SELECTED)
             {
                 foreach (var item in secondaryItems.Values)
                     ids.Add(item.GetBaseItem().Id);
@@ -270,12 +270,12 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Conditions
 
         protected int NormalizeFurniSource(int value)
         {
-            if (value == WiredBoxTypeUtility.SOURCE_TRIGGER ||
-                value == WiredBoxTypeUtility.SOURCE_SELECTED ||
-                value == WiredBoxTypeUtility.SOURCE_SECONDARY_SELECTED ||
-                value == WiredBoxTypeUtility.SOURCE_SELECTOR)
+            if (value == WiredSourceUtil.SOURCE_TRIGGER ||
+                value == WiredSourceUtil.SOURCE_SELECTED ||
+                value == WiredSourceUtil.SOURCE_SECONDARY_SELECTED ||
+                value == WiredSourceUtil.SOURCE_SELECTOR)
                 return value;
-            return WiredBoxTypeUtility.SOURCE_TRIGGER;
+            return WiredSourceUtil.SOURCE_TRIGGER;
         }
 
         private void SyncLegacyFields()

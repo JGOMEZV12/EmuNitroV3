@@ -22,6 +22,7 @@ using Polar.HabboHotel.Rooms.Games.Freeze;
 using Polar.HabboHotel.Rooms.Games.Teams;
 using Polar.HabboHotel.Rooms.Instance;
 using Polar.HabboHotel.Rooms.TraxMachine;
+using Polar.HabboHotel.Rooms.Wired;
 using Polar.HabboHotel.Users;
 using Polar.HabboRoleplay.Bots.Manager;
 using Polar.HabboRoleplay.Houses;
@@ -37,10 +38,13 @@ namespace Polar.HabboHotel.Rooms
 {
     public class Room : RoomData, IDisposable
     {
+
         // ✅ FIX #1: Eliminado _cancellationTokenSource duplicado.
         //           Solo existe _mainProcessSource para controlar el loop de proceso.
         private CancellationTokenSource _mainProcessSource;
-
+        private RoomUserVariableManager _userVariableManager;
+        private RoomFurniVariableManager _furniVariableManager;
+        private RoomVariableManager _roomVariableManager;
         public bool isCrashed;
         public bool mDisposed;
         public bool RoomMuted;
@@ -201,6 +205,7 @@ namespace Polar.HabboHotel.Rooms
             _roomUserManager = new RoomUserManager(this);
             _filterComponent = new FilterComponent(this);
             _wiredComponent = new WiredComponent(this);
+            _userVariableManager = new RoomUserVariableManager(this);
             this._traxManager = new RoomTraxManager(this);
 
             GetRoomItemHandler().LoadFurniture();
@@ -224,6 +229,12 @@ namespace Polar.HabboHotel.Rooms
             StartRoomProcessing();
         }
 
+        public RoomUserVariableManager GetUserVariableManager()
+        {
+            if (_userVariableManager == null)
+                _userVariableManager = new RoomUserVariableManager(this);
+            return _userVariableManager;
+        }
         internal void StartRoomProcessing()
         {
             if (_mainProcessSource == null || _mainProcessSource.IsCancellationRequested)
@@ -252,13 +263,18 @@ namespace Polar.HabboHotel.Rooms
 
                         sw.Stop();
 
+                        // Nuevo: warning si el proceso mismo es lento
+                        if (sw.ElapsedMilliseconds > 80)
+                            Logging.WriteLine($"[Room {RoomId}] Ciclo lento: {sw.ElapsedMilliseconds}ms");
+
+
                         int userCount = 0;
                         try { userCount = _roomUserManager?.GetUserList()?.Count ?? 0; }
                         catch { userCount = 0; }
 
                         // 500ms = 2 ticks/seg. Es más estable que 460ms porque deja más margen
                         // para que Task.Delay (resolución ~15ms en Windows) no acumule deriva.
-                        int targetCycleMs = userCount == 0 ? 2000 : 480;
+                        int targetCycleMs = userCount == 0 ? 2000 : 125;
                         int wait = Math.Max(0, targetCycleMs - (int)sw.ElapsedMilliseconds);
 
                         await Task.Delay(wait, _mainProcessSource.Token);
@@ -602,6 +618,9 @@ namespace Polar.HabboHotel.Rooms
             return _wiredComponent;
         }
 
+        public RoomFurniVariableManager GetFurniVariableManager() => _furniVariableManager;
+        public RoomVariableManager GetRoomVariableManager() => _roomVariableManager;
+
         public void LoadPromotions()
         {
             using (IQueryAdapter dbClient = PolarEnvironment.GetDatabaseManager().GetQueryReactor())
@@ -889,43 +908,102 @@ namespace Polar.HabboHotel.Rooms
         public bool TryGetHouse(out House House) =>
             PolarEnvironment.GetGame().GetHouseManager().HouseList.TryGetValue(this.RoomId, out House);
 
+        // ============================================================================
+        //  REEMPLAZA el método SendObjects en Room.cs
+        //  El resto de Room.cs no cambia.
+        // ============================================================================
+
         public void SendObjects(GameClient Session)
         {
-            Room Room = Session.GetHabbo().CurrentRoom;
+            Room room = Session.GetHabbo().CurrentRoom;
 
-            // Java orden:
-            // 1° RoomRelativeMapComposer → HeightMapComposer  (width + totalTiles + shorts)
-            // 2° RoomHeightMapComposer   → FloorHeightMapComposer (bool + wallHeight + string)
-            Session.SendMessage(new HeightMapComposer(Room));
-            Session.SendMessage(new FloorHeightMapComposer(Room));
+            // ── Mapa ──────────────────────────────────────────────────────────────────
+            Session.SendMessage(new HeightMapComposer(room));
+            Session.SendMessage(new FloorHeightMapComposer(room));
 
-            var userList = _roomUserManager.GetUserList().ToList();
+            // ── Usuarios presentes ────────────────────────────────────────────────────
+            var userList = _roomUserManager.GetUserList();
 
+            // FIX 1: Un solo UsersComposer con todos los usuarios en vez de uno por usuario.
+            //        El cliente los procesa igual; un paquete grande es más rápido que N pequeños.
             if (userList.Count > 0)
                 Session.SendMessage(new UsersComposer(userList));
+
+            // FIX 2: Acumular todos los paquetes de estado (dance/sleep/carry/effect) en
+            //        una lista y enviarlos en un solo BroadcastPacket al final.
+            //        Antes: Session.SendMessage() por cada user × 4 posibles mensajes = N×4 writes.
+            //        Ahora: todos en un batch → 1 sola llamada a la capa TCP.
+            var statePackets = new List<ServerPacket>(userList.Count * 2);
 
             foreach (RoomUser roomUser in userList)
             {
                 if (roomUser == null) continue;
 
-                if (roomUser.IsBot && roomUser.BotData.DanceId > 0)
-                    Session.SendMessage(new DanceComposer(roomUser, roomUser.BotData.DanceId));
+                // Dance
+                if (roomUser.IsBot && roomUser.BotData?.DanceId > 0)
+                    statePackets.Add(new DanceComposer(roomUser, roomUser.BotData.DanceId));
                 else if (!roomUser.IsBot && !roomUser.IsPet && roomUser.IsDancing)
-                    Session.SendMessage(new DanceComposer(roomUser, roomUser.DanceId));
+                    statePackets.Add(new DanceComposer(roomUser, roomUser.DanceId));
 
+                // Sleep
                 if (roomUser.IsAsleep)
-                    Session.SendMessage(new SleepComposer(roomUser, true));
+                    statePackets.Add(new SleepComposer(roomUser, true));
 
+                // Carry item
                 if (roomUser.CarryItemID > 0 && roomUser.CarryTimer > 0)
-                    Session.SendMessage(new CarryObjectComposer(roomUser.VirtualId, roomUser.CarryItemID));
+                    statePackets.Add(new CarryObjectComposer(roomUser.VirtualId, roomUser.CarryItemID));
 
+                // Effect
                 if (!roomUser.IsBot && !roomUser.IsPet && roomUser.CurrentEffect > 0)
-                    Session.SendMessage(new AvatarEffectComposer(roomUser.VirtualId, roomUser.CurrentEffect));
+                    statePackets.Add(new AvatarEffectComposer(roomUser.VirtualId, roomUser.CurrentEffect));
             }
 
+            // FIX 3: Enviar todos los paquetes de estado en un solo write TCP.
+            //        Room.SendMessage(List<ServerPacket>) ya concatena los bytes en un ArrayPool
+            //        y hace una sola llamada SendData — usar eso aquí para la sesión entrante.
+            if (statePackets.Count > 0)
+            {
+                // Serializar todo en un buffer y enviarlo de una vez
+                int totalLen = 0;
+                var packetBytes = new byte[statePackets.Count][];
+                for (int i = 0; i < statePackets.Count; i++)
+                {
+                    packetBytes[i] = statePackets[i].GetBytes();
+                    totalLen += packetBytes[i].Length;
+                }
+
+                byte[] combined = System.Buffers.ArrayPool<byte>.Shared.Rent(totalLen);
+                int offset = 0;
+                foreach (var b in packetBytes)
+                {
+                    Buffer.BlockCopy(b, 0, combined, offset, b.Length);
+                    offset += b.Length;
+                }
+                Session.GetConnection().SendData(combined, 0, totalLen);
+                System.Buffers.ArrayPool<byte>.Shared.Return(combined, clearArray: false);
+            }
+
+            // ── UserUpdate (posiciones) ───────────────────────────────────────────────
             Session.SendMessage(new UserUpdateComposer(userList));
-            Session.SendMessage(new ObjectsComposer(Room.GetRoomItemHandler().GetFloor.ToArray(), Room));
-            Session.SendMessage(new ItemsComposer(Room.GetRoomItemHandler().GetWall.ToArray(), Room));
+
+            // ── Ítems de suelo y pared ────────────────────────────────────────────────
+            // FIX 4: ToArray() llamado una sola vez — GetFloor es ICollection<Item>,
+            //        llamarlo dos veces puede iterar el ConcurrentDictionary.Values dos veces.
+            //        Una sola snapshot, usada para ObjectsComposer.
+            var floorItems = room.GetRoomItemHandler().GetFloor.ToArray();
+            var wallItems = room.GetRoomItemHandler().GetWall.ToArray();
+
+            Session.SendMessage(new ObjectsComposer(floorItems, room));
+            Session.SendMessage(new ItemsComposer(wallItems, room));
+
+            // FIX 5: Si el cliente necesita los datos de variables wired al entrar,
+            //        enviarlos aquí en vez de por separado, para evitar un round-trip extra.
+            // Descomenta si tienes el composer listo:
+            // if (room.canInspectWired(Session.GetHabbo()))
+            //     Session.SendMessage(new WiredUserVariablesDataComposer(
+            //         room.GetUserVariableManager().CreateSnapshot(),
+            //         room.GetFurniVariableManager().CreateSnapshot(),
+            //         room.GetRoomVariableManager().CreateSnapshot()));
         }
 
         #region Tents

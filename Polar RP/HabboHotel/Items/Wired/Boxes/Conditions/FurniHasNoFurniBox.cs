@@ -1,6 +1,6 @@
 using System;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
+using Polar.HabboHotel.Rooms.Instance;
 using System.Linq;
 using Newtonsoft.Json;
 using Polar.Communication.Packets.Incoming;
@@ -20,7 +20,7 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Conditions
         public string ItemsData { get; set; }
 
         private bool all = false;
-        private int furniSource = WiredBoxTypeUtility.SOURCE_TRIGGER;
+        private int furniSource = WiredSourceUtil.SOURCE_TRIGGER;
 
         public FurniHasNoFurniBox(Room instance, Item item)
         {
@@ -34,7 +34,7 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Conditions
             // 1. Int params
             int paramsCount = packet.PopInt();
             bool rawAll = paramsCount > 0 && packet.PopInt() == 1;
-            int rawSource = paramsCount > 1 ? packet.PopInt() : WiredBoxTypeUtility.SOURCE_TRIGGER;
+            int rawSource = paramsCount > 1 ? packet.PopInt() : WiredSourceUtil.SOURCE_TRIGGER;
 
             // 2. String param
             string strParam = packet.PopString();
@@ -54,8 +54,8 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Conditions
                     SetItems.TryAdd(selected.Id, selected);
             }
 
-            if (SetItems.Count > 0 && furniSource == WiredBoxTypeUtility.SOURCE_TRIGGER)
-                furniSource = WiredBoxTypeUtility.SOURCE_SELECTED;
+            if (SetItems.Count > 0 && furniSource == WiredSourceUtil.SOURCE_TRIGGER)
+                furniSource = WiredSourceUtil.SOURCE_SELECTED;
         }
 
         public string GetWiredData()
@@ -73,7 +73,7 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Conditions
         {
             SetItems.Clear();
             this.all = false;
-            this.furniSource = WiredBoxTypeUtility.SOURCE_TRIGGER;
+            this.furniSource = WiredSourceUtil.SOURCE_TRIGGER;
 
             if (string.IsNullOrEmpty(wiredData)) return;
 
@@ -115,12 +115,12 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Conditions
                 }
 
                 furniSource = SetItems.Count == 0
-                    ? WiredBoxTypeUtility.SOURCE_TRIGGER
-                    : WiredBoxTypeUtility.SOURCE_SELECTED;
+                    ? WiredSourceUtil.SOURCE_TRIGGER
+                    : WiredSourceUtil.SOURCE_SELECTED;
             }
 
-            if (furniSource == WiredBoxTypeUtility.SOURCE_TRIGGER && SetItems.Count > 0)
-                furniSource = WiredBoxTypeUtility.SOURCE_SELECTED;
+            if (furniSource == WiredSourceUtil.SOURCE_TRIGGER && SetItems.Count > 0)
+                furniSource = WiredSourceUtil.SOURCE_SELECTED;
 
             ItemsData = string.Join(";", SetItems.Keys);
         }

@@ -1,9 +1,10 @@
-﻿using System;
-using System.Linq;
-using System.Text;
-using System.Collections.Generic;
-using Polar.Database.Interfaces;
+﻿using Polar.Database.Interfaces;
 using Polar.HabboHotel.Global;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Reflection;
+using System.Text;
 
 
 
@@ -16,6 +17,10 @@ namespace Polar.Communication.Packets.Incoming.Avatar
             int SlotId = Packet.PopInt();
             string Look = Packet.PopString(); 
             string Gender = Packet.PopString();
+
+            if (Gender != "M" && Gender != "F") return;
+
+            Look = PolarEnvironment.GetGame().GetFigureManager().ProcessFigure(Look, Gender, true);
 
             using (IQueryAdapter dbClient = PolarEnvironment.GetDatabaseManager().GetQueryReactor())
             {

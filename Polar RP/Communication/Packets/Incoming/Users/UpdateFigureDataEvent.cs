@@ -44,6 +44,8 @@ namespace Polar.Communication.Packets.Incoming.Users
                 return;
             }
 
+
+            Look = PolarEnvironment.GetGame().GetFigureManager().ProcessFigure(Look, Gender, true);
             // Validar ClothingRoom
             string clothingRoomData = RoleplayData.GetData("clothing", "roomid");
             if (!int.TryParse(clothingRoomData, out int ClothingRoom))

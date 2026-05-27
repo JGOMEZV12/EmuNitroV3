@@ -1,108 +1,297 @@
-using Polar.Communication.Packets.Outgoing;
+using Newtonsoft.Json;
 using Polar.Communication.Packets.Incoming;
+using Polar.Communication.Packets.Outgoing;
 using Polar.HabboHotel.Rooms;
+using Polar.HabboHotel.Rooms.Instance;
 using Polar.HabboHotel.Users;
-using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using System.Drawing;
 
 namespace Polar.HabboHotel.Items.Wired.Boxes.Effects
 {
-    class BotGivesHandItemBox : IWiredItem
+    internal class BotGivesHandItemBox : IWiredItem, IWiredCycle, IWiredCustomData
     {
         public Room Instance { get; set; }
         public Item Item { get; set; }
-        public WiredBoxType Type { get { return WiredBoxType.EffectBotGivesHanditemBox; } }
+        public WiredBoxType Type => WiredBoxType.EffectBotGivesHanditemBox;
         public ConcurrentDictionary<int, Item> SetItems { get; set; }
         public string StringData { get; set; }
         public bool BoolData { get; set; }
         public string ItemsData { get; set; }
 
-        public BotGivesHandItemBox(Room Instance, Item Item)
+        public int Delay
         {
-            this.Instance = Instance;
-            this.Item = Item;
-            this.SetItems = new ConcurrentDictionary<int, Item>();
+            get => _delay;
+            set { _delay = value; TickCount = value + 1; }
         }
 
-        public void HandleSave(ClientPacket Packet)
-        {
-            int IntCount = Packet.PopInt();
-            int ItemId = Packet.PopInt();   // hand item id
-            int UserSource = Packet.PopInt();
-            int BotSource = Packet.PopInt();
-            string BotName = Packet.PopString();
+        public int TickCount { get; set; }
 
-            this.StringData = BotName + ";" + ItemId + ";" + UserSource + ";" + BotSource;
+        private int _delay;
+        private string _botName = "";
+        private int _itemId = 0;
+        private int _userSource = WiredSourceUtil.SOURCE_TRIGGER;
+        private int _botSource = WiredBotSourceUtil.SOURCE_BOT_NAME;
+        private bool _requested;
+        private Habbo _pendingActor;
+
+        public BotGivesHandItemBox(Room instance, Item item)
+        {
+            Instance = instance;
+            Item = item;
+            SetItems = new ConcurrentDictionary<int, Item>();
+            TickCount = Delay;
+            _requested = false;
         }
 
-        public void Serialize(ServerPacket Packet)
-        {
-            string botName = "";
-            int itemId = 0;
-            int userSource = 0;
-            int botSource = 0;
+        // ── IWiredCustomData ───────────────────────────────────────────────────
 
-            if (!string.IsNullOrEmpty(this.StringData))
+        public string GetWiredData()
+        {
+            return JsonConvert.SerializeObject(new JsonData
             {
-                string[] parts = this.StringData.Split(';');
+                bot_name = _botName ?? "",
+                item_id = _itemId,
+                delay = Delay,
+                userSource = _userSource,
+                botSource = _botSource
+            });
+        }
+
+        public void LoadWiredData(string wiredData)
+        {
+            _botName = "";
+            _itemId = 0;
+            _userSource = WiredSourceUtil.SOURCE_TRIGGER;
+            _botSource = WiredBotSourceUtil.SOURCE_BOT_NAME;
+            Delay = 0;
+
+            if (string.IsNullOrEmpty(wiredData)) return;
+
+            if (wiredData.StartsWith("{"))
+            {
+                var data = JsonConvert.DeserializeObject<JsonData>(wiredData);
+                if (data == null) return;
+
+                _botName = data.bot_name ?? "";
+                _itemId = NormalizeHandItem(data.item_id);
+                _userSource = NormalizeUserSource(data.userSource);
+                _botSource = WiredBotSourceUtil.NormalizeBotSource(data.botSource ?? WiredBotSourceUtil.SOURCE_BOT_NAME);
+                Delay = data.delay;
+
+                // Fix: si botSource era SOURCE_TRIGGER pero hay nombre, usar SOURCE_BOT_NAME
+                if (_botSource == WiredSourceUtil.SOURCE_TRIGGER &&
+                    !string.IsNullOrEmpty(_botName))
+                    _botSource = WiredBotSourceUtil.SOURCE_BOT_NAME;
+            }
+            else if (wiredData.Contains('\t'))
+            {
+                // Retrocompatibilidad Java legacy: "delay\titemId\tbotName"
+                var tabs = wiredData.Split('\t');
+                if (tabs.Length == 3)
+                {
+                    if (int.TryParse(tabs[0], out int delay)) Delay = delay;
+                    _itemId = int.TryParse(tabs[1], out int id) ? NormalizeHandItem(id) : 0;
+                    _botName = tabs[2];
+                }
+
+                _userSource = WiredSourceUtil.SOURCE_TRIGGER;
+                _botSource = WiredBotSourceUtil.SOURCE_BOT_NAME;
+            }
+            else
+            {
+                // Retrocompatibilidad C# viejo: "botName;itemId;userSource;botSource"
+                var parts = wiredData.Split(';');
                 if (parts.Length == 4)
                 {
-                    botName = parts[0];
-                    itemId = int.Parse(parts[1]);
-                    userSource = int.Parse(parts[2]);
-                    botSource = int.Parse(parts[3]);
+                    _botName = parts[0];
+                    _itemId = int.TryParse(parts[1], out int id) ? NormalizeHandItem(id) : 0;
+                    _userSource = NormalizeUserSource(int.TryParse(parts[2], out int us) ? us : WiredSourceUtil.SOURCE_TRIGGER);
+                    _botSource = WiredBotSourceUtil.NormalizeBotSource(int.TryParse(parts[3], out int bs) ? bs : WiredBotSourceUtil.SOURCE_BOT_NAME);
                 }
             }
 
-            Packet.WriteBoolean(false);
-            Packet.WriteInteger(5);
-            Packet.WriteInteger(0);
-            Packet.WriteInteger(Item.GetBaseItem().SpriteId);
-            Packet.WriteInteger(Item.Id);
-            Packet.WriteString(botName);
-            Packet.WriteInteger(3);
-            Packet.WriteInteger(itemId);
-            Packet.WriteInteger(userSource);
-            Packet.WriteInteger(botSource);
-            Packet.WriteInteger(0);
-            Packet.WriteInteger(WiredBoxTypeUtility.GetWiredId(Type));
-            Packet.WriteInteger(0);
-            Packet.WriteInteger(0);
+            StringData = $"{_botName};{_itemId};{_userSource};{_botSource}";
+            TickCount = Delay;
         }
+
+        // ── Packet handling ────────────────────────────────────────────────────
+
+        public void HandleSave(ClientPacket packet)
+        {
+            int intCount = packet.PopInt();
+            _itemId = intCount > 0
+                ? NormalizeHandItem(packet.PopInt())
+                : 0;
+            _userSource = intCount > 1
+                ? NormalizeUserSource(packet.PopInt())
+                : WiredSourceUtil.SOURCE_TRIGGER;
+            _botSource = intCount > 2
+                ? WiredBotSourceUtil.NormalizeBotSource(packet.PopInt())
+                : WiredBotSourceUtil.SOURCE_BOT_NAME;
+            for (int i = 3; i < intCount; i++) packet.PopInt();
+
+            _botName = packet.PopString();
+            Delay = packet.PopInt();
+
+            StringData = $"{_botName};{_itemId};{_userSource};{_botSource}";
+        }
+
+        public void Serialize(ServerPacket packet)
+        {
+            packet.WriteBoolean(false);
+            packet.WriteInteger(5);
+            packet.WriteInteger(0); // sin furni seleccionable
+            packet.WriteInteger(Item.GetBaseItem().SpriteId);
+            packet.WriteInteger(Item.Id);
+            packet.WriteString(_botName ?? "");
+            packet.WriteInteger(3); // itemId, userSource, botSource
+            packet.WriteInteger(_itemId);
+            packet.WriteInteger(_userSource);
+            packet.WriteInteger(_botSource);
+            packet.WriteInteger(0);
+            packet.WriteInteger(WiredBoxTypeUtility.GetWiredId(Type));
+            packet.WriteInteger(Delay);
+            packet.WriteInteger(0);
+        }
+
+        // ── Lógica ─────────────────────────────────────────────────────────────
 
         public bool Execute(params object[] Params)
         {
-            if (string.IsNullOrEmpty(this.StringData)) return false;
+            if (string.IsNullOrEmpty(_botName)) return false;
+            if (_itemId <= 0) return false;
 
-            string[] parts = this.StringData.Split(';');
-            if (parts.Length != 4) return false;
+            _pendingActor = Params.Length > 0 ? Params[0] as Habbo : null;
 
-            string botName = parts[0];
-            int drinkId = int.Parse(parts[1]);
-
-            if (Params != null && Params.Length > 0 && Params[0] is Habbo player)
+            if (!_requested)
             {
-                RoomUser actor = Instance.GetRoomUserManager().GetRoomUserByHabbo(player.Id);
-                if (actor == null) return false;
-
-                RoomUser bot = Instance.GetRoomUserManager().GetBotByName(botName);
-                if (bot == null) return false;
-
-                if (bot.BotData.TargetUser == 0)
-                {
-                    if (!Instance.GetGameMap().CanWalk(actor.SquareBehind.X, actor.SquareBehind.Y, false))
-                        return false;
-
-                    bot.CarryItem(drinkId);
-                    bot.BotData.TargetUser = actor.HabboId;
-                    bot.MoveTo(actor.SquareBehind.X, actor.SquareBehind.Y);
-                }
+                TickCount = Delay;
+                _requested = true;
             }
             return true;
+        }
+
+        public bool OnCycle()
+        {
+            if (Instance == null || !_requested) return false;
+
+            _requested = false;
+
+            // Resolver usuario destino
+            RoomUser actor = null;
+            if (_pendingActor != null)
+                actor = Instance.GetRoomUserManager().GetRoomUserByHabbo(_pendingActor.Id);
+
+            if (actor == null)
+            {
+                _pendingActor = null;
+                return false;
+            }
+
+            // Resolver bot
+            var bot = ResolveBot();
+            if (bot == null)
+            {
+                _pendingActor = null;
+                return false;
+            }
+
+            if (Instance.GetGameMap() == null)
+            {
+                _pendingActor = null;
+                return false;
+            }
+
+            // El bot ya está ocupado con otro usuario
+            if (bot.BotData.TargetUser != 0)
+            {
+                _pendingActor = null;
+                return false;
+            }
+
+            // Encontrar tile adyacente al actor para que el bot se acerque
+            var targetTile = GetClosestAdjacentTile(bot, actor);
+            if (targetTile == null)
+            {
+                _pendingActor = null;
+                return false;
+            }
+
+            // Bot lleva el hand item y camina hacia el actor
+            bot.CarryItem(_itemId);
+            bot.BotData.TargetUser = actor.HabboId;
+            bot.MoveTo(targetTile.Value.X, targetTile.Value.Y);
+
+            _pendingActor = null;
+            return true;
+        }
+
+        // ── Helpers ────────────────────────────────────────────────────────────
+
+        private RoomUser ResolveBot()
+        {
+            if (_botSource == WiredBotSourceUtil.SOURCE_BOT_NAME ||
+                _botSource == WiredSourceUtil.SOURCE_TRIGGER)
+                return Instance.GetRoomUserManager().GetBotByName(_botName);
+
+            // Para otros sources devolver el primer bot de la sala
+            foreach (var ru in Instance.GetRoomUserManager().GetRoomUsers())
+                if (ru != null && ru.IsBot) return ru;
+
+            return null;
+        }
+
+        /// <summary>
+        /// Devuelve el tile adyacente al actor más cercano al bot (port de getClosestAdjacentTile).
+        /// </summary>
+        private Point? GetClosestAdjacentTile(RoomUser bot, RoomUser actor)
+        {
+            var candidates = new[]
+            {
+                new Point(actor.X + 1, actor.Y),
+                new Point(actor.X - 1, actor.Y),
+                new Point(actor.X,     actor.Y + 1),
+                new Point(actor.X,     actor.Y - 1)
+            };
+
+            Point? best = null;
+            double bestD = double.MaxValue;
+            var map = Instance.GetGameMap();
+
+            foreach (var p in candidates)
+            {
+                if (!map.ValidTile(p.X, p.Y)) continue;
+                if (map.GetFloorStatus(p) == 0) continue;
+                if (map.SquareHasUsers(p.X, p.Y)) continue;
+
+                double d = System.Math.Sqrt(
+                    System.Math.Pow(p.X - bot.X, 2) +
+                    System.Math.Pow(p.Y - bot.Y, 2));
+
+                if (d < bestD) { bestD = d; best = p; }
+            }
+
+            return best;
+        }
+
+        private static int NormalizeHandItem(int value) => value < 0 ? 0 : value;
+
+        private static int NormalizeUserSource(int value) =>
+            WiredSourceUtil.IsDefaultUserSource(value)
+                ? value
+                : WiredSourceUtil.SOURCE_TRIGGER;
+
+        // ── DTO JSON ───────────────────────────────────────────────────────────
+
+        private class JsonData
+        {
+            public string bot_name { get; set; }
+            public int item_id { get; set; }
+            public int delay { get; set; }
+            public int userSource { get; set; }
+            public int? botSource { get; set; }
         }
     }
 }

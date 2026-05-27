@@ -20,6 +20,8 @@ namespace Polar.HabboHotel.Items.Wired
         TriggerGameEnds,
         TriggerUserFurniCollision,
         TriggerUserSaysCommand,
+        TriggerFurniVariableChanged,
+        TriggerRoomVariableChanged,
 
         EffectResetTimers,
         EffectCollisionCase,
@@ -129,6 +131,29 @@ namespace Polar.HabboHotel.Items.Wired
         // Additional AM Extended Wireds
         EffectTeleportToRoom,
         EffectGiveHanditem,
-        EffectMoveFurniXYZ
+        EffectMoveFurniXYZ,
+
+            // Selectors — Furni
+        SelectorFurniArea,
+        SelectorFurniNeighborhood,
+        SelectorFurniByType,
+        SelectorFurniAltitude,
+        SelectorFurniOnFurni,
+        SelectorFurniPicks,
+        SelectorFurniSignal,
+        SelectorFurniWithVariable,
+
+        // Selectors — Users
+        SelectorUsersArea,
+        SelectorUsersNeighborhood,
+        SelectorUsersSignal,
+        SelectorUsersByType,
+        SelectorUsersTeam,
+        SelectorUsersByAction,
+        SelectorUsersByName,
+        SelectorUsersHandItem,
+        SelectorUsersOnFurni,
+        SelectorUsersGroup,
+        SelectorUsersWithVariable,
     }
 }

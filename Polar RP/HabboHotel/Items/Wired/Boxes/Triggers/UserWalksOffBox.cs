@@ -1,6 +1,6 @@
 using System;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
+using Polar.HabboHotel.Rooms.Instance;
 using System.Linq;
 using Newtonsoft.Json;
 using Polar.Communication.Packets.Incoming;
@@ -22,7 +22,7 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Triggers
         public bool BoolData { get; set; }
         public string ItemsData { get; set; }
 
-        private int furniSource = WiredBoxTypeUtility.SOURCE_TRIGGER;
+        private int furniSource = WiredSourceUtil.SOURCE_TRIGGER;
 
         public UserWalksOffBox(Room instance, Item item)
         {
@@ -52,7 +52,7 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Triggers
 
             // Al final del HandleSave, después del loop
             if (SetItems.Count > 0)
-                this.furniSource = WiredBoxTypeUtility.SOURCE_SELECTED;
+                this.furniSource = WiredSourceUtil.SOURCE_SELECTED;
         }
 
         public string GetWiredData()
@@ -67,7 +67,7 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Triggers
         public void LoadWiredData(string wiredData)
         {
             this.SetItems.Clear();
-            this.furniSource = WiredBoxTypeUtility.SOURCE_TRIGGER;
+            this.furniSource = WiredSourceUtil.SOURCE_TRIGGER;
 
             if (string.IsNullOrEmpty(wiredData)) return;
 
@@ -87,7 +87,7 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Triggers
 
                 // Si hay items cargados, forzar SOURCE_SELECTED
                 if (SetItems.Count > 0)
-                    this.furniSource = WiredBoxTypeUtility.SOURCE_SELECTED;
+                    this.furniSource = WiredSourceUtil.SOURCE_SELECTED;
             }
             else
             {
@@ -106,7 +106,7 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Triggers
                     }
                 }
 
-                furniSource = SetItems.Count == 0 ? WiredBoxTypeUtility.SOURCE_TRIGGER : WiredBoxTypeUtility.SOURCE_SELECTED;
+                furniSource = SetItems.Count == 0 ? WiredSourceUtil.SOURCE_TRIGGER : WiredSourceUtil.SOURCE_SELECTED;
             }
 
             this.ItemsData = string.Join(";", SetItems.Keys);
@@ -144,7 +144,7 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Triggers
 
             if (Player == null) return false;
 
-            if (furniSource == WiredBoxTypeUtility.SOURCE_SELECTED && (source == null || !SetItems.ContainsKey(source.Id)))
+            if (furniSource == WiredSourceUtil.SOURCE_SELECTED && (source == null || !SetItems.ContainsKey(source.Id)))
                 return false;
 
             var Effects = Instance.GetWired().GetEffects(this);
@@ -215,9 +215,9 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Triggers
 
         private int NormalizeFurniSource(int value)
         {
-            if (value == WiredBoxTypeUtility.SOURCE_SELECTED || value == WiredBoxTypeUtility.SOURCE_SELECTOR)
+            if (value == WiredSourceUtil.SOURCE_SELECTED || value == WiredSourceUtil.SOURCE_SELECTOR)
                 return value;
-            return WiredBoxTypeUtility.SOURCE_TRIGGER;
+            return WiredSourceUtil.SOURCE_TRIGGER;
         }
 
         private class JsonData

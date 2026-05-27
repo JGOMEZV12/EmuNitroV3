@@ -2,10 +2,12 @@ using JNogueira.Discord.Webhook.Client;
 using log4net;
 using Polar.Communication.Packets;
 using Polar.Core;
+using Polar.Core.FigureData;
 using Polar.Database.Interfaces;
 using Polar.HabboHotel.Achievements;
 using Polar.HabboHotel.Animations;
 using Polar.HabboHotel.Badges;
+using Polar.HabboHotel.BattlePass;
 using Polar.HabboHotel.Bots;
 using Polar.HabboHotel.Cache;
 using Polar.HabboHotel.Catalog;
@@ -58,7 +60,6 @@ using Polar.HabboRoleplay.Weapons;
 using Polar.HabboRoleplay.Web.Util.ChatRoom;
 using Polar.HabboRoleplay.Wizards;
 using Polar.Messages.Net.MusCommunication;
-using Polar.HabboHotel.BattlePass;
 using System.Diagnostics;
 using System.Threading.Tasks;
 
@@ -117,7 +118,7 @@ namespace Polar.HabboHotel
         private HallOfFame            _hallOfFame;
         private TelevisionManager     _televisionManager;
         public  RPRoomManager         _rproomManager;
-
+        public FigureDataManager _figureManager;
         // Game loop
         private Task _gameLoop;
         public  static bool gameLoopEnabled = true;
@@ -162,6 +163,10 @@ namespace Polar.HabboHotel
 
             Progress(bar, wait, end, "Cargando Televisiones...");
             _televisionManager = new TelevisionManager();
+
+            Progress(bar, wait, end, "Cargando FigureData...");
+            _figureManager = new FigureDataManager();
+            _figureManager.Init();
         }
 
         private void LoadHotel(AbstractBar bar, int wait, int end)
@@ -394,6 +399,8 @@ namespace Polar.HabboHotel
             }
         }
 
+
+        public FigureDataManager GetFigureManager() => _figureManager;
         // ─── Discord ────────────────────────────────────────────────────────────────
 
         public async Task SendMsPhoto(GameClient author, string image)

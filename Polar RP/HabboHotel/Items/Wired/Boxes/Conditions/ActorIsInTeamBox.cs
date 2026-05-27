@@ -6,6 +6,7 @@ using Polar.Communication.Packets.Outgoing;
 using Polar.HabboHotel.Rooms;
 using Polar.HabboHotel.Rooms.Games.Teams;
 using Polar.HabboHotel.Users;
+using Polar.HabboHotel.Rooms.Instance;
 
 namespace Polar.HabboHotel.Items.Wired.Boxes.Conditions
 {
@@ -23,7 +24,7 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Conditions
         public string ItemsData { get; set; }
 
         private int teamColor = 1; // 1=RED, 2=GREEN, 3=BLUE, 4=YELLOW
-        private int userSource = WiredBoxTypeUtility.SOURCE_TRIGGER;
+        private int userSource = WiredSourceUtil.SOURCE_TRIGGER;
         private int quantifier = QUANTIFIER_ALL;
 
         public ActorIsInTeamBox(Room instance, Item item)
@@ -38,7 +39,7 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Conditions
         {
             int paramsCount = packet.PopInt();
             int rawTeam = paramsCount > 0 ? packet.PopInt() : 1;
-            int rawSource = paramsCount > 1 ? packet.PopInt() : WiredBoxTypeUtility.SOURCE_TRIGGER;
+            int rawSource = paramsCount > 1 ? packet.PopInt() : WiredSourceUtil.SOURCE_TRIGGER;
             int rawQuant = paramsCount > 2 ? packet.PopInt() : QUANTIFIER_ALL;
 
             string strParam = packet.PopString();
@@ -64,7 +65,7 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Conditions
         public void LoadWiredData(string wiredData)
         {
             this.teamColor = 1;
-            this.userSource = WiredBoxTypeUtility.SOURCE_TRIGGER;
+            this.userSource = WiredSourceUtil.SOURCE_TRIGGER;
             this.quantifier = QUANTIFIER_ALL;
 
             if (string.IsNullOrEmpty(wiredData)) return;
@@ -84,7 +85,7 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Conditions
                 if (int.TryParse(wiredData, out int old))
                     this.teamColor = old;
 
-                this.userSource = WiredBoxTypeUtility.SOURCE_TRIGGER;
+                this.userSource = WiredSourceUtil.SOURCE_TRIGGER;
                 this.quantifier = QUANTIFIER_ANY;
             }
 
