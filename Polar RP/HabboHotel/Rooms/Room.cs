@@ -15,6 +15,7 @@ using Polar.HabboHotel.Items.Data.RentableSpace;
 using Polar.HabboHotel.Items.Data.Toner;
 using Polar.HabboHotel.Rooms.AI;
 using Polar.HabboHotel.Rooms.AI.Speech;
+using Polar.HabboHotel.Rooms.Instance;
 using Polar.HabboHotel.Rooms.Games;
 using Polar.HabboHotel.Rooms.Games.Banzai;
 using Polar.HabboHotel.Rooms.Games.Football;
@@ -55,6 +56,7 @@ namespace Polar.HabboHotel.Rooms
         public Task ProcessTask;
         public List<Trade> ActiveTrades { get; set; }
         private RoomTraxManager _traxManager;
+        private RoomCycleManager _cycleManager;
         public TonerData TonerData;
         public MoodlightData MoodlightData;
         public int wiredInspectMask = WIRED_ACCESS_DEFAULT_INSPECT_MASK;
@@ -207,6 +209,7 @@ namespace Polar.HabboHotel.Rooms
             _wiredComponent = new WiredComponent(this);
             _userVariableManager = new RoomUserVariableManager(this);
             this._traxManager = new RoomTraxManager(this);
+            this._cycleManager = new RoomCycleManager(this);
 
             GetRoomItemHandler().LoadFurniture();
             GetGameMap().GenerateMaps();
@@ -262,11 +265,7 @@ namespace Polar.HabboHotel.Rooms
                         if (sw.ElapsedMilliseconds > 100)
                             Logging.WriteLine($"[Room {RoomId}] Ciclo lento: {sw.ElapsedMilliseconds}ms");
 
-                        // FIX 1: targetCycleMs dinámico basado en usuarios REALES en memoria
-                        // Usar userCount que ya se mantiene actualizado en RoomUserManager
-                        // en lugar de llamar GetRoomUsers().Count (que hace .ToList())
-                        int activeUsers = _roomUserManager?.userCount ?? 0;
-                        int targetCycleMs = activeUsers == 0 ? 2000 : 125;
+                        int targetCycleMs = 500;
                         int wait = Math.Max(0, targetCycleMs - (int)sw.ElapsedMilliseconds);
 
                         await Task.Delay(wait, _mainProcessSource.Token);
@@ -450,6 +449,7 @@ namespace Polar.HabboHotel.Rooms
         }
 
         public RoomUserManager GetRoomUserManager() => _roomUserManager;
+        public RoomCycleManager GetCycleManager() => _cycleManager;
 
         public Soccer GetSoccer()
         {
@@ -799,45 +799,7 @@ namespace Polar.HabboHotel.Rooms
 
             try
             {
-                var timeStarted = DateTime.Now;
-
-                // FIX 2+3: evitar GetRoomUsers().ToList() + GetRoleplayBots().ToList()
-                // userCount se actualiza en OnCycle → O(1) sin allocación
-                // _bots.Count es O(1) en ConcurrentDictionary
-                int activeUsers = _roomUserManager?.userCount ?? 0;
-                int activeBots = _roomUserManager?._bots?.Count ?? 0;
-
-                if (activeUsers == 0 && activeBots == 0)
-                    IdleTime++;
-                else if (IdleTime > 0)
-                    IdleTime = 0;
-
-                if (HasActivePromotion && Promotion.HasExpired) EndPromotion();
-
-                if (IdleTime >= 60 && !HasActivePromotion)
-                {
-                    // FIX 5: await correcto — evita fire-and-forget con posible doble dispose
-                    _ = PolarEnvironment.GetGame().GetRoomManager().UnloadRoom(this);
-                    return;
-                }
-
-                try { GetRoomItemHandler().OnCycle(); }
-                catch (Exception e) { Logging.LogException(e.ToString()); }
-
-                try { GetRoomUserManager().OnCycle(); }
-                catch (Exception e) { Logging.LogException(e.ToString()); }
-
-                try { GetRoomUserManager().SerializeStatusUpdates(); }
-                catch (Exception e) { Logging.LogException(e.ToString()); }
-
-                try { if (_gameItemHandler != null) _gameItemHandler.OnCycle(); }
-                catch (Exception e) { Logging.LogException(e.ToString()); }
-
-                try { GetWired()?.OnCycle(); }
-                catch (Exception e) { Logging.LogException(e.ToString()); }
-
-                try { this._traxManager.OnCycle(); }
-                catch (Exception e) { Logging.LogException(e.ToString()); }
+                await _cycleManager.Cycle();
 
                 // FIX 4: comparar con DateTime.Now al final del procesamiento
                 // para no disparar SaveFurniture dos veces en ticks consecutivos

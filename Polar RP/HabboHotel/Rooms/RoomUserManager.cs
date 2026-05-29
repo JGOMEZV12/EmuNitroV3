@@ -715,6 +715,7 @@ namespace Polar.HabboHotel.Rooms
             foreach (RoomUser user in GetUserList())
             {
                 if (user == null) continue;
+                _room.GetCycleManager().CycleRoomUser(user);
                 UpdateUserStatus(user, false);
             }
         }
@@ -763,10 +764,14 @@ namespace Polar.HabboHotel.Rooms
                     }
 
                     ProcessCaptureEvents(user);
-                    UpdateBasicUserState(user, freeze);
+                    _room.GetCycleManager().CycleRoomUser(user);
+
+                    if (freeze != null) freeze.CycleUser(user);
 
                     if (processMov)
                         ProcessUserMovementOptimized(user, _usersToRemove, soccer, banzai, freeze);
+
+                    // UpdateUserEffectIfMoved(user); // Moved to CycleRoomUser
 
                     if (user.IsBot && user.BotAI != null)
                     {
@@ -778,8 +783,6 @@ namespace Polar.HabboHotel.Rooms
                     {
                         userCounter++;
                     }
-
-                    UpdateUserEffectIfMoved(user);
                 }
 
                 RemoveMarkedUsers(_usersToRemove);
@@ -821,18 +824,6 @@ namespace Polar.HabboHotel.Rooms
             else
                 RemoveRoomUser(user);
         }
-        private void UpdateUserEffectIfMoved(RoomUser user)
-        {
-            if (user == null || user.IsBot || user.GetClient()?.GetHabbo() == null) return;
-
-            // Solo recalcular si el usuario cambió de tile desde la última vez
-            if (user.X == user.LastEffectX && user.Y == user.LastEffectY) return;
-
-            user.LastEffectX = user.X;
-            user.LastEffectY = user.Y;
-
-            UpdateUserEffect(user, user.X, user.Y);
-        }
         private void ProcessCaptureEvents(RoomUser user)
         {
             if (user.GetClient() == null) return;
@@ -864,49 +855,6 @@ namespace Polar.HabboHotel.Rooms
         }
 
 
-        private void UpdateBasicUserState(RoomUser user, Freeze freeze)
-        {
-            user.IdleTime++;
-            user.HandleSpamTicks();
-
-            if (!user.IsBot && !user.IsAsleep && user.IdleTime >= 4000)
-            {
-                user.IsAsleep = true;
-                _room.SendMessage(new SleepComposer(user, true));
-
-                var rp = user.GetClient()?.GetRoleplay();
-                if (rp != null && !rp.IsJailed && !rp.IsDead)
-                {
-                    rp.BreakGeneralTimer = true;
-                    user.GetClient().GetHabbo().Motto = "[DORMIDO] " + rp.Class;
-                    user.GetClient().GetHabbo().Poof(true);
-                }
-            }
-
-            if (user.CarryItemID > 0)
-            {
-                user.CarryTimer--;
-                if (user.CarryTimer <= 0) user.CarryItem(0);
-            }
-
-            // FIX CYCLE-8: freeze ya resuelto, no hay GetFreeze() por usuario
-            if (freeze != null) freeze.CycleUser(user);
-
-            if (user.isRolling)
-            {
-                if (user.rollerDelay <= 0)
-                {
-                    UpdateUserStatus(user, false);
-                    user.isRolling = false;
-                }
-                else
-                {
-                    user.rollerDelay--;
-                }
-            }
-
-            if (user.RidingHorse) user.ApplyEffect(77);
-        }
 
         private void ProcessUserMovementOptimized(RoomUser user, List<RoomUser> usersToRemove,
     Soccer soccer = null, BattleBanzai banzai = null, Freeze freeze = null)
@@ -1156,7 +1104,7 @@ namespace Polar.HabboHotel.Rooms
             user.SetY = nextY;
             user.SetZ = nextZ;
 
-            UpdateUserEffect(user, nextX, nextY);
+            _room.GetCycleManager().ProcessUserFloorEffects(user, nextX, nextY);
         }
 
         private void StopWalking(RoomUser user)
@@ -1805,59 +1753,6 @@ namespace Polar.HabboHotel.Rooms
             {
                 Logging.LogException(e.ToString());
             }
-        }
-        private void UpdateUserEffect(RoomUser User, int x, int y)
-        {
-            if (User == null || User.IsBot || User.GetClient()?.GetHabbo() == null) return;
-
-            try
-            {
-                byte effectByte = _room.GetGameMap().EffectMap[x, y];
-                if (effectByte > 0)
-                {
-                    if (User.GetClient().GetHabbo().Effects().CurrentEffect == 0)
-                        User.CurrentItemEffect = ItemEffectType.NONE;
-
-                    ItemEffectType type = ByteToItemEffectEnum.Parse(effectByte);
-                    if (type == User.CurrentItemEffect) return;
-
-                    switch (type)
-                    {
-                        case ItemEffectType.Iceskates:
-                            User.GetClient().GetHabbo().Effects().ApplyEffect(
-                                User.GetClient().GetHabbo().Gender == "M" ? 38 : 39);
-                            User.CurrentItemEffect = ItemEffectType.Iceskates;
-                            break;
-                        case ItemEffectType.Normalskates:
-                            User.GetClient().GetHabbo().Effects().ApplyEffect(
-                                User.GetClient().GetHabbo().Gender == "M" ? 55 : 56);
-                            User.CurrentItemEffect = type;
-                            break;
-                        case ItemEffectType.SWIM:
-                            User.GetClient().GetHabbo().Effects().ApplyEffect(29);
-                            User.CurrentItemEffect = type;
-                            break;
-                        case ItemEffectType.SwimLow:
-                            User.GetClient().GetHabbo().Effects().ApplyEffect(30);
-                            User.CurrentItemEffect = type;
-                            break;
-                        case ItemEffectType.SwimHalloween:
-                            User.GetClient().GetHabbo().Effects().ApplyEffect(37);
-                            User.CurrentItemEffect = type;
-                            break;
-                        case ItemEffectType.NONE:
-                            User.GetClient().GetHabbo().Effects().ApplyEffect(-1);
-                            User.CurrentItemEffect = type;
-                            break;
-                    }
-                }
-                else if (User.CurrentItemEffect != ItemEffectType.NONE && effectByte == 0)
-                {
-                    User.GetClient().GetHabbo().Effects().ApplyEffect(-1);
-                    User.CurrentItemEffect = ItemEffectType.NONE;
-                }
-            }
-            catch { }
         }
 
         public int PetCount => petCount;
