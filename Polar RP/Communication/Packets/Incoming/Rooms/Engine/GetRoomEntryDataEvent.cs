@@ -50,20 +50,16 @@ namespace Polar.Communication.Packets.Incoming.Rooms.Engine
             }
             #endregion
 
-            #region 2. Join Room & Send Maps/Objects
+            #region 2. Room Entry Handshake (Camera focus order)
             if (!Room.GetRoomUserManager().AddAvatarToRoom(Session))
             {
                 Room.GetRoomUserManager().RemoveUserFromRoom(Session, false, false);
                 return;
             }
 
-            // Sends heightmaps, users, and all furniture
+            // Sends maps, furniture, users and metadata in the correct order for localization
             Room.SendObjects(Session);
-            #endregion
 
-            #region 3. Room Entry Packets
-            Session.SendMessage(new RoomEntryInfoComposer(Room.RoomId, Room.CheckRights(Session, true)));
-            Session.SendMessage(new RoomVisualizationSettingsComposer(Room.WallThickness, Room.FloorThickness, Room.Hidewall));
             Session.SendMessage(new RoomEventComposer(Room.RoomData, Room.RoomData.Promotion));
 
             if (Room.HideWired && Room.CheckRights(Session, true, false))
@@ -74,7 +70,7 @@ namespace Polar.Communication.Packets.Incoming.Rooms.Engine
                 Room.SendMessage(new UserChangeComposer(ThisUser, false));
             #endregion
 
-            #region 4. RP Logic & Status Checks (Texas, Taxi, Bus, Jobs, Jail, etc.)
+            #region 3. RP Logic & Status Checks (Texas, Taxi, Bus, Jobs, Jail, etc.)
 
             // Texas Hold 'Em
             ProcessTexasHoldEm(Room);
@@ -131,7 +127,7 @@ namespace Polar.Communication.Packets.Incoming.Rooms.Engine
             Session.GetRoleplay().ClearWebSocketDialogue();
             #endregion
 
-            #region 5. Triggers & Finalization
+            #region 4. Triggers & Finalization
             if (Room.GetWired() != null)
                 Room.GetWired().TriggerEvent(WiredBoxType.TriggerRoomEnter, Session.GetHabbo());
 

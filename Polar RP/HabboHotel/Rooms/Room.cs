@@ -880,54 +880,42 @@ namespace Polar.HabboHotel.Rooms
         public void SendObjects(GameClient Session)
         {
             Room room = Session.GetHabbo().CurrentRoom;
+            var userList = _roomUserManager.GetUserList();
 
-            // ── Mapa ──────────────────────────────────────────────────────────────────
+            // 1. Metadata básica para el cliente (Orden Arcturus)
+            Session.SendMessage(new RoomEntryInfoComposer(Id, CheckRights(Session, true)));
+            Session.SendMessage(new RoomVisualizationSettingsComposer(WallThickness, FloorThickness, Hidewall));
+
+            // 2. Mapas (Altura absoluta incluyendo furnis para localización)
             Session.SendMessage(new HeightMapComposer(room));
             Session.SendMessage(new FloorHeightMapComposer(room));
 
-            // ── Usuarios presentes ────────────────────────────────────────────────────
-            var userList = _roomUserManager.GetUserList();
-
-            // FIX 1: Un solo UsersComposer con todos los usuarios en vez de uno por usuario.
-            //        El cliente los procesa igual; un paquete grande es más rápido que N pequeños.
+            // 3. Usuarios presentes
             if (userList.Count > 0)
                 Session.SendMessage(new UsersComposer(userList));
 
-            // FIX 2: Acumular todos los paquetes de estado (dance/sleep/carry/effect) en
-            //        una lista y enviarlos en un solo BroadcastPacket al final.
-            //        Antes: Session.SendMessage() por cada user × 4 posibles mensajes = N×4 writes.
-            //        Ahora: todos en un batch → 1 sola llamada a la capa TCP.
+            // 4. Estados de usuarios (dance/sleep/carry/effect) en un solo batch
             var statePackets = new List<ServerPacket>(userList.Count * 2);
-
             foreach (RoomUser roomUser in userList)
             {
                 if (roomUser == null) continue;
-
-                // Dance
                 if (roomUser.IsBot && roomUser.BotData?.DanceId > 0)
                     statePackets.Add(new DanceComposer(roomUser, roomUser.BotData.DanceId));
                 else if (!roomUser.IsBot && !roomUser.IsPet && roomUser.IsDancing)
                     statePackets.Add(new DanceComposer(roomUser, roomUser.DanceId));
 
-                // Sleep
                 if (roomUser.IsAsleep)
                     statePackets.Add(new SleepComposer(roomUser, true));
 
-                // Carry item
                 if (roomUser.CarryItemID > 0 && roomUser.CarryTimer > 0)
                     statePackets.Add(new CarryObjectComposer(roomUser.VirtualId, roomUser.CarryItemID));
 
-                // Effect
                 if (!roomUser.IsBot && !roomUser.IsPet && roomUser.CurrentEffect > 0)
                     statePackets.Add(new AvatarEffectComposer(roomUser.VirtualId, roomUser.CurrentEffect));
             }
 
-            // FIX 3: Enviar todos los paquetes de estado en un solo write TCP.
-            //        Room.SendMessage(List<ServerPacket>) ya concatena los bytes en un ArrayPool
-            //        y hace una sola llamada SendData — usar eso aquí para la sesión entrante.
             if (statePackets.Count > 0)
             {
-                // Serializar todo en un buffer y enviarlo de una vez
                 int totalLen = 0;
                 var packetBytes = new byte[statePackets.Count][];
                 for (int i = 0; i < statePackets.Count; i++)
@@ -947,18 +935,14 @@ namespace Polar.HabboHotel.Rooms
                 System.Buffers.ArrayPool<byte>.Shared.Return(combined, clearArray: false);
             }
 
-            // ── UserUpdate (posiciones) ───────────────────────────────────────────────
-            Session.SendMessage(new UserUpdateComposer(userList));
-
-            // ── Ítems de suelo y pared ────────────────────────────────────────────────
-            // FIX 4: ToArray() llamado una sola vez — GetFloor es ICollection<Item>,
-            //        llamarlo dos veces puede iterar el ConcurrentDictionary.Values dos veces.
-            //        Una sola snapshot, usada para ObjectsComposer.
+            // 5. Ítems de suelo y pared
             var floorItems = room.GetRoomItemHandler().GetFloor.ToArray();
             var wallItems = room.GetRoomItemHandler().GetWall.ToArray();
-
             Session.SendMessage(new ObjectsComposer(floorItems, room));
             Session.SendMessage(new ItemsComposer(wallItems, room));
+
+            // 6. UserUpdate (posiciones y estados finales - Detona localización de cámara)
+            Session.SendMessage(new UserUpdateComposer(userList));
 
             // FIX 5: Si el cliente necesita los datos de variables wired al entrar,
             //        enviarlos aquí en vez de por separado, para evitar un round-trip extra.
