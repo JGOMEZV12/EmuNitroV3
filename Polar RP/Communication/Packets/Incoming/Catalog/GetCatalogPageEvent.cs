@@ -24,7 +24,7 @@ namespace Polar.Communication.Packets.Incoming.Catalog
 
             //Session.GetHabbo().lastLayout = Page.Template;
 
-            Session.SendMessage(new CatalogPageComposer(Page, CataMode));
+            Session.SendMessage(new CatalogPageComposer(Page, Session, Something, CataMode));
         }
     }
 }

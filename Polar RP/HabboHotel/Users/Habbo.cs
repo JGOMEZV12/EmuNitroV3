@@ -1,45 +1,47 @@
-using System;
-using System.Data;
-using System.Collections;
-using System.Collections.Generic;
-using System.Collections.Concurrent;
-using System.Linq;
 using log4net;
+using Polar.Communication.Packets.Outgoing;
 using Polar.Communication.Packets.Outgoing.Handshake;
-using Polar.Core;
-using Polar.HabboHotel.Rooms;
+using Polar.Communication.Packets.Outgoing.Inventory.Purse;
+using Polar.Communication.Packets.Outgoing.Navigator;
 using Polar.Communication.Packets.Outgoing.Rooms.Engine;
-using Polar.HabboHotel.GameClients;
+using Polar.Communication.Packets.Outgoing.Rooms.Session;
+using System.Collections.Generic;
+using Polar.Database.Interfaces;
 using Polar.HabboHotel.Achievements;
+using Polar.HabboHotel.Camera;
+using Polar.HabboHotel.Catalog;
+using Polar.HabboHotel.GameClients;
+using Polar.HabboHotel.Items.Crafting;
+using Polar.HabboHotel.Items.Wired;
+using Polar.HabboHotel.Rooms;
+using Polar.HabboHotel.Rooms.Chat.Commands;
+using Polar.HabboHotel.Subscriptions;
 using Polar.HabboHotel.Users.Badges;
+using Polar.HabboHotel.Users.Clothing;
+using Polar.HabboHotel.Users.Effects;
 using Polar.HabboHotel.Users.Inventory;
 using Polar.HabboHotel.Users.Messenger;
+using Polar.HabboHotel.Users.Messenger.FriendBar;
+using Polar.HabboHotel.Users.Navigator.SavedSearches;
+using Polar.HabboHotel.Users.Permissions;
+using Polar.HabboHotel.Users.Process;
 using Polar.HabboHotel.Users.Relationships;
 using Polar.HabboHotel.Users.UserDataManagement;
-using Polar.HabboHotel.Items.Crafting;
-using Polar.HabboHotel.Users.Process;
-using Polar.Communication.Packets.Outgoing.Inventory.Purse;
-using Polar.Communication.Packets.Outgoing;
-using Polar.HabboHotel.Users.Navigator.SavedSearches;
-using Polar.HabboHotel.Users.Effects;
-using Polar.HabboHotel.Users.Messenger.FriendBar;
-using Polar.HabboHotel.Users.Clothing;
-using Polar.Communication.Packets.Outgoing.Navigator;
-using Polar.Communication.Packets.Outgoing.Rooms.Session;
-using Polar.Database.Interfaces;
-using Polar.HabboHotel.Rooms.Chat.Commands;
-using Polar.HabboHotel.Users.Permissions;
-using Polar.HabboHotel.Subscriptions;
 using Polar.HabboRoleplay.Misc;
-using Polar.HabboHotel.Camera;
 using Polar.HabboRoleplay.RoleplayUsers;
+using System;
+using System.Collections;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Data;
+using System.Linq;
 
 namespace Polar.HabboHotel.Users
 {
     public class Habbo
     {
         private static readonly ILog log = LogManager.GetLogger("Polar.HabboHotel.Users");
-        
+        private Dictionary<int, CatalogItem> recentPurchases = new Dictionary<int, CatalogItem>();
         public bool BoostingCheck;
         public bool DebugStacking = false;
         public double StackHeight = 0;
@@ -234,7 +236,7 @@ namespace Polar.HabboHotel.Users
             this._backgroundId = backgroundId;
             this._standId = standId;
             this._overlayId = overlayId;
-
+            this.recentPurchases = new Dictionary<int, CatalogItem>(0);
             this.InitPermissions();
 
             if (!IsBot)
@@ -729,6 +731,7 @@ namespace Polar.HabboHotel.Users
 
         public void Dispose()
         {
+            this.recentPurchases.Clear();
             if (this.InventoryComponent != null) this.InventoryComponent.SetIdleState();
             if (this.UsersRooms != null) UsersRooms.Clear();
             if (this.InRoom && this.CurrentRoom != null) this.CurrentRoom.GetRoomUserManager().RemoveUserFromRoom(this._client, false, false);
@@ -841,7 +844,15 @@ namespace Polar.HabboHotel.Users
             if (Room.OwnerId != this.Id) this.GetClient().GetHabbo().GetStats().RoomVisits += 1;
             return true;
         }
+        public Dictionary<int, CatalogItem> GetRecentPurchases()
+        {
+            return this.recentPurchases;
+        }
 
+        public void DisposeRecentPurchases()
+        {
+            this.recentPurchases.Clear();
+        }
         internal void Poof(bool RoleplayCheck = true)
         {
             if (RoleplayCheck) HabboRoleplay.Misc.RoleplayManager.GetLookAndMotto(this.GetClient(), "poof");

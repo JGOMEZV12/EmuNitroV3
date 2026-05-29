@@ -212,11 +212,11 @@ namespace Polar.HabboHotel.Users.UserDataManagement
             // ── Fase 2: marcar online + limpiar ticket (no bloquea al usuario) ─
             // FIX: fire-and-forget — el cliente ya está autenticado; la BD puede
             //      tardar sin que eso retrase el envío de paquetes al cliente.
-            Task.Run(() =>
+           /* Task.Run(() =>
             {
                 using var db = PolarEnvironment.GetDatabaseManager().GetQueryReactor();
                 db.RunQuery($"UPDATE `users` SET `online`='1', `auth_ticket`='' WHERE `id`='{userId}' LIMIT 1");
-            });
+            });*/
 
             // ── Fase 3: construir colecciones (CPU, sin IO) ────────────────────
             var achievements = BuildAchievements(dAchievements);

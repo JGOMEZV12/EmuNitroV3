@@ -225,7 +225,7 @@ namespace Polar.HabboHotel.GameClients
 
                 PolarEnvironment.GetGame().GetClientManager().RegisterClient(this, userData.userID, userData.user.Username);
                 _habbo = userData.user;
-                //_habbo.ssoTicket = AuthTicket;
+                _habbo.ssoTicket = AuthTicket;
 
                 if (_habbo != null)
                 {

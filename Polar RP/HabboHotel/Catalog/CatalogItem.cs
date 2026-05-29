@@ -1,11 +1,11 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Data;
+﻿using Polar.Communication.Packets.Outgoing;
 using Polar.Core;
-using Polar.HabboHotel.Items;
-using Polar.Communication.Packets.Incoming;
-using Polar.Communication.Packets.Outgoing;
+using Polar.HabboHotel.Catalog.Utilities;
 using Polar.HabboHotel.GameClients;
+using Polar.HabboHotel.Items;
+using Polar.HabboHotel.Items.Utilities;
+using System;
+using System.Collections.Generic;
 
 namespace Polar.HabboHotel.Catalog
 {
@@ -22,14 +22,18 @@ namespace Polar.HabboHotel.Catalog
         public int CostDiamonds { get; set; }
         public string ExtraData { get; set; }
         public string Badge { get; set; }
-        public bool OfferActive { get; set; } // Renombrado de HaveOffer
+        public bool OfferActive { get; set; }
         public int OfferId { get; set; }
         public bool IsLimited { get; set; }
         public int LimitedEditionStack { get; set; }
         public int LimitedEditionSells { get; set; }
 
-        public CatalogItem(int Id, int ItemId, ItemData Data, string CatalogName, int PageId, int CostCredits,
-            int CostPixels, int CostDiamonds, int Amount, int LimitedEditionSells, int LimitedEditionStack,
+        public int PageID => PageId;
+        public bool HaveOffer => OfferActive;
+
+        public CatalogItem(int Id, int ItemId, ItemData Data, string CatalogName, int PageId,
+            int CostCredits, int CostPixels, int CostDiamonds, int Amount,
+            int LimitedEditionSells, int LimitedEditionStack,
             bool OfferActive, string ExtraData, string Badge, int offerId)
         {
             this.Id = Id;
@@ -50,71 +54,185 @@ namespace Polar.HabboHotel.Catalog
             this.OfferId = offerId;
         }
 
-        // Propiedad para compatibilidad (mismo nombre que en CatalogPage)
-        public int PageID => PageId;
-
-        // Propiedad para compatibilidad (mismo nombre antiguo)
-        public bool HaveOffer => OfferActive;
-
-        public ItemData GetBaseItem(int itemId)
+        // ══════════════════════════════════════════════════════════════════════
+        //  SERIALIZE
+        //  Orden exacto que lee CatalogPageMessageOfferData en el cliente React:
+        //
+        //  readInt()     offerId
+        //  readString()  localizationId
+        //  readBoolean() rent
+        //  readInt()     priceCredits
+        //  readInt()     priceActivityPoints
+        //  readInt()     priceActivityPointsType
+        //  readBoolean() giftable
+        //  readInt()     totalProducts
+        //    → CatalogPageMessageProductData x N
+        //  readInt()     clubLevel
+        //  readBoolean() bundlePurchaseAllowed
+        //  readBoolean() isPet
+        //  readString()  previewImage
+        // ══════════════════════════════════════════════════════════════════════
+        public void Serialize(ServerPacket message)
         {
-            ItemData itemData;
-            if (!PolarEnvironment.GetGame().GetItemManager().GetItem(itemId, out itemData))
+            // offerId
+            message.WriteInteger(Id);
+
+            // localizationId
+            message.WriteString(Name ?? string.Empty);
+
+            // rent
+            message.WriteBoolean(false);
+
+            // priceCredits
+            message.WriteInteger(CostCredits);
+
+            // priceActivityPoints + priceActivityPointsType
+            if (CostDiamonds > 0)
             {
-                if (this.Name != "room_ad_plus_badge")
-                {
-                    //Console.WriteLine($"UNKNOWN ItemId: {itemId}");
-                }
-                return null;
+                message.WriteInteger(CostDiamonds);
+                message.WriteInteger(5); // diamonds
+            }
+            else
+            {
+                message.WriteInteger(CostPixels);
+                message.WriteInteger(0); // duckets
             }
 
-            return itemData;
+            // giftable
+            message.WriteBoolean(ItemUtility.CanGiftItem(this));
+
+            // ── productos (CatalogPageMessageProductData) ─────────────────────
+            // El cliente React lee por cada producto:
+            //   readString() → productType  ("s", "e", "b", "r")
+            //   if badge:
+            //     readString() → productClassname
+            //   else:
+            //     readInt()    → furniSpriteId
+            //     readString() → extraParam
+            //     readInt()    → productCount
+            //     readBoolean()→ isLimited
+            //     if isLimited:
+            //       readInt()  → limitedStack
+            //       readInt()  → limitedSells remaining
+
+            HashSet<ItemData> items = GetBaseItems();
+            message.WriteInteger(items.Count);
+
+            foreach (ItemData item in items)
+            {
+                string itemType = item.Type.ToString().ToLower();
+                message.WriteString(itemType);
+
+                if (itemType == "b") // badge
+                {
+                    message.WriteString(item.ItemName ?? string.Empty);
+                }
+                else
+                {
+                    // furniSpriteId
+                    message.WriteInteger(item.SpriteId);
+
+                    // extraParam — según tipo de item
+                    message.WriteString(GetExtraParam(item));
+
+                    // productCount
+                    message.WriteInteger(GetItemAmount(item.Id));
+
+                    // isLimited
+                    message.WriteBoolean(IsLimited);
+                    if (IsLimited)
+                    {
+                        message.WriteInteger(LimitedEditionStack);
+                        message.WriteInteger(Math.Max(0, LimitedEditionStack - LimitedEditionSells));
+                    }
+                }
+            }
+
+            // clubLevel
+            message.WriteInteger(0);
+
+            // bundlePurchaseAllowed — true si tiene más de un producto (bundle)
+            message.WriteBoolean(items.Count > 1);
+
+            // isPet — true si el item es un bot/pet tipo "r"
+            bool isPet = Data != null && Data.Type.ToString().ToLower() == "r";
+            message.WriteBoolean(isPet);
+
+            // previewImage — classname del furni, el cliente lo usa como "product"
+            // para buscar en furnidata. Es el campo que causaba el crash "product undefined".
+            message.WriteString(Data?.ItemName ?? string.Empty);
         }
 
-        // Versión mejorada que usa el ItemId de la instancia
-        public ItemData GetBaseItem()
+        // ── ExtraParam por tipo de item ───────────────────────────────────────
+        private string GetExtraParam(ItemData item)
         {
-            return GetBaseItem(this.ItemId);
+            string itemType = item.Type.ToString().ToLower();
+
+            if (Name.Contains("wallpaper_single") ||
+                Name.Contains("floor_single") ||
+                Name.Contains("landscape_single"))
+            {
+                // Tercera parte del nombre: "wallpaper_single_101" → "101"
+                var parts = Name.Split('_');
+                return parts.Length >= 3 ? parts[2] : string.Empty;
+            }
+
+            if (itemType == "r" && item.ItemName.Contains("bot"))
+            {
+                // Bot: buscar "figure:" en extradata separado por ";"
+                if (!string.IsNullOrEmpty(ExtraData))
+                {
+                    foreach (string s in ExtraData.Split(';'))
+                    {
+                        if (s.StartsWith("figure:", StringComparison.OrdinalIgnoreCase))
+                            return s.Replace("figure:", string.Empty);
+                    }
+                }
+                return ExtraData ?? string.Empty;
+            }
+
+            if (itemType == "r")
+                return ExtraData ?? string.Empty;
+
+            if (item.ItemName.Equals("poster", StringComparison.OrdinalIgnoreCase))
+                return ExtraData ?? string.Empty;
+
+            if (Name.StartsWith("SONG ", StringComparison.OrdinalIgnoreCase))
+                return ExtraData ?? string.Empty;
+
+            return string.Empty;
         }
 
+        // ── SerializeClub ─────────────────────────────────────────────────────
         public void SerializeClub(ServerPacket Message, GameClient Session)
         {
             Message.WriteInteger(Id);
             Message.WriteString(Name);
-            Message.WriteBoolean(false); // IsRentable
+            Message.WriteBoolean(false);
             Message.WriteInteger(CostCredits);
 
             if (CostDiamonds > 0)
             {
                 Message.WriteInteger(CostDiamonds);
-                Message.WriteInteger(5); // Tipo moneda: Diamantes
+                Message.WriteInteger(5);
             }
             else
             {
                 Message.WriteInteger(CostPixels);
-                Message.WriteInteger(0); // Tipo moneda: Duckets
+                Message.WriteInteger(0);
             }
 
-            Message.WriteBoolean(true); // Se puede regalar
+            Message.WriteBoolean(true);
 
-            int days = 0;
-            int months = 0;
-
+            int days = 0, months = 0;
             if (Data?.InteractionType != null)
             {
                 switch (Data.InteractionType)
                 {
-                    case InteractionType.club_1_month:
-                        months = 1;
-                        break;
-                    case InteractionType.club_3_month:
-                        months = 3;
-                        break;
-                    case InteractionType.club_6_month:
-                        months = 6;
-                        break;
+                    case InteractionType.club_1_month: months = 1; break;
+                    case InteractionType.club_3_month: months = 3; break;
+                    case InteractionType.club_6_month: months = 6; break;
                 }
-
                 days = 31 * months;
             }
 
@@ -130,26 +248,51 @@ namespace Polar.HabboHotel.Catalog
             Session?.GetHabbo()?.GetClubManager()?.ReloadSubscription(Session);
             future = future.AddDays(days);
 
-            Message.WriteInteger(months); // months
-            Message.WriteInteger(days); // days
+            Message.WriteInteger(months);
+            Message.WriteInteger(days);
             Message.WriteBoolean(true);
-            Message.WriteInteger(days); // wtf
-            Message.WriteInteger(future.Year); // year
-            Message.WriteInteger(future.Month); // month
-            Message.WriteInteger(future.Day); // day
+            Message.WriteInteger(days);
+            Message.WriteInteger(future.Year);
+            Message.WriteInteger(future.Month);
+            Message.WriteInteger(future.Day);
         }
 
+        // ── GetBaseItems ──────────────────────────────────────────────────────
+        public ItemData GetBaseItem(int itemId)
+        {
+            if (!PolarEnvironment.GetGame().GetItemManager().GetItem(itemId, out ItemData itemData))
+                return null;
+            return itemData;
+        }
+
+        public ItemData GetBaseItem() => GetBaseItem(ItemId);
+
+        public HashSet<ItemData> GetBaseItems()
+        {
+            var items = new HashSet<ItemData>();
+            string[] itemIds = ItemId.ToString().Split(';');
+
+            foreach (string rawId in itemIds)
+            {
+                if (string.IsNullOrEmpty(rawId)) continue;
+                string cleanId = rawId.Contains(":") ? rawId.Split(':')[0] : rawId;
+                if (!int.TryParse(cleanId, out int identifier) || identifier <= 0) continue;
+                if (PolarEnvironment.GetGame().GetItemManager().GetItem(identifier, out ItemData data))
+                    items.Add(data);
+            }
+
+            return items;
+        }
+
+        public int GetItemAmount(int itemId) =>
+            itemId == ItemId ? Math.Max(1, Amount) : 1;
+
+        // ── Helpers ───────────────────────────────────────────────────────────
         public int ExtradataInt
         {
-            get
-            {
-                if (int.TryParse(this.ExtraData, out int result))
-                    return result;
-                return 0;
-            }
+            get { int.TryParse(ExtraData, out int r); return r; }
         }
 
-        // Método para validar si el item está disponible
         public bool IsAvailable()
         {
             if (!OfferActive) return false;
@@ -158,16 +301,13 @@ namespace Polar.HabboHotel.Catalog
             return true;
         }
 
-        // Método para calcular el costo total para una cantidad específica
         public (int credits, int pixels, int diamonds) CalculateTotalCost(int quantity)
         {
-            quantity = Math.Max(1, Math.Min(quantity, 100)); // Limitar entre 1 y 100
+            quantity = Math.Max(1, Math.Min(quantity, 100));
             return (CostCredits * quantity, CostPixels * quantity, CostDiamonds * quantity);
         }
 
-        public override string ToString()
-        {
-            return $"CatalogItem [Id: {Id}, Name: {Name}, ItemId: {ItemId}, PageId: {PageId}, OfferId: {OfferId}, Active: {OfferActive}]";
-        }
+        public override string ToString() =>
+            $"CatalogItem [Id:{Id}, Name:{Name}, ItemId:{ItemId}, PageId:{PageId}]";
     }
 }

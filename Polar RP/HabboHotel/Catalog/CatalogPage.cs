@@ -1,3 +1,4 @@
+using Polar.Communication.Packets.Outgoing;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -16,7 +17,12 @@ namespace Polar.HabboHotel.Catalog
         private bool _visible;
         private bool _enabled;
         private string _template;
-
+        public bool IsFrontPage =>
+    Template.Equals("frontpage", StringComparison.OrdinalIgnoreCase) ||
+    Template.Equals("frontpage4", StringComparison.OrdinalIgnoreCase) ||
+    Template.Equals("frontpage_featured", StringComparison.OrdinalIgnoreCase);
+        public bool IsRecentPurchases =>
+    Template.Equals("recent_purchases", StringComparison.OrdinalIgnoreCase);
         public List<string> _pageStrings1 { get; private set; }
         public List<string> _pageStrings2 { get; private set; }
 
@@ -47,6 +53,23 @@ namespace Polar.HabboHotel.Catalog
 
             this.Items = Items ?? new Dictionary<int, CatalogItem>();
             this.ItemOffers = itemOffers ?? new Dictionary<int, CatalogItem>();
+        }
+        public void Serialize(ServerPacket message)
+        {
+            // layoutCode — leído por el parser ANTES de crear CatalogLocalizationData
+            message.WriteString(Template ?? string.Empty);
+
+            // CatalogLocalizationData.images ← PageStrings1
+            message.WriteInteger(PageStrings1?.Count ?? 0);
+            if (PageStrings1 != null)
+                foreach (string s in PageStrings1)
+                    message.WriteString(s ?? string.Empty);
+
+            // CatalogLocalizationData.texts ← PageStrings2
+            message.WriteInteger(PageStrings2?.Count ?? 0);
+            if (PageStrings2 != null)
+                foreach (string s in PageStrings2)
+                    message.WriteString(s ?? string.Empty);
         }
 
         // Constructor antiguo para compatibilidad (con flatOffers)

@@ -443,7 +443,7 @@ namespace Polar.HabboHotel
         {
             using IQueryAdapter dbClient = PolarEnvironment.GetDatabaseManager().GetQueryReactor();
             dbClient.RunQuery("UPDATE users     SET online = '0'       WHERE online != '0'");
-            dbClient.RunQuery("UPDATE users     SET auth_ticket = ''   WHERE auth_ticket != ''");
+            //dbClient.RunQuery("UPDATE users     SET auth_ticket = ''   WHERE auth_ticket != ''");
             dbClient.RunQuery("UPDATE rooms     SET users_now = '0'    WHERE users_now > '0'");
             dbClient.RunQuery("UPDATE server_status SET users_online = '0', loaded_rooms = '0'");
         }

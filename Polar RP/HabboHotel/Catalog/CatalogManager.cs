@@ -276,25 +276,28 @@ namespace Polar.HabboHotel.Catalog
                             {
                                 int pageId = Convert.ToInt32(Row["id"]);
 
-                                // Obtener items para esta página
                                 var pageItems = _items.ContainsKey(pageId)
                                     ? _items[pageId]
                                     : new Dictionary<int, CatalogItem>();
 
-                                // Filtrar solo items con oferta activa para ItemOffers de la página
-                                var pageItemOffers = pageItems
-                                    .Where(x => x.Value.OfferId > 0 && x.Value.OfferActive)
-                                    .ToDictionary(x => x.Value.OfferId, x => x.Value);
+                                // FIX: reemplaza el .ToDictionary() que explota con OfferIds duplicados
+                                var pageItemOffers = new Dictionary<int, CatalogItem>();
+                                foreach (var kv in pageItems.Values)
+                                {
+                                    if (kv.OfferId <= 0 || !kv.OfferActive) continue;
+                                    if (!pageItemOffers.ContainsKey(kv.OfferId))
+                                        pageItemOffers[kv.OfferId] = kv;
+                                    // duplicado → simplemente ignorar, no lanzar excepción
+                                }
 
-                                // Handle column name variations for pages
                                 string layout = Row.Table.Columns.Contains(DatabaseCompatibility.CatalogPageLayoutColumn) ? Convert.ToString(Row[DatabaseCompatibility.CatalogPageLayoutColumn]) : "default_3x3";
-                                string strings1 = Row.Table.Columns.Contains(DatabaseCompatibility.CatalogPageStrings1Column) ? Convert.ToString(Row[DatabaseCompatibility.CatalogPageStrings1Column]) : "";
-                                string strings2 = Row.Table.Columns.Contains(DatabaseCompatibility.CatalogPageStrings2Column) ? Convert.ToString(Row[DatabaseCompatibility.CatalogPageStrings2Column]) : "";
+                                string strings1Raw = Row.Table.Columns.Contains(DatabaseCompatibility.CatalogPageStrings1Column) ? Convert.ToString(Row[DatabaseCompatibility.CatalogPageStrings1Column]) : "";
+                                string strings2Raw = Row.Table.Columns.Contains(DatabaseCompatibility.CatalogPageStrings2Column) ? Convert.ToString(Row[DatabaseCompatibility.CatalogPageStrings2Column]) : "";
                                 string textDetails = Row.Table.Columns.Contains(DatabaseCompatibility.CatalogPageStrings3Column) ? Convert.ToString(Row[DatabaseCompatibility.CatalogPageStrings3Column]) : "";
                                 string text1 = Row.Table.Columns.Contains(DatabaseCompatibility.CatalogPageText1Column) ? Convert.ToString(Row[DatabaseCompatibility.CatalogPageText1Column]) : "";
                                 string text2 = Row.Table.Columns.Contains(DatabaseCompatibility.CatalogPageText2Column) ? Convert.ToString(Row[DatabaseCompatibility.CatalogPageText2Column]) : "";
                                 string text3 = Row.Table.Columns.Contains(DatabaseCompatibility.CatalogPageText3Column) ? Convert.ToString(Row[DatabaseCompatibility.CatalogPageText3Column]) : "";
-                                // Crear la página
+
                                 var page = new CatalogPage(
                                     pageId,
                                     Convert.ToInt32(Row["parent_id"]),
@@ -306,14 +309,15 @@ namespace Polar.HabboHotel.Catalog
                                     Row.Table.Columns.Contains("min_vip") ? Convert.ToInt32(Row["min_vip"]) : 0,
                                     Row.Table.Columns.Contains(DatabaseCompatibility.CatalogPageVisibleColumn) ? Row[DatabaseCompatibility.CatalogPageVisibleColumn].ToString() : "1",
                                     layout,
-                                    strings1 + "|" + strings2,
+                                    strings1Raw + "|" + strings2Raw,
                                     text1 + "|" + text2 + "|" + textDetails + "|" + text3,
                                     textDetails,
                                     pageItems,
-                                    pageItemOffers
+                                    pageItemOffers  // ← ya sin riesgo de excepción
                                 );
 
                                 _pages[pageId] = page;
+
                                 int parentId = Convert.ToInt32(Row["parent_id"]);
                                 if (!_childIndex.ContainsKey(parentId))
                                     _childIndex[parentId] = new List<CatalogPage>();
@@ -321,9 +325,10 @@ namespace Polar.HabboHotel.Catalog
                             }
                             catch (Exception ex)
                             {
-                                log.Error($"Error al cargar página del catálogo: {ex}");
+                                log.Error($"Error al cargar página del catálogo id={Row["id"]}: {ex}");
                             }
                         }
+
                     }
 
                     // Cargar bots

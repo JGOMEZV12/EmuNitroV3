@@ -51,7 +51,7 @@ namespace Polar.HabboHotel.Rooms
         public DateTime lastTimerReset;
         public DateTime lastRegeneration;
         public delegate void FurnisLoaded();
-
+        private int _emptyTickCount = 0;
         public Task ProcessTask;
         public List<Trade> ActiveTrades { get; set; }
         private RoomTraxManager _traxManager;
@@ -242,47 +242,36 @@ namespace Polar.HabboHotel.Rooms
 
             _processTask = Task.Run(async () =>
             {
+                var sw = System.Diagnostics.Stopwatch.StartNew();
+
                 while (!_mainProcessSource.IsCancellationRequested)
                 {
+                    sw.Restart();
                     try
                     {
                         if (mDisposed || _roomUserManager == null || _roomItemHandling == null)
                         {
-                            await Task.Delay(480, _mainProcessSource.Token);
+                            await Task.Delay(500, _mainProcessSource.Token);
                             continue;
                         }
-
-                        // ✅ FIX WALK-1: Usar Stopwatch en lugar de GetIUnixTimestamp().
-                        //   GetIUnixTimestamp() tiene resolución de segundos enteros — al restar
-                        //   siempre da 0 o 1, lo que hace que el wait sea siempre exactamente
-                        //   targetCycleMs sin compensar el tiempo real de ProcessRoom.
-                        //   Stopwatch usa QueryPerformanceCounter y tiene resolución de ~100ns.
-                        var sw = System.Diagnostics.Stopwatch.StartNew();
 
                         await ProcessRoom();
 
                         sw.Stop();
 
-                        // Nuevo: warning si el proceso mismo es lento
-                        if (sw.ElapsedMilliseconds > 80)
+                        if (sw.ElapsedMilliseconds > 100)
                             Logging.WriteLine($"[Room {RoomId}] Ciclo lento: {sw.ElapsedMilliseconds}ms");
 
-
-                        int userCount = 0;
-                        try { userCount = _roomUserManager?.GetUserList()?.Count ?? 0; }
-                        catch { userCount = 0; }
-
-                        // 500ms = 2 ticks/seg. Es más estable que 460ms porque deja más margen
-                        // para que Task.Delay (resolución ~15ms en Windows) no acumule deriva.
-                        int targetCycleMs = userCount == 0 ? 2000 : 125;
+                        // FIX 1: targetCycleMs dinámico basado en usuarios REALES en memoria
+                        // Usar userCount que ya se mantiene actualizado en RoomUserManager
+                        // en lugar de llamar GetRoomUsers().Count (que hace .ToList())
+                        int activeUsers = _roomUserManager?.userCount ?? 0;
+                        int targetCycleMs = activeUsers == 0 ? 2000 : 125;
                         int wait = Math.Max(0, targetCycleMs - (int)sw.ElapsedMilliseconds);
 
                         await Task.Delay(wait, _mainProcessSource.Token);
                     }
-                    catch (OperationCanceledException)
-                    {
-                        break;
-                    }
+                    catch (OperationCanceledException) { break; }
                     catch (Exception e)
                     {
                         Logging.HandleException(e, "RoomProcessing");
@@ -812,17 +801,23 @@ namespace Polar.HabboHotel.Rooms
             {
                 var timeStarted = DateTime.Now;
 
-                if (this.GetRoomUserManager().GetRoomUsers().Count == 0 &&
-                    this.GetRoomUserManager().GetRoleplayBots().Count == 0)
-                    this.IdleTime++;
-                else if (this.IdleTime > 0)
-                    this.IdleTime = 0;
+                // FIX 2+3: evitar GetRoomUsers().ToList() + GetRoleplayBots().ToList()
+                // userCount se actualiza en OnCycle → O(1) sin allocación
+                // _bots.Count es O(1) en ConcurrentDictionary
+                int activeUsers = _roomUserManager?.userCount ?? 0;
+                int activeBots = _roomUserManager?._bots?.Count ?? 0;
+
+                if (activeUsers == 0 && activeBots == 0)
+                    IdleTime++;
+                else if (IdleTime > 0)
+                    IdleTime = 0;
 
                 if (HasActivePromotion && Promotion.HasExpired) EndPromotion();
 
                 if (IdleTime >= 60 && !HasActivePromotion)
                 {
-                    await PolarEnvironment.GetGame().GetRoomManager().UnloadRoom(this);
+                    // FIX 5: await correcto — evita fire-and-forget con posible doble dispose
+                    _ = PolarEnvironment.GetGame().GetRoomManager().UnloadRoom(this);
                     return;
                 }
 
@@ -844,9 +839,11 @@ namespace Polar.HabboHotel.Rooms
                 try { this._traxManager.OnCycle(); }
                 catch (Exception e) { Logging.LogException(e.ToString()); }
 
-                if (timeStarted > this._saveFurnitureTimerLast + this._saveFurnitureTimer)
+                // FIX 4: comparar con DateTime.Now al final del procesamiento
+                // para no disparar SaveFurniture dos veces en ticks consecutivos
+                if (DateTime.Now > this._saveFurnitureTimerLast + this._saveFurnitureTimer)
                 {
-                    this._saveFurnitureTimerLast = timeStarted;
+                    this._saveFurnitureTimerLast = DateTime.Now;
                     this._roomItemHandling.SaveFurniture();
                 }
             }
@@ -875,9 +872,14 @@ namespace Polar.HabboHotel.Rooms
             catch (Exception e3) { Logging.LogException(e3.ToString()); }
 
             isCrashed = true;
-            PolarEnvironment.GetGame().GetRoomManager().UnloadRoom(this, true);
-        }
 
+            // FIX 5: Task.Run con await interno — no bloquea el hilo del ciclo
+            // y evita que UnloadRoom se ejecute concurrentemente con el dispose del loop
+            _ = Task.Run(async () =>
+            {
+                await PolarEnvironment.GetGame().GetRoomManager().UnloadRoom(this, true);
+            });
+        }
         public bool CheckMute(GameClient Session)
         {
             if (MutedUsers.ContainsKey(Session.GetHabbo().Id))

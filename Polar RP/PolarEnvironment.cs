@@ -544,7 +544,7 @@ namespace Polar
             using (IQueryAdapter dbClient = _manager.GetQueryReactor())
             {
                 dbClient.RunQuery("TRUNCATE `catalog_marketplace_data`");
-                dbClient.RunQuery("UPDATE `users` SET online = '0', `auth_ticket` = '0'");
+               // dbClient.RunQuery("UPDATE `users` SET online = '0', `auth_ticket` = '0'");
                 dbClient.RunQuery("UPDATE `users` SET vip_points = '0' WHERE vip_points < 1");
                 dbClient.RunQuery("UPDATE `rooms` SET `users_now` = '0' WHERE `users_now` > '0'");
                 dbClient.RunQuery("UPDATE `server_status` SET `users_online` = '0', `loaded_rooms` = '0', `environment_status` = '" + (Crashed ? 3 : 0) + "'");

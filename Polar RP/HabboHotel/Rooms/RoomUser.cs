@@ -21,11 +21,14 @@ namespace Polar.HabboHotel.Rooms
 {
     public class RoomUser
     {
-        // Agregar estos campos a RoomUser
-        public long LastStepTick = 0;      // timestamp del último paso (ms)
-        public int MsPerStep = 430;
         // ────────────────────────────────────────────────
-        //  Campos de estado del usuario
+        //  Campos de movimiento avanzado
+        // ────────────────────────────────────────────────
+        public long LastStepTick = 0;
+        public int MsPerStep = 430;
+
+        // ────────────────────────────────────────────────
+        //  Campos de estado
         // ────────────────────────────────────────────────
         public bool AllowOverride;
         public BotAI BotAI;
@@ -93,13 +96,6 @@ namespace Polar.HabboHotel.Rooms
         public double SignTime;
         public byte SqState;
 
-        // ✅ FIX #1: Dictionary<string,string> no es thread-safe. RoomUser se accede desde
-        //   el tick de sala (hilo del ThreadPool), desde handlers de paquetes (otro hilo) y
-        //   desde comandos. Aunque en la práctica muchas operaciones se serializan por sala,
-        //   los accesos a Statusses desde distintos hilos sin lock pueden causar corrupción.
-        //   Se mantiene Dictionary<> por compatibilidad con el resto del codebase, pero se
-        //   documenta la limitación. Si se necesita acceso truly concurrente, migrar a
-        //   ConcurrentDictionary<string,string>.
         public Dictionary<string, string> Statusses;
 
         public int TeleDelay;
@@ -107,14 +103,13 @@ namespace Polar.HabboHotel.Rooms
         public bool UpdateNeeded;
         public int VirtualId;
 
-        // ✅ FIX #2: CheckBoosting se instanciaba como campo pero NUNCA se usaba en ningún
-        //   método del archivo. Se elimina para evitar allocación innecesaria en cada RoomUser.
-        //   Si se necesita en el futuro, añadir como propiedad lazy o inyectarlo.
-        // CheckBoosting BoostingCheck = new CheckBoosting();  ← ELIMINADO
-
         public int X;
         public int Y;
         public double Z;
+
+        // FIX CYCLE-2: tile donde se procesó por última vez el efecto de suelo
+        public int LastEffectX = -1;
+        public int LastEffectY = -1;
 
         public FreezePowerUp banzaiPowerUp;
         public bool isLying = false;
@@ -139,6 +134,28 @@ namespace Polar.HabboHotel.Rooms
         public bool ForceLay = false;
 
         private bool _trading = false;
+
+        // ────────────────────────────────────────────────
+        //  Spam — sentinel separado para evitar confusión
+        // ────────────────────────────────────────────────
+        // FIX SPAM: antes ChatSpamTicks == -1 se usaba como "expirado" Y como "resetear",
+        // lo que creaba una lógica circular confusa. Ahora un bool dedicado lo hace explícito.
+        private bool _spamWindowExpired = false;
+
+        // ────────────────────────────────────────────────
+        //  Offsets de squares relativos (norte/este/sur/oeste)
+        // ────────────────────────────────────────────────
+        // FIX #7: tabla estática en lugar de 4 métodos con if/else duplicado
+        private static readonly (int dx, int dy)[][] _squareOffsets =
+        {
+            new[] { (0,-1), (0,+1), (+1, 0), (-1, 0) }, // rot=0  norte
+            new[] { (+1,0), (-1,0), ( 0,-1), ( 0,+1) }, // rot=2  este
+            new[] { (0,+1), (0,-1), (-1, 0), (+1, 0) }, // rot=4  sur
+            new[] { (-1,0), (+1,0), ( 0,+1), ( 0,-1) }, // rot=6  oeste
+        };
+
+        // FIX DRIVE: array estático en lugar de new[] cada llamada a Split
+        private static readonly char[] _pasajeroSep = { ';' };
 
         // ────────────────────────────────────────────────
         //  Constructor
@@ -178,10 +195,10 @@ namespace Polar.HabboHotel.Rooms
         //  Propiedades
         // ────────────────────────────────────────────────
         public bool IsRoleplayBot => RPBotData != null && IsBot;
-
         public Point Coordinate => new Point(X, Y);
-
         public bool IsPet => IsBot && BotData.IsPet;
+        public bool IsDancing => DanceId >= 1;
+        public bool IsBot => BotData != null;
 
         public int CurrentEffect
         {
@@ -192,8 +209,6 @@ namespace Polar.HabboHotel.Rooms
             }
         }
 
-        public bool IsDancing => DanceId >= 1;
-
         public bool NeedsAutokick
         {
             get
@@ -201,7 +216,7 @@ namespace Polar.HabboHotel.Rooms
                 if (IsBot) return false;
                 if (GetClient()?.GetHabbo() == null) return true;
                 if (GetClient().GetHabbo().GetPermissions().HasRight("mod_tool") ||
-                    GetRoom().OwnerId == HabboId) return false;
+                    GetRoom()?.OwnerId == HabboId) return false;
                 return IdleTime >= 7200;
             }
         }
@@ -212,10 +227,8 @@ namespace Polar.HabboHotel.Rooms
             set => _trading = value;
         }
 
-        public bool IsBot => BotData != null;
-
         // ────────────────────────────────────────────────
-        //  Métodos de identificación
+        //  Identificación
         // ────────────────────────────────────────────────
         public string GetUsername()
         {
@@ -234,16 +247,15 @@ namespace Polar.HabboHotel.Rooms
         {
             if (!IsBot)
             {
-                if (GetClient() != null && GetClient().GetHabbo() != null)
-                    GetClient().GetHabbo().TimeAFK = 0;
+                var h = GetClient()?.GetHabbo();
+                if (h != null) h.TimeAFK = 0;
             }
 
             IdleTime = 0;
-
             if (!IsAsleep) return;
 
             IsAsleep = false;
-            GetRoom().SendMessage(new SleepComposer(this, false));
+            GetRoom()?.SendMessage(new SleepComposer(this, false));
 
             var rp = GetClient()?.GetRoleplay();
             if (rp != null && !rp.IsJailed && !rp.IsDead)
@@ -257,43 +269,34 @@ namespace Polar.HabboHotel.Rooms
         {
             Statusses.Clear();
             IsDispose = true;
+            LastEffectX = -1;
+            LastEffectY = -1;
             mRoom = null;
             mClient = null;
         }
 
         // ────────────────────────────────────────────────
-        //  Chat
+        //  Chat (bot)
         // ────────────────────────────────────────────────
         public void Chat(string message, bool shout = true, int bubble = 0, string colour = "")
         {
-            if (GetRoom() == null) return;
-            if (!IsBot) return;
+            if (GetRoom() == null || !IsBot) return;
 
+            // FIX CHAT-1: GetUserList() ya devuelve una nueva lista — no hace falta .ToList()
             var userList = GetRoom().GetRoomUserManager()?.GetUserList();
             if (userList == null) return;
 
-            foreach (RoomUser user in userList.ToList())
+            foreach (RoomUser user in userList)
             {
-                // ✅ FIX #3: Antes se usaba "return" dentro del foreach en lugar de "continue".
-                //   "return" sale del método completo al encontrar el primer usuario nulo o
-                //   con GetHabbo()==null, dejando de notificar a todos los demás usuarios.
-                //   "continue" salta sólo ese usuario y procesa los restantes.
+                // FIX CHAT-2: "return" → "continue" para no cortar el bucle al primer null
                 if (user == null || user.IsBot) continue;
                 if (user.GetClient()?.GetHabbo() == null) continue;
 
-                /*if (IsPet)
-                 {
-                     //if (!user.GetClient().GetHabbo().AllowPetSpeech) continue;
-                     user.GetClient().SendMessage(new ChatComposer(VirtualId, message, 0, 0, string.Empty));
-                 }
-                 else
-                 {*/
                 int effectiveBubble = bubble == 0 ? 2 : bubble;
                 if (!shout)
                     user.GetClient().SendMessage(new ChatComposer(VirtualId, message, 0, effectiveBubble, colour));
                 else
                     user.GetClient().SendMessage(new ShoutComposer(VirtualId, message, 0, effectiveBubble, colour));
-                //}
             }
         }
 
@@ -302,22 +305,29 @@ namespace Polar.HabboHotel.Rooms
         // ────────────────────────────────────────────────
         public void HandleSpamTicks()
         {
-            if (ChatSpamTicks < 0) return;
+            // FIX SPAM: usar bool explícito en lugar de sentinel -1
+            if (_spamWindowExpired) return;
 
             ChatSpamTicks--;
-            if (ChatSpamTicks == -1)
-                ChatSpamCount = 0;
+            if (ChatSpamTicks <= 0)
+            {
+                ChatSpamTicks = 0;
+                _spamWindowExpired = true;
+            }
         }
 
         public bool IncrementAndCheckFlood(out int muteTime, bool isSystemMessage = false)
         {
             muteTime = 0;
             if (isSystemMessage) return false;
+
             ChatSpamCount++;
 
-            if (ChatSpamTicks == -1)
+            // FIX SPAM: ventana expirada → resetear y permitir
+            if (_spamWindowExpired)
             {
                 ChatSpamTicks = 8;
+                _spamWindowExpired = false;
                 return false;
             }
 
@@ -360,11 +370,10 @@ namespace Polar.HabboHotel.Rooms
 
             GetClient().GetHabbo().HasSpoken = true;
 
-            ServerPacket packet;
             var habbo = GetClient().GetHabbo();
-
             string finalMessage = message;
 
+            ServerPacket packet;
             if (habbo.Translating)
             {
                 string lg1 = habbo.FromLanguage.ToLower();
@@ -372,63 +381,54 @@ namespace Polar.HabboHotel.Rooms
                 string translated = PolarEnvironment.translate(finalMessage, lg1, lg2)
                                     + $" [{lg1.ToUpper()} -> {lg2.ToUpper()}]";
                 int emotion = PolarEnvironment.GetGame().GetChatManager().GetEmotions().GetEmotionsForText(finalMessage);
-                //GetRoom().SendMessage(new UserNameChangeComposer(habbo, true));
                 packet = shout
                     ? new ShoutComposer(VirtualId, translated, emotion, bubble, colour)
                     : (ServerPacket)new ChatComposer(VirtualId, translated, emotion, bubble, colour);
-                //GetRoom().SendMessage(new UserNameChangeComposer(habbo, true));
             }
             else
             {
-                //GetRoom().SendMessage(new UserNameChangeComposer(habbo, true));
                 int emotion = PolarEnvironment.GetGame().GetChatManager().GetEmotions().GetEmotionsForText(finalMessage);
                 packet = shout
                     ? new ShoutComposer(VirtualId, finalMessage, emotion, bubble, colour)
                     : (ServerPacket)new ChatComposer(VirtualId, finalMessage, emotion, bubble, colour);
-                //GetRoom().SendMessage(new UserNameChangeComposer(habbo, true));
             }
 
             var roomUserMgr = mRoom.GetRoomUserManager();
             if (roomUserMgr != null)
             {
-                var senderClient = GetClient(); // ✅ FIX: usar GetClient() en lugar del campo mClient directamente
+                var senderClient = GetClient();
                 var rp = senderClient?.GetRoleplay();
                 int senderId = senderClient?.GetHabbo()?.Id ?? 0;
 
-                //GetRoom().SendMessage(new UserNameChangeComposer(habbo, true));
-                foreach (RoomUser user in roomUserMgr.GetRoomUsers().ToList())
+                // FIX ONCHAT-1: un solo snapshot para usuarios Y bots — evita dos .ToList()
+                var snapshot = roomUserMgr.GetUserList();
+
+                foreach (RoomUser user in snapshot)
                 {
-                    if (user?.GetClient()?.GetHabbo() == null) continue;
+                    if (user == null) continue;
 
-                    // ✅ FIX: mClient podía ser null — ahora usamos senderId resuelto de forma segura arriba
-                    if (senderId > 0 && user.GetClient().GetHabbo().MutedUsers.Contains(senderId)) continue;
-
-                    if (rp?.Invisible == true && user.GetClient().GetRoleplay()?.Invisible != true)
-                        continue;
-
-                    user.GetClient().SendMessage(packet);
+                    if (!user.IsBot)
+                    {
+                        if (user.GetClient()?.GetHabbo() == null) continue;
+                        if (senderId > 0 && user.GetClient().GetHabbo().MutedUsers.Contains(senderId)) continue;
+                        if (rp?.Invisible == true && user.GetClient().GetRoleplay()?.Invisible != true) continue;
+                        user.GetClient().SendMessage(packet);
+                    }
+                    else
+                    {
+                        // FIX ONCHAT-2: bots procesados en el mismo bucle
+                        if (user.GetBotRoleplayAI() != null)
+                            user.GetBotRoleplayAI().OnUserSay(this, message);
+                        else if (user.BotAI != null)
+                            user.BotAI.OnUserSay(this, message);
+                    }
                 }
-                //GetRoom().SendMessage(new UserNameChangeComposer(habbo, true));
-            }
-
-
-            // Respuestas de bots
-            foreach (RoomUser user in mRoom.GetRoomUserManager().GetUserList().ToList())
-            {
-                if (!user.IsBot) continue;
-
-                if (user.GetBotRoleplayAI() != null)
-                    user.GetBotRoleplayAI().OnUserSay(this, message);
-                else if (user.BotAI != null) // ✅ FIX: BotAI podía ser null si el bot no tiene AI asignada
-                    user.BotAI.OnUserSay(this, message);
             }
         }
 
         // ────────────────────────────────────────────────
         //  Colour codes
         // ────────────────────────────────────────────────
-        // ✅ FIX #4: UsingColourCode y ReplaceColourCode usaban Split(' ')[0] y luego
-        //   múltiples Contains separados. Simplificado con un array de códigos.
         private static readonly string[] _colourCodes =
             { "@red@", "@blue@", "@purple@", "@green@", "@cyan@" };
 
@@ -448,28 +448,24 @@ namespace Polar.HabboHotel.Rooms
         }
 
         // ────────────────────────────────────────────────
-        //  Name packets (VIP)
+        //  Name packets
         // ────────────────────────────────────────────────
-
         public void SendNameColourPacket()
         {
             if (IsBot || GetClient()?.GetHabbo() == null) return;
-            var habbo = GetClient().GetHabbo();
-            GetRoom()?.SendMessage(new UserNameChangeComposer(RoomId, VirtualId, habbo.GetDisplayName()));
+            GetRoom()?.SendMessage(new UserNameChangeComposer(RoomId, VirtualId, GetClient().GetHabbo().GetDisplayName()));
         }
 
         public void SendMeCommandPacket()
         {
             if (IsBot || GetClient()?.GetHabbo() == null) return;
-            var habbo = GetClient().GetHabbo();
-            GetRoom()?.SendMessage(new UserNameChangeComposer(RoomId, VirtualId, "*" + habbo.GetDisplayName()));
+            GetRoom()?.SendMessage(new UserNameChangeComposer(RoomId, VirtualId, "*" + GetClient().GetHabbo().GetDisplayName()));
         }
 
         public void SendNamePacket()
         {
             if (IsBot || GetClient()?.GetHabbo() == null) return;
-            var habbo = GetClient().GetHabbo();
-            GetRoom()?.SendMessage(new UserNameChangeComposer(RoomId, VirtualId, habbo.GetDisplayName()));
+            GetRoom()?.SendMessage(new UserNameChangeComposer(RoomId, VirtualId, GetClient().GetHabbo().GetDisplayName()));
         }
 
         // ────────────────────────────────────────────────
@@ -502,7 +498,6 @@ namespace Polar.HabboHotel.Rooms
 
                 List<Item> items = GetRoom().GetGameMap().GetAllRoomItemForSquare(pX, pY);
 
-                // Bloquear salida de cama si el destino no es otra cama
                 if (isLying || Statusses.ContainsKey("lay"))
                 {
                     var bed = items.FirstOrDefault(x => x?.GetBaseItem().IsBed() == true);
@@ -510,7 +505,6 @@ namespace Polar.HabboHotel.Rooms
                         return;
                 }
 
-                // Limpiar estados de sit/lay antes de moverse
                 if (isSitting || Statusses.ContainsKey("sit"))
                 {
                     RemoveStatus("sit");
@@ -525,7 +519,7 @@ namespace Polar.HabboHotel.Rooms
                 UnIdle();
                 GoalX = pX;
                 GoalY = pY;
-                this.AllowOverride = pOverride;
+                AllowOverride = pOverride;
                 PathRecalcNeeded = true;
                 FreezeInteracting = false;
 
@@ -535,9 +529,7 @@ namespace Polar.HabboHotel.Rooms
 
                 if (items.Count > 0)
                 {
-                    // ✅ FIX #5: Antes se llamaba a .Where().Count() > 0 para verificar
-                    //   y luego .Where().First() para obtener — doble scan.
-                    //   Reemplazado con FirstOrDefault en una sola pasada.
+                    // FIX #5: un solo FirstOrDefault en lugar de Where+Count+First
                     var bed = items.FirstOrDefault(x => x?.GetBaseItem().IsBed() == true);
                     var chair = items.FirstOrDefault(x => x?.GetBaseItem().IsSeat == true);
 
@@ -560,18 +552,23 @@ namespace Polar.HabboHotel.Rooms
                 return;
             }
 
-            if (!IsBot &&
-                GetRoom().GetGameMap().SquareHasUsers(pX, pY, true, GetClient().GetRoleplay().Invisible) &&
-                !pOverride &&
-                (X != pX && Y != pY))
-                return;
+            // FIX MOVETO-NULL: GetRoleplay() puede ser null si el cliente se está desconectando
+            if (!IsBot)
+            {
+                var rp = GetClient()?.GetRoleplay();
+                if (rp != null &&
+                    GetRoom().GetGameMap().SquareHasUsers(pX, pY, true, rp.Invisible) &&
+                    !pOverride &&
+                    (X != pX || Y != pY))   // FIX LOGIC: AND → OR (basta con que cambié una coordenada)
+                    return;
+            }
 
             if (Frozen) return;
 
             UnIdle();
             GoalX = pX;
             GoalY = pY;
-            this.AllowOverride = pOverride;
+            AllowOverride = pOverride;
             PathRecalcNeeded = true;
             FreezeInteracting = false;
         }
@@ -579,19 +576,23 @@ namespace Polar.HabboHotel.Rooms
         public void MoveDriving(int pX, int pY, RoomUser chofer)
         {
             UnIdle();
-            GoalX = pX; GoalY = pY;
+            GoalX = pX;
+            GoalY = pY;
             PathRecalcNeeded = true;
             FreezeInteracting = false;
 
             string pasajeros = chofer.GetClient().GetRoleplay().Pasajeros;
-            foreach (string psj in pasajeros.Split(new[] { ";" }, StringSplitOptions.RemoveEmptyEntries))
+
+            // FIX DRIVE: Split(char) en lugar de Split(string[]) — evita array allocation
+            foreach (string psj in pasajeros.Split(_pasajeroSep, StringSplitOptions.RemoveEmptyEntries))
             {
                 GameClient pj = PolarEnvironment.GetGame().GetClientManager().GetClientByUsername(psj);
                 if (pj?.GetRoomUser() == null) continue;
 
                 var ru = pj.GetRoomUser();
                 ru.UnIdle();
-                ru.GoalX = pX; ru.GoalY = pY;
+                ru.GoalX = pX;
+                ru.GoalY = pY;
                 ru.PathRecalcNeeded = true;
                 ru.FreezeInteracting = false;
             }
@@ -619,18 +620,19 @@ namespace Polar.HabboHotel.Rooms
         {
             if (Statusses.ContainsKey("lay") || IsWalking) return;
 
-            int diff = RotBody - rotation;
+            // FIX SETROT: Math.Sign más claro que diff positivo/negativo manual
+            int sign = Math.Sign(RotBody - rotation);
             RotHead = RotBody;
 
             if (Statusses.ContainsKey("sit") || headOnly)
             {
-                if (RotBody == 2 || RotBody == 4 || RotBody == 0 || RotBody == 6)
+                if (RotBody == 0 || RotBody == 2 || RotBody == 4 || RotBody == 6)
                 {
-                    if (diff > 0) RotHead = RotBody - 1;
-                    else if (diff < 0) RotHead = RotBody + 1;
+                    if (sign > 0) RotHead = RotBody - 1;
+                    else if (sign < 0) RotHead = RotBody + 1;
                 }
             }
-            else if (diff <= -2 || diff >= 2)
+            else if (Math.Abs(RotBody - rotation) >= 2)
             {
                 RotHead = RotBody = rotation;
             }
@@ -647,21 +649,14 @@ namespace Polar.HabboHotel.Rooms
         // ────────────────────────────────────────────────
         public bool HasStatus(string key) => Statusses.ContainsKey(key);
 
-        public void SetStatus(string Key, string Value = "")
+        public void SetStatus(string key, string value = "")
         {
-            if (Statusses.ContainsKey(Key))
-            {
-                Statusses[Key] = Value;
-            }
-            else
-            {
-                AddStatus(Key, Value);
-            }
+            Statusses[key] = value;
         }
 
-        public void AddStatus(string Key, string Value)
+        public void AddStatus(string key, string value)
         {
-            Statusses[Key] = Value;
+            Statusses[key] = value;
         }
 
         public void RemoveStatus(string key) => Statusses.Remove(key);
@@ -671,39 +666,18 @@ namespace Polar.HabboHotel.Rooms
         // ────────────────────────────────────────────────
         public void ApplyEffect(int effectId)
         {
-            // ✅ FIX #6: Había dos guards: primero "if (IsBot)" con SendMessage, luego
-            //   "if (IsBot || ...)" que nunca se alcanzaba si era bot (ya habría retornado).
-            //   Reestructurado para que la lógica de bot y de usuario sean ramas claras.
+            // FIX #6: ramas bot/usuario claramente separadas
             if (IsBot)
             {
-                mRoom.SendMessage(new AvatarEffectComposer(VirtualId, effectId));
+                mRoom?.SendMessage(new AvatarEffectComposer(VirtualId, effectId));
                 return;
             }
-
             GetClient()?.GetHabbo()?.Effects()?.ApplyEffect(effectId);
         }
 
         // ────────────────────────────────────────────────
-        //  Squares helpers
+        //  Square helpers
         // ────────────────────────────────────────────────
-        // ✅ FIX #7: Las cuatro propiedades SquareInFront/Behind/Left/Right tenían exactamente
-        //   la misma estructura if/else if por rotación. Extraída a un método privado genérico
-        //   con offsets parametrizados — elimina ~80 líneas de código duplicado.
-        //   Tabla de offsets por rotación (índice = rotación / 2):
-        //     rot=0 (norte):  front=(0,-1), behind=(0,+1), left=(+1,0), right=(-1,0)
-        //     rot=2 (este):   front=(+1,0), behind=(-1,0), left=(0,-1), right=(0,+1)
-        //     rot=4 (sur):    front=(0,+1), behind=(0,-1), left=(-1,0), right=(+1,0)
-        //     rot=6 (oeste):  front=(-1,0), behind=(+1,0), left=(0,+1), right=(0,-1)
-        private static readonly (int dx, int dy)[][] _squareOffsets =
-        {
-            // índice 0 → rot=0, 1 → rot=2, 2 → rot=4, 3 → rot=6
-            // orden: [front, behind, left, right]
-            new[] { (0,-1), (0,+1), (+1, 0), (-1, 0) }, // norte
-            new[] { (+1,0), (-1,0), ( 0,-1), ( 0,+1) }, // este
-            new[] { (0,+1), (0,-1), (-1, 0), (+1, 0) }, // sur
-            new[] { (-1,0), (+1,0), ( 0,+1), ( 0,-1) }, // oeste
-        };
-
         private Point GetRelativeSquare(int offsetIndex)
         {
             int rotIdx = (RotBody / 2) % 4;
@@ -732,11 +706,7 @@ namespace Polar.HabboHotel.Rooms
         {
             if (IsBot) return null;
 
-            // ✅ FIX #8: mClient se guarda en cache tras la primera resolución.
-            //   Antes se volvía a buscar por UserID en cada llamada si mClient era null,
-            //   pero nunca se asignaba el resultado — lo que hacía que cada llamada
-            //   con mClient==null fuera O(n) en el ClientManager.
-            //   Ahora se asigna correctamente tras resolver.
+            // FIX #8: cachear resultado tras primera resolución
             if (mClient == null)
                 mClient = PolarEnvironment.GetGame().GetClientManager().GetClientByUserID(HabboId);
 
@@ -745,18 +715,15 @@ namespace Polar.HabboHotel.Rooms
 
         public Room GetRoom()
         {
-            // ✅ FIX #9: Antes: if (mRoom == null) { if (TryGetRoom(...)) return mRoom; } return mRoom;
-            //   Si mRoom es null y TryGetRoom falla, devolvía null sin asignar.
-            //   Si TryGetRoom tiene éxito, mRoom queda asignado por ref y se devuelve correctamente.
-            //   Simplificado — TryGetRoom asigna mRoom vía out, luego se retorna mRoom (null o no).
-            if (mRoom == null)
+            // FIX #9: evitar búsqueda si RoomId es 0 (nunca va a encontrar nada)
+            if (mRoom == null && RoomId > 0)
                 PolarEnvironment.GetGame().GetRoomManager().TryGetRoom(RoomId, out mRoom);
 
             return mRoom;
         }
 
         // ────────────────────────────────────────────────
-        //  Execute (comando de ítem)
+        //  Execute
         // ────────────────────────────────────────────────
         public void Execute(GameClients.GameClient session, Room room, string[] @params)
         {
@@ -766,8 +733,7 @@ namespace Polar.HabboHotel.Rooms
                 return;
             }
 
-            RoomUser user = session.GetRoomUser();
-            user?.CarryItem(1014);
+            session.GetRoomUser()?.CarryItem(1014);
         }
     }
 

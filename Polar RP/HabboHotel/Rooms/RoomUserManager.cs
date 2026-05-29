@@ -10,6 +10,9 @@ using Polar.HabboHotel.GameClients;
 using Polar.HabboHotel.Items;
 using Polar.HabboHotel.Pathfinding;
 using Polar.HabboHotel.Rooms.AI;
+using Polar.HabboHotel.Rooms.Games.Banzai;
+using Polar.HabboHotel.Rooms.Games.Football;
+using Polar.HabboHotel.Rooms.Games.Freeze;
 using Polar.HabboHotel.Rooms.Games.Teams;
 using Polar.HabboHotel.Rooms.Pathfinding;
 using Polar.HabboRoleplay.Bots.Manager;
@@ -25,8 +28,18 @@ namespace Polar.HabboHotel.Rooms
 {
     public class RoomUserManager
     {
-        private int _movementTick = 0;
+        private Item _cachedTonerItem = null;
+        private readonly System.Text.StringBuilder _coordBuilder = new System.Text.StringBuilder(32);
+        private int _cachedTonerItemId = -1;
         private readonly HashSet<RoomUser> _updateSeen = new HashSet<RoomUser>();
+        private readonly List<RoomUser> _usersToRemove = new List<RoomUser>();   // FIX CYCLE-3
+        private readonly List<RoomUser> _toUpdate = new List<RoomUser>();   // FIX CYCLE-4
+        private List<RoomUser> _cycleSnapshot = new List<RoomUser>();
+
+        private int _movementTick = 0;
+        private const int MovementTickInterval = 2;
+        private bool _turfBroadcastSent = false;
+        private bool _bankBroadcastSent = false;
         private readonly Room _room;
         public ConcurrentDictionary<int, RoomUser> _users;
         public ConcurrentDictionary<int, RoomUser> _bots;
@@ -462,7 +475,8 @@ namespace Polar.HabboHotel.Rooms
                 this._usersByUsername.TryRemove(Session.GetHabbo().Username.ToLower(), out _);
 
                 RemoveRoomUser(User);
-
+                User.LastEffectX = -1;
+                User.LastEffectY = -1;
                 if (User.CurrentItemEffect != ItemEffectType.NONE)
                     Session.GetHabbo().Effects().CurrentEffect = -1;
 
@@ -669,23 +683,27 @@ namespace Polar.HabboHotel.Rooms
 
         public void SerializeStatusUpdates()
         {
-            ICollection<RoomUser> RoomUsers = GetUserList();
-            if (RoomUsers == null) return;
+            // FIX CYCLE-5: usar el snapshot del tick en lugar de GetUserList()
+            ICollection<RoomUser> roomUsers = _cycleSnapshot.Count > 0
+                ? (ICollection<RoomUser>)_cycleSnapshot
+                : _users.Values;
 
-            _updateSeen.Clear();   // reutilizar, no new cada tick
-            var toUpdate = new List<RoomUser>();
+            _updateSeen.Clear();
+            _toUpdate.Clear();   // FIX CYCLE-4: reutilizar, no new
 
-            foreach (RoomUser User in RoomUsers)
+            foreach (RoomUser user in roomUsers)
             {
-                if (User == null || !User.UpdateNeeded) continue;
-                if (!_updateSeen.Add(User)) continue;
-                User.UpdateNeeded = false;
-                toUpdate.Add(User);
+                if (user == null || !user.UpdateNeeded) continue;
+                if (!_updateSeen.Add(user)) continue;
+                user.UpdateNeeded = false;
+                _toUpdate.Add(user);
             }
 
-            if (toUpdate.Count > 0)
-                _room.SendMessage(new UserUpdateComposer(toUpdate));
+            if (_toUpdate.Count > 0)
+                _room.SendMessage(new UserUpdateComposer(_toUpdate));
         }
+
+
 
         public List<RoomUser> GetBots()
         {
@@ -705,28 +723,39 @@ namespace Polar.HabboHotel.Rooms
         {
             if (user == null) return false;
             if (user.IsBot) return true;
-            if (user.GetClient()?.GetHabbo() == null) return false;
-            if (user.GetClient().GetHabbo().CurrentRoomId != _room.RoomId) return false;
+
+            // FIX CYCLE-9: resolver habbo una sola vez
+            var habbo = user.GetClient()?.GetHabbo();
+            if (habbo == null) return false;
+            if (habbo.CurrentRoomId != _room.RoomId) return false;
             return true;
         }
 
         public void OnCycle()
         {
             _movementTick++;
-            bool processMov = _movementTick >= 4;
+            bool processMov = _movementTick >= 2.3;
             if (processMov) _movementTick = 0;
 
             int userCounter = 0;
-            var usersToRemove = new List<RoomUser>();
+            _usersToRemove.Clear();
+            _turfBroadcastSent = false;
+            _bankBroadcastSent = false;
+
+            _cycleSnapshot.Clear();
+            foreach (var u in _users.Values)
+                if (u != null) _cycleSnapshot.Add(u);
+
+            var freeze = _room.GotFreeze() ? _room.GetFreeze() : null;
+            var soccer = _room.GotSoccer() ? _room.GetSoccer() : null;
+            var banzai = _room.GotBanzai() ? _room.GetBanzai() : null;
 
             try
             {
                 ProcessTonerEffect();
 
-                foreach (RoomUser user in _users.Values)
+                foreach (RoomUser user in _cycleSnapshot)
                 {
-                    if (user == null) continue;
-
                     if (!isValid(user))
                     {
                         HandleInvalidUser(user);
@@ -734,20 +763,26 @@ namespace Polar.HabboHotel.Rooms
                     }
 
                     ProcessCaptureEvents(user);
-                    UpdateBasicUserState(user);
+                    UpdateBasicUserState(user, freeze);
 
                     if (processMov)
-                        ProcessUserMovementOptimized(user, usersToRemove);
+                        ProcessUserMovementOptimized(user, _usersToRemove, soccer, banzai, freeze);
 
                     if (user.IsBot && user.BotAI != null)
-                        user.BotAI.OnTimerTick();
+                    {
+                        try { user.BotAI.OnTimerTick(); }
+                        catch (Exception e)
+                        { Logging.LogException($"BotAI.OnTimerTick bot={user.BotData?.BotId} - {e}"); }
+                    }
                     else
+                    {
                         userCounter++;
+                    }
 
-                    UpdateUserEffect(user, user.X, user.Y);
+                    UpdateUserEffectIfMoved(user);
                 }
 
-                RemoveMarkedUsers(usersToRemove);
+                RemoveMarkedUsers(_usersToRemove);
 
                 if (userCount != userCounter)
                     UpdateUserCount(userCounter);
@@ -763,17 +798,22 @@ namespace Polar.HabboHotel.Rooms
             if (_room == null || !_room.DiscoMode || _room.TonerData == null || _room.TonerData.Enabled != 1)
                 return;
 
-            Item tonerItem = _room.GetRoomItemHandler().GetItem(_room.TonerData.ItemId);
-            if (tonerItem == null) return;
+            // FIX CYCLE-7: solo buscar el item si el ID cambió
+            if (_cachedTonerItem == null || _cachedTonerItemId != _room.TonerData.ItemId)
+            {
+                _cachedTonerItemId = _room.TonerData.ItemId;
+                _cachedTonerItem = _room.GetRoomItemHandler().GetItem(_cachedTonerItemId);
+            }
+
+            if (_cachedTonerItem == null) return;
 
             _room.TonerData.Hue = PolarEnvironment.GetRandomNumber(0, 255);
             _room.TonerData.Saturation = PolarEnvironment.GetRandomNumber(0, 255);
             _room.TonerData.Lightness = PolarEnvironment.GetRandomNumber(0, 255);
 
-            _room.SendMessage(new ObjectUpdateComposer(tonerItem, _room.OwnerId));
-            tonerItem.UpdateState();
+            _room.SendMessage(new ObjectUpdateComposer(_cachedTonerItem, _room.OwnerId));
+            _cachedTonerItem.UpdateState();
         }
-
         private void HandleInvalidUser(RoomUser user)
         {
             if (user.GetClient() != null)
@@ -781,28 +821,55 @@ namespace Polar.HabboHotel.Rooms
             else
                 RemoveRoomUser(user);
         }
+        private void UpdateUserEffectIfMoved(RoomUser user)
+        {
+            if (user == null || user.IsBot || user.GetClient()?.GetHabbo() == null) return;
 
+            // Solo recalcular si el usuario cambió de tile desde la última vez
+            if (user.X == user.LastEffectX && user.Y == user.LastEffectY) return;
+
+            user.LastEffectX = user.X;
+            user.LastEffectY = user.Y;
+
+            UpdateUserEffect(user, user.X, user.Y);
+        }
         private void ProcessCaptureEvents(RoomUser user)
         {
             if (user.GetClient() == null) return;
 
-            if (_room.TurfCapturing)
-                PolarEnvironment.GetGame().GetWebEventManager().ExecuteWebEvent(
-                    user.GetClient(), "event_gang",
-                    $"turf_cap_w,{_room.Id},{_room.TurfUserAtackerId},{_room.Name}");
+            if (_room.TurfCapturing && !_turfBroadcastSent)
+            {
+                _turfBroadcastSent = true;
+                // Broadcast a toda la sala en lugar de un WebEvent individual
+                foreach (RoomUser target in _cycleSnapshot)
+                {
+                    if (target?.GetClient() == null) continue;
+                    PolarEnvironment.GetGame().GetWebEventManager().ExecuteWebEvent(
+                        target.GetClient(), "event_gang",
+                        $"turf_cap_w,{_room.Id},{_room.TurfUserAtackerId},{_room.Name}");
+                }
+            }
 
-            if (_room.BankCapturing)
-                PolarEnvironment.GetGame().GetWebEventManager().ExecuteWebEvent(
-                    user.GetClient(), "event_gang",
-                    $"bank_cap_w,{_room.Id},{_room.TurfUserAtackerId},{_room.Name}");
+            if (_room.BankCapturing && !_bankBroadcastSent)
+            {
+                _bankBroadcastSent = true;
+                foreach (RoomUser target in _cycleSnapshot)
+                {
+                    if (target?.GetClient() == null) continue;
+                    PolarEnvironment.GetGame().GetWebEventManager().ExecuteWebEvent(
+                        target.GetClient(), "event_gang",
+                        $"bank_cap_w,{_room.Id},{_room.TurfUserAtackerId},{_room.Name}");
+                }
+            }
         }
 
-        private void UpdateBasicUserState(RoomUser user)
+
+        private void UpdateBasicUserState(RoomUser user, Freeze freeze)
         {
             user.IdleTime++;
             user.HandleSpamTicks();
 
-            if (!user.IsBot && !user.IsAsleep && user.IdleTime >= 600)
+            if (!user.IsBot && !user.IsAsleep && user.IdleTime >= 4000)
             {
                 user.IsAsleep = true;
                 _room.SendMessage(new SleepComposer(user, true));
@@ -822,7 +889,8 @@ namespace Polar.HabboHotel.Rooms
                 if (user.CarryTimer <= 0) user.CarryItem(0);
             }
 
-            if (_room.GotFreeze()) _room.GetFreeze().CycleUser(user);
+            // FIX CYCLE-8: freeze ya resuelto, no hay GetFreeze() por usuario
+            if (freeze != null) freeze.CycleUser(user);
 
             if (user.isRolling)
             {
@@ -840,13 +908,14 @@ namespace Polar.HabboHotel.Rooms
             if (user.RidingHorse) user.ApplyEffect(77);
         }
 
-        private void ProcessUserMovementOptimized(RoomUser user, List<RoomUser> usersToRemove)
+        private void ProcessUserMovementOptimized(RoomUser user, List<RoomUser> usersToRemove,
+    Soccer soccer = null, BattleBanzai banzai = null, Freeze freeze = null)
         {
             bool invalidStep = false;
 
             if (user.SetStep)
             {
-                HandleSetStep(user, ref invalidStep, usersToRemove);
+                HandleSetStep(user, ref invalidStep, usersToRemove, soccer, banzai, freeze);
                 user.SetStep = false;
             }
 
@@ -859,7 +928,8 @@ namespace Polar.HabboHotel.Rooms
                 CleanupMovementStatus(user);
         }
 
-        private void HandleSetStep(RoomUser user, ref bool invalidStep, List<RoomUser> usersToRemove)
+        private void HandleSetStep(RoomUser user, ref bool invalidStep, List<RoomUser> usersToRemove,
+    Soccer soccer = null, BattleBanzai banzai = null, Freeze freeze = null)
         {
             var from = new Vector2D(user.X, user.Y);
             var to = new Vector2D(user.SetX, user.SetY);
@@ -892,7 +962,9 @@ namespace Polar.HabboHotel.Rooms
                     item.UserWalksOnFurni(user);
 
                 SaveUserCoordinates(user);
-                UpdateUserStatus(user, true);
+
+                // FIX: pasar objetos de juego para que soccer/banzai/freeze.OnUserWalk se ejecute
+                UpdateUserStatus(user, true, soccer, banzai, freeze);
 
                 if (isFinalStep || (user.X == user.GoalX && user.Y == user.GoalY))
                     StopWalking(user);
@@ -905,23 +977,22 @@ namespace Polar.HabboHotel.Rooms
 
         private void RecalculateUserPathOptimized(RoomUser user)
         {
-            // ✅ FIX WALK-3: Si hay un SetStep pendiente (el usuario se está moviendo al tile
-            //   SetX/SetY pero aún no ha llegado), el path nuevo debe partir desde SetX/SetY,
-            //   no desde X/Y (posición pre-confirmada). Si partimos desde X/Y y luego el step
-            //   se confirma, el primer nodo del path apunta al tile anterior — causando un
-            //   micro-retroceso visual (el "tirón" más común al hacer clic rápido).
             int startX = user.SetStep ? user.SetX : user.X;
             int startY = user.SetStep ? user.SetY : user.Y;
 
             if (user.Path == null) user.Path = new List<Vector2D>();
 
-            PathFinder.FindPath(user, _room.GetGameMap().DiagonalEnabled,
-                _room.GetGameMap(), new Vector2D(startX, startY),
-                new Vector2D(user.GoalX, user.GoalY), user.Path);
+            PathFinder.FindPath(
+                user,
+                _room.GetGameMap().DiagonalEnabled,
+                _room.GetGameMap(),
+                new Vector2D(startX, startY),
+                new Vector2D(user.GoalX, user.GoalY),
+                user.Path);
 
             if (user.Path.Count > 0)
             {
-                user.PathStep = 1;
+                user.PathStep = 1;   // FIX: siempre resetear a 1 al recalcular
                 user.IsWalking = true;
             }
             else
@@ -939,10 +1010,16 @@ namespace Polar.HabboHotel.Rooms
             if (user.Path == null || user.Path.Count == 0) { StopWalking(user); return; }
 
             bool atDestination = (user.X == user.GoalX && user.Y == user.GoalY);
-            if (atDestination || invalidStep || user.PathStep > user.Path.Count) { StopWalking(user); return; }
+            if (atDestination || invalidStep) { StopWalking(user); return; }
 
-            int stepIndex = (user.Path.Count - user.PathStep);
-            if (stepIndex < 0 || stepIndex >= user.Path.Count) { StopWalking(user); return; }
+            // FIX: el índice correcto es Path.Count - PathStep
+            // Cuando PathStep > Path.Count ya no hay más pasos — parar limpiamente
+            int stepIndex = user.Path.Count - user.PathStep;
+            if (stepIndex < 0) { StopWalking(user); return; }
+
+            // FIX: stepIndex == 0 es el ÚLTIMO tile válido, no debe parar
+            // Solo parar si stepIndex está fuera del array
+            if (stepIndex >= user.Path.Count) { StopWalking(user); return; }
 
             Vector2D nextStep = user.Path[stepIndex];
             user.PathStep++;
@@ -1020,9 +1097,16 @@ namespace Polar.HabboHotel.Rooms
 
             bool isFinalStep = (user.GoalX == nextX && user.GoalY == nextY);
             bool isDiagonal = (user.X != nextX && user.Y != nextY);
-            if (!_room.GetGameMap().IsValidStep(user,
-                    new Vector2D(user.X, user.Y), new Vector2D(nextX, nextY),
-                    isFinalStep, user.AllowOverride, false, false, isDiagonal)) return;
+
+            if (!_room.GetGameMap().IsValidStep(
+                    user,
+                    new Vector2D(user.X, user.Y),
+                    new Vector2D(nextX, nextY),
+                    isFinalStep,
+                    user.AllowOverride,
+                    false, false,
+                    isDiagonal))
+                return;
 
             double nextZ = _room.GetGameMap().SqAbsoluteHeight(nextX, nextY);
 
@@ -1141,21 +1225,353 @@ namespace Polar.HabboHotel.Rooms
         private void SaveUserCoordinates(RoomUser user)
         {
             var rp = user.GetClient()?.GetRoleplay();
-            if (rp != null)
-                rp.LastCoordinates = $"{user.X},{user.Y},{user.Z},{user.RotBody}";
+            if (rp == null) return;
+
+            // FIX CYCLE-10: reutilizar _coordBuilder en lugar de new string cada paso
+            _coordBuilder.Clear();
+            _coordBuilder.Append(user.X);
+            _coordBuilder.Append(',');
+            _coordBuilder.Append(user.Y);
+            _coordBuilder.Append(',');
+            _coordBuilder.Append(user.Z);
+            _coordBuilder.Append(',');
+            _coordBuilder.Append(user.RotBody);
+            rp.LastCoordinates = _coordBuilder.ToString();
         }
 
         private void RemoveMarkedUsers(List<RoomUser> usersToRemove)
         {
             foreach (var user in usersToRemove)
             {
-                var client = PolarEnvironment.GetGame().GetClientManager().GetClientByUserID(user.HabboId);
+                var client = PolarEnvironment.GetGame().GetClientManager()
+                    .GetClientByUserID(user.HabboId);
                 if (client != null) RemoveUserFromRoom(client, true);
                 else RemoveRoomUser(user);
             }
         }
+        /// <summary>
+        /// FIX STATUS-2: extrae la lógica del toilet (antes con goto seatDone).
+        /// Devuelve true si el usuario puede seguir sentándose, false si fue redirigido.
+        /// </summary>
+        private bool HandleToiletInteraction(RoomUser user, Item item)
+        {
+            if (user.Coordinate.X != item.GetX || user.Coordinate.Y != item.GetY) return true;
 
-        public void UpdateUserStatus(RoomUser User, bool cyclegameitems)
+            var rp = user.GetClient()?.GetRoleplay();
+            if (rp == null) return true;
+
+            if (rp.Poop >= 100)
+            {
+                user.GetClient().SendWhisper("Su vejiga ya está en un máximo de 100", 1);
+                rp.IsWorking = false;
+                user.MoveTo(item.SquareInFront.X, item.SquareInFront.Y);
+                return false;
+            }
+
+            if (item.InteractingUser != 0)
+            {
+                user.GetClient().SendWhisper("Este toilet ya está en uso por alguien más!", 1);
+                user.MoveTo(item.SquareInFront.X, item.SquareInFront.Y);
+                return false;
+            }
+
+            if (item.ExtraData == "0" || item.ExtraData == "")
+            {
+                item.ExtraData = "1";
+                item.UpdateState(false, true);
+                item.RequestUpdate(1, true);
+            }
+
+            if (item.ExtraData == "1" && !rp.InCagar)
+            {
+                user.ClearMovement(true);
+                item.InteractingUser = user.GetClient().GetHabbo().Id;
+                rp.InCagar = true;
+                RoleplayManager.Shout(user.GetClient(), "*Comienza a defecar o orinar en el toilet, huele a rayos*", 4);
+                rp.IsWorking = false;
+                rp.TimerManager.CreateTimer("cagar", 1000, false, item.Id);
+            }
+
+            return true;
+        }
+
+
+        /// <summary>
+        /// FIX STATUS-2: extrae la lógica de ducha (limpieza del switch).
+        /// </summary>
+        private void HandleShowerInteraction(RoomUser user, Item item)
+        {
+            if (user.Coordinate.X != item.GetX || user.Coordinate.Y != item.GetY) return;
+
+            var rp = user.GetClient()?.GetRoleplay();
+            if (rp == null) return;
+
+            if (rp.Hygiene >= 100)
+            {
+                user.GetClient().SendWhisper("Su Higiene ya está en un máximo de 100", 1);
+                rp.IsWorking = false;
+                user.MoveTo(item.SquareInFront.X, item.SquareInFront.Y);
+                return;
+            }
+
+            if (item.InteractingUser != 0)
+            {
+                user.GetClient().SendWhisper("Esta ducha ya está en uso por alguien más! Lo siento, no puedes unirte a ellos!", 1);
+                user.MoveTo(item.SquareInFront.X, item.SquareInFront.Y);
+                return;
+            }
+
+            if (item.ExtraData == "0" || item.ExtraData == "")
+            {
+                item.ExtraData = "1";
+                item.UpdateState(false, true);
+                item.RequestUpdate(1, true);
+            }
+
+            if (item.ExtraData == "1" && !rp.InShower)
+            {
+                user.ClearMovement(true);
+                item.InteractingUser = user.GetClient().GetHabbo().Id;
+                rp.InShower = true;
+                RoleplayManager.Shout(user.GetClient(), "*Comienza a tomar una buena ducha caliente*", 4);
+                rp.IsWorking = false;
+                rp.TimerManager.CreateTimer("shower", 1000, false, item.Id);
+            }
+        }
+
+        /// <summary>
+        /// FIX STATUS-3: cama/tent solo aplica efectos cuando cyclegameitems es true.
+        /// </summary>
+        private void HandleBedInteraction(RoomUser user, Item item, bool cyclegameitems)
+        {
+            if (!user.isLying
+                || user.Z != item.GetZ
+                || user.RotBody != item.Rotation
+                || !user.Statusses.ContainsKey("lay"))
+            {
+                user.Statusses.Remove("lay");
+                user.Statusses.Remove("sit");
+                user.Statusses.Add("lay", TextHandling.GetString(item.GetBaseItem().Height) + " null");
+                user.isLying = true;
+                user.isSitting = false;
+                user.Z = item.GetZ;
+                user.RotHead = item.Rotation;
+                user.RotBody = item.Rotation;
+                user.UpdateNeeded = true;
+            }
+
+            // FIX STATUS-3: efectos de cama solo en el tick de juego
+            if (cyclegameitems
+                && item.GetBaseItem().InteractionType == InteractionType.BEDEFFECT
+                && !user.IsBot)
+            {
+                var effects = user.GetClient()?.GetHabbo()?.Effects();
+                if (effects != null)
+                {
+                    if (item.GetBaseItem().EffectId == 0 && effects.CurrentEffect == 0) return;
+                    effects.ApplyEffect(item.GetBaseItem().EffectId);
+                    item.ExtraData = "1";
+                    item.UpdateState(false, true);
+                    item.RequestUpdate(2, true);
+                }
+            }
+
+            user.RotHead = item.Rotation;
+            user.RotBody = item.Rotation;
+            user.UpdateNeeded = true;
+        }
+
+        /// <summary>
+        /// FIX STATUS-2: extrae lógica de banzai gate del switch.
+        /// </summary>
+        private void HandleBanzaiGate(RoomUser user, Item item)
+        {
+            int effectID = Convert.ToInt32(item.team + 32);
+            TeamManager t = user.GetClient().GetHabbo().CurrentRoom.GetTeamManagerForBanzai();
+
+            if (user.Team == TEAM.NONE)
+            {
+                if (t.CanEnterOnTeam(item.team))
+                {
+                    if (user.Team != TEAM.NONE) t.OnUserLeave(user);
+                    user.Team = item.team;
+                    t.AddUser(user);
+                    if (user.GetClient().GetHabbo().Effects().CurrentEffect != effectID)
+                        user.GetClient().GetHabbo().Effects().ApplyEffect(effectID);
+                }
+            }
+            else if (user.Team != item.team)
+            {
+                t.OnUserLeave(user);
+                user.Team = TEAM.NONE;
+                user.GetClient().GetHabbo().Effects().ApplyEffect(0);
+            }
+            else
+            {
+                t.OnUserLeave(user);
+                if (user.GetClient().GetHabbo().Effects().CurrentEffect == effectID)
+                    user.GetClient().GetHabbo().Effects().ApplyEffect(0);
+                user.Team = TEAM.NONE;
+            }
+        }
+
+        /// <summary>
+        /// FIX STATUS-2: extrae lógica de freeze gate del switch.
+        /// </summary>
+        private void HandleFreezeGate(RoomUser user, Item item)
+        {
+            if (user.IsBot || user.GetClient()?.GetRoleplay() == null) return;
+
+            if (TexasHoldEmManager.GameList.Count > 0)
+            {
+                var game = TexasHoldEmManager.GameList.Values
+                    .FirstOrDefault(x => x.JoinGate?.Furni == item);
+                if (game != null)
+                {
+                    if (game.GameStarted)
+                        user.GetClient().SendWhisper("Lo siento pero ya hay un juego de Texas Hold 'Em!", 1);
+                    else
+                        game.AddPlayerToGame(user.GetClient().GetHabbo().Id);
+                    return;
+                }
+            }
+
+            int effectID = Convert.ToInt32(item.team + 39);
+            TeamManager t = user.GetClient().GetHabbo().CurrentRoom.GetTeamManagerForFreeze();
+
+            if (user.Team == TEAM.NONE)
+            {
+                if (t.CanEnterOnTeam(item.team))
+                {
+                    if (user.Team != TEAM.NONE) t.OnUserLeave(user);
+                    user.Team = item.team;
+                    t.AddUser(user);
+                    if (user.GetClient().GetHabbo().Effects().CurrentEffect != effectID)
+                        user.GetClient().GetHabbo().Effects().ApplyEffect(effectID);
+                }
+            }
+            else if (user.Team != item.team)
+            {
+                t.OnUserLeave(user);
+                user.Team = TEAM.NONE;
+                user.GetClient().GetHabbo().Effects().ApplyEffect(0);
+            }
+            else
+            {
+                t.OnUserLeave(user);
+                if (user.GetClient().GetHabbo().Effects().CurrentEffect == effectID)
+                    user.GetClient().GetHabbo().Effects().ApplyEffect(0);
+                user.Team = TEAM.NONE;
+            }
+        }
+
+        /// <summary>
+        /// FIX STATUS-2: extrae lógica de flechas (ARROW y ARROW2 comparten casi todo).
+        /// teleportMethod: 1 = SendUserNew, 2 = SendUserNew2
+        /// </summary>
+        private void HandleArrow(RoomUser user, Item item, Room room, int teleportMethod)
+        {
+            if (user.GetClient()?.GetHabbo() == null || user.GetClient().GetHabbo().IsTeleporting) return;
+
+            if (!user.IsBot)
+            {
+                var rp = user.GetClient().GetRoleplay();
+                if (rp.IsJailed && !room.IsPrison && !room.IsPrison2 && !rp.Jailbroken)
+                {
+                    user.GetClient().SendWhisper("¡No puedes usar flechas para escapar mientras estás encarcelado!", 1);
+                    return;
+                }
+                if (rp.IsDead)
+                {
+                    user.GetClient().SendWhisper("¡No puedes usar flechas mientras estás muerto!", 1);
+                    return;
+                }
+
+                if (rp.BankCapturing || rp.TurfCapturing || rp.ATMRobbery || rp.Robbery)
+                {
+                    if (rp.BankCapturing) { rp.BankCapturing = false; room.BankCapturing = false; }
+                    if (rp.TurfCapturing) { rp.TurfCapturing = false; room.TurfCapturing = false; }
+                    if (rp.ATMRobbery) rp.ATMRobbery = false;
+                    if (rp.Robbery) rp.Robbery = false;
+
+                    rp.BreakGeneralTimer = true;
+                    rp.TimerManager.EndTimer("bankrob");
+                    rp.TimerManager.EndTimer("turfcapture");
+                    rp.TimerManager.EndTimer("atmrob");
+                    user.GetClient().SendWhisper("¡Has abandonado la zona y la acción ha sido cancelada!", 1);
+                }
+                user.ClearMovement(true);
+            }
+
+            if (!ItemTeleporterFinder.IsTeleLinked(item.Id, room))
+            {
+                user.UnlockWalking();
+                return;
+            }
+
+            int linkedTele = ItemTeleporterFinder.GetLinkedTele(item.Id, room);
+            int teleRoomId = ItemTeleporterFinder.GetTeleRoomId(linkedTele, room);
+
+            if (teleRoomId == room.RoomId)
+            {
+                Item targetItem = room.GetRoomItemHandler().GetItem(linkedTele);
+                if (targetItem == null)
+                {
+                    user.GetClient()?.SendWhisper("¡Eh, esa flecha no está bien!", 1);
+                    return;
+                }
+
+                TeleportPassengers(user, room, targetItem);
+                room.GetGameMap().TeleportToItem(user, targetItem);
+            }
+            else if (!user.IsBot && user.GetClient()?.GetHabbo() != null)
+            {
+                TeleportPassengersToRoom(user, room, linkedTele, teleRoomId, teleportMethod);
+
+                user.GetClient().GetHabbo().IsTeleporting = true;
+                user.GetClient().GetHabbo().TeleportingRoomID = teleRoomId;
+                user.GetClient().GetHabbo().TeleporterId = linkedTele;
+
+                if (teleportMethod == 1)
+                    RoleplayManager.SendUserNew(user.GetClient(), teleRoomId);
+                else
+                    RoleplayManager.SendUserNew2(user.GetClient(), teleRoomId);
+            }
+        }
+
+        private void TeleportPassengers(RoomUser driver, Room room, Item targetItem)
+        {
+            var rp = driver.GetClient()?.GetRoleplay();
+            if (rp?.Chofer != true) return;
+
+            foreach (string psj in rp.Pasajeros.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries))
+            {
+                GameClient pj = PolarEnvironment.GetGame().GetClientManager().GetClientByUsername(psj);
+                if (pj?.GetRoleplay()?.ChoferName != driver.GetClient().GetHabbo().Username) continue;
+                room.GetGameMap().TeleportToItem(pj.GetRoomUser(), targetItem);
+                pj.SendMessage(new UserRemoveComposer(pj.GetRoomUser().VirtualId));
+            }
+        }
+
+        private void TeleportPassengersToRoom(RoomUser driver, Room room, int linkedTele, int teleRoomId, int teleportMethod)
+        {
+            var rp = driver.GetClient()?.GetRoleplay();
+            if (rp?.Chofer != true) return;
+
+            foreach (string psj in rp.Pasajeros.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries))
+            {
+                GameClient pj = PolarEnvironment.GetGame().GetClientManager().GetClientByUsername(psj);
+                if (pj?.GetRoleplay()?.ChoferName != driver.GetClient().GetHabbo().Username) continue;
+
+                pj.GetHabbo().IsTeleporting = true;
+                pj.GetHabbo().TeleportingRoomID = teleRoomId;
+                pj.GetHabbo().TeleporterId = linkedTele;
+                pj.SendMessage(new UserRemoveComposer(pj.GetRoomUser().VirtualId));
+                RoleplayManager.SendUserNew(pj, teleRoomId);
+            }
+        }
+        public void UpdateUserStatus(RoomUser User, bool cyclegameitems,
+    Soccer soccer = null, BattleBanzai banzai = null, Freeze freeze = null)
         {
             if (User == null) return;
 
@@ -1169,119 +1585,89 @@ namespace Polar.HabboHotel.Rooms
                     User.UpdateNeeded = true;
                 }
 
-                double newZ;
-                List<Item> ItemsOnSquare = _room.GetGameMap().GetAllRoomItemForSquare(User.X, User.Y);
-
-                DynamicRoomModel Model = _room.GetGameMap()?.Model;
+                var map = _room.GetGameMap();
+                var Model = map?.Model;
                 if (Model == null) return;
 
-                // ✅ Validar bounds antes de acceder a los arrays del modelo
-                if (User.X < 0 || User.Y < 0 || User.X >= Model.MapSizeX || User.Y >= Model.MapSizeY)
-                    return;
+                // FIX STATUS-4: bounds check una sola vez y guardado en local
+                int ux = User.X, uy = User.Y;
+                if (ux < 0 || uy < 0 || ux >= Model.MapSizeX || uy >= Model.MapSizeY) return;
 
-                if (ItemsOnSquare != null && ItemsOnSquare.Count != 0)
-                {
-                    newZ = _room.GetGameMap().SqAbsoluteHeight(User.X, User.Y, ItemsOnSquare)
-                           + (User.RidingHorse && !User.IsPet ? 1 : 0);
-                }
-                else
-                    newZ = Model.SqFloorHeight[User.X, User.Y];
+                // FIX STATUS-1: no llamar .ToList() — GetAllRoomItemForSquare ya devuelve List<Item>
+                List<Item> ItemsOnSquare = map.GetAllRoomItemForSquare(ux, uy);
 
-                if (newZ != User.Z && !User.IsWalking)
+                // FIX STATUS-5: calcular newZ solo si el usuario no está sentado/acostado
+                //               o si realmente se va a usar para reposicionarlo
+                double newZ = 0;
+                bool needsZ = !User.isSitting && !User.isLying;
+
+                if (needsZ)
                 {
-                    if (User.isSitting && User.Statusses.ContainsKey("sit") && User.Statusses["sit"] == "1.0")
-                    {
-                        // Solo ajustar si es un seat del modelo, no de ítem
-                        // Los seats de ítem se manejan en el foreach con Item.GetZ
-                        User.Z = newZ - 0.35;
-                        User.UpdateNeeded = true;
-                    }
-                    else if (!User.isSitting && !User.isLying)
+                    newZ = (ItemsOnSquare != null && ItemsOnSquare.Count != 0)
+                        ? map.SqAbsoluteHeight(ux, uy, ItemsOnSquare) + (User.RidingHorse && !User.IsPet ? 1 : 0)
+                        : Model.SqFloorHeight[ux, uy];
+
+                    if (newZ != User.Z && !User.IsWalking)
                     {
                         User.Z = newZ;
                         User.UpdateNeeded = true;
                     }
                 }
 
-
-                if (Model.SqState[User.X, User.Y] == SquareState.SEAT)
+                // FIX STATUS-4: usar las variables locales ux/uy ya validadas
+                if (Model.SqState[ux, uy] == SquareState.SEAT)
                 {
-                    if (!User.isSitting || User.Z != Model.SqFloorHeight[User.X, User.Y] || User.RotBody != Model.SqSeatRot[User.X, User.Y] || !User.Statusses.ContainsKey("sit"))
+                    if (!User.isSitting
+                        || User.Z != Model.SqFloorHeight[ux, uy]
+                        || User.RotBody != Model.SqSeatRot[ux, uy]
+                        || !User.Statusses.ContainsKey("sit"))
                     {
                         User.Statusses.Remove("sit");
                         User.Statusses.Remove("lay");
                         User.Statusses.Add("sit", "1.0");
-
                         User.isSitting = true;
                         User.isLying = false;
-                        User.Z = Model.SqFloorHeight[User.X, User.Y];
-                        User.RotHead = Model.SqSeatRot[User.X, User.Y];
-                        User.RotBody = Model.SqSeatRot[User.X, User.Y];
+                        User.Z = Model.SqFloorHeight[ux, uy];
+                        User.RotHead = Model.SqSeatRot[ux, uy];
+                        User.RotBody = Model.SqSeatRot[ux, uy];
                         User.UpdateNeeded = true;
                     }
                 }
 
                 bool foundFurniture = false;
+
                 if (ItemsOnSquare == null || ItemsOnSquare.Count == 0)
                 {
                     User.LastItem = null;
                 }
                 else
                 {
-                    foreach (Item Item in ItemsOnSquare.ToList())
+                    // FIX STATUS-1: iterar directo, sin .ToList()
+                    foreach (Item Item in ItemsOnSquare)
                     {
                         if (Item == null) continue;
 
                         if (Item.GetBaseItem().IsSeat)
                         {
-                            // Procesar interacción especial del seat si la tiene
+                            // FIX STATUS-2: extraído a método privado, elimina el goto
                             if (Item.GetBaseItem().InteractionType == InteractionType.CAGAR)
                             {
-                                if (User.Coordinate.X == Item.GetX && User.Coordinate.Y == Item.GetY)
-                                {
-                                    if (User.GetClient()?.GetRoleplay() == null) goto seatDone;
-
-                                    if (User.GetClient().GetRoleplay().Poop >= 100)
-                                    {
-                                        User.GetClient().SendWhisper("Su vejiga ya está en un máximo de 100", 1);
-                                        User.GetClient().GetRoleplay().IsWorking = false;
-                                        User.MoveTo(Item.SquareInFront.X, Item.SquareInFront.Y);
-                                        return;
-                                    }
-                                    if (Item.InteractingUser != 0)
-                                    {
-                                        User.GetClient().SendWhisper("Este toilet ya está en uso por alguien más!", 1);
-                                        User.MoveTo(Item.SquareInFront.X, Item.SquareInFront.Y);
-                                        return;
-                                    }
-                                    if (Item.ExtraData == "0" || Item.ExtraData == "")
-                                    {
-                                        Item.ExtraData = "1";
-                                        Item.UpdateState(false, true);
-                                        Item.RequestUpdate(1, true);
-                                    }
-                                    if (Item.ExtraData == "1" && !User.GetClient().GetRoleplay().InCagar)
-                                    {
-                                        User.ClearMovement(true);
-                                        Item.InteractingUser = User.GetClient().GetHabbo().Id;
-                                        User.GetClient().GetRoleplay().InCagar = true;
-                                        RoleplayManager.Shout(User.GetClient(), "*Comienza a defecar o orinar en el toilet, huele a rayos*", 4);
-                                        User.GetClient().GetRoleplay().IsWorking = false;
-                                        User.GetClient().GetRoleplay().TimerManager.CreateTimer("cagar", 1000, false, Item.Id);
-                                    }
-                                }
+                                if (!HandleToiletInteraction(User, Item))
+                                    break; // el usuario fue redirigido fuera del toilet
                             }
 
-                            seatDone:
-                            double seatZ = Item.GetZ; // ← Z real del sofá, sin contar cojines
-                            if (!User.isSitting || User.Z != seatZ || User.RotBody != Item.Rotation || !User.Statusses.ContainsKey("sit"))
+                            double seatZ = Item.GetZ;
+                            if (!User.isSitting
+                                || User.Z != seatZ
+                                || User.RotBody != Item.Rotation
+                                || !User.Statusses.ContainsKey("sit"))
                             {
                                 User.Statusses.Remove("sit");
                                 User.Statusses.Remove("lay");
                                 User.Statusses.Add("sit", TextHandling.GetString(Item.GetBaseItem().Height));
                                 User.isSitting = true;
                                 User.isLying = false;
-                                User.Z = seatZ; // ← solo la Z del sofá
+                                User.Z = seatZ;
                                 User.RotHead = Item.Rotation;
                                 User.RotBody = Item.Rotation;
                                 User.UpdateNeeded = true;
@@ -1292,111 +1678,35 @@ namespace Polar.HabboHotel.Rooms
 
                         switch (Item.GetBaseItem().InteractionType)
                         {
-                            #region Roleplay
-
-                            #region Shower
+                            #region Roleplay — Shower
                             case InteractionType.SHOWER:
-                                {
-                                    if (User.Coordinate.X == Item.GetX && User.Coordinate.Y == Item.GetY)
-                                    {
-                                        if (User.GetClient()?.GetRoleplay() == null) continue;
-
-                                        Room Room;
-                                        if (!PolarEnvironment.GetGame().GetRoomManager().TryGetRoom(User.GetClient().GetHabbo().CurrentRoomId, out Room))
-                                            return;
-
-                                        if (User.GetClient().GetRoleplay().Hygiene >= 100)
-                                        {
-                                            User.GetClient().SendWhisper("Su Higiene ya está en un máximo de 100", 1);
-                                            User.GetClient().GetRoleplay().IsWorking = false;
-                                            User.MoveTo(Item.SquareInFront.X, Item.SquareInFront.Y);
-                                            return;
-                                        }
-
-                                        if (Item.InteractingUser != 0)
-                                        {
-                                            User.GetClient().SendWhisper("Esta ducha ya está en uso por alguien más! Lo siento, no puedes unirte a ellos!", 1);
-                                            User.MoveTo(Item.SquareInFront.X, Item.SquareInFront.Y);
-                                            return;
-                                        }
-
-                                        if (Item.ExtraData == "0" || Item.ExtraData == "")
-                                        {
-                                            Item.ExtraData = "1";
-                                            Item.UpdateState(false, true);
-                                            Item.RequestUpdate(1, true);
-                                        }
-
-                                        if (Item.ExtraData == "1" && !User.GetClient().GetRoleplay().InShower)
-                                        {
-                                            User.ClearMovement(true);
-                                            Item.InteractingUser = User.GetClient().GetHabbo().Id;
-                                            User.GetClient().GetRoleplay().InShower = true;
-                                            RoleplayManager.Shout(User.GetClient(), "*Comienza a tomar una buena ducha caliente*", 4);
-                                            User.GetClient().GetRoleplay().IsWorking = false;
-                                            User.GetClient().GetRoleplay().TimerManager.CreateTimer("shower", 1000, false, Item.Id);
-                                        }
-                                    }
-                                    break;
-                                }
+                                HandleShowerInteraction(User, Item);
+                                break;
                             #endregion
 
                             #region Whisper Tile
                             case InteractionType.WHISPER_TILE:
+                                if (!User.IsBot && User.Coordinate.X == Item.GetX && User.Coordinate.Y == Item.GetY)
                                 {
-                                    if (!User.IsBot && User.Coordinate.X == Item.GetX && User.Coordinate.Y == Item.GetY)
+                                    if (Item.WhisperTileData == null)
                                     {
-                                        if (Item.WhisperTileData == null)
-                                        {
-                                            User.GetClient().SendWhisper("¡Vaya, parece que los datos de susurros están rotos!", 1);
-                                            break;
-                                        }
-
-                                        if (!string.IsNullOrEmpty(Item.WhisperTileData.Message) && User.GetClient() != null)
-                                            User.GetClient().SendWhisper(Item.WhisperTileData.Message, 34);
+                                        User.GetClient().SendWhisper("¡Vaya, parece que los datos de susurros están rotos!", 1);
+                                        break;
                                     }
-                                    break;
+                                    if (!string.IsNullOrEmpty(Item.WhisperTileData.Message) && User.GetClient() != null)
+                                        User.GetClient().SendWhisper(Item.WhisperTileData.Message, 34);
                                 }
-                            #endregion
-
+                                break;
                             #endregion
 
                             #region Beds & Tents
+                            // FIX STATUS-3: solo aplicar efectos de cama cuando cyclegameitems es true
                             case InteractionType.BED:
                             case InteractionType.BEDEFFECT:
                             case InteractionType.TENT_SMALL:
-                                {
-                                    if (!User.isLying || User.Z != Item.GetZ || User.RotBody != Item.Rotation || !User.Statusses.ContainsKey("lay"))
-                                    {
-                                        User.Statusses.Remove("lay");
-                                        User.Statusses.Remove("sit");
-                                        User.Statusses.Add("lay", TextHandling.GetString(Item.GetBaseItem().Height) + " null");
-
-                                        User.isLying = true;
-                                        User.isSitting = false;
-                                        User.Z = Item.GetZ;
-                                        User.RotHead = Item.Rotation;
-                                        User.RotBody = Item.Rotation;
-                                        User.UpdateNeeded = true;
-                                    }
-                                    foundFurniture = true;
-
-                                    if (Item.GetBaseItem().InteractionType == InteractionType.BEDEFFECT && !User.IsBot)
-                                    {
-                                        if (Item.GetBaseItem().EffectId == 0 && User.GetClient().GetHabbo().Effects().CurrentEffect == 0)
-                                            return;
-
-                                        User.GetClient().GetHabbo().Effects().ApplyEffect(Item.GetBaseItem().EffectId);
-                                        Item.ExtraData = "1";
-                                        Item.UpdateState(false, true);
-                                        Item.RequestUpdate(2, true);
-                                    }
-
-                                    User.RotHead = Item.Rotation;
-                                    User.RotBody = Item.Rotation;
-                                    User.UpdateNeeded = true;
-                                    break;
-                                }
+                                HandleBedInteraction(User, Item, cyclegameitems);
+                                foundFurniture = true;
+                                break;
                             #endregion
 
                             #region Banzai Gates
@@ -1404,39 +1714,8 @@ namespace Polar.HabboHotel.Rooms
                             case InteractionType.banzaigateblue:
                             case InteractionType.banzaigatered:
                             case InteractionType.banzaigateyellow:
-                                {
-                                    if (cyclegameitems)
-                                    {
-                                        int effectID = Convert.ToInt32(Item.team + 32);
-                                        TeamManager t = User.GetClient().GetHabbo().CurrentRoom.GetTeamManagerForBanzai();
-
-                                        if (User.Team == TEAM.NONE)
-                                        {
-                                            if (t.CanEnterOnTeam(Item.team))
-                                            {
-                                                if (User.Team != TEAM.NONE) t.OnUserLeave(User);
-                                                User.Team = Item.team;
-                                                t.AddUser(User);
-                                                if (User.GetClient().GetHabbo().Effects().CurrentEffect != effectID)
-                                                    User.GetClient().GetHabbo().Effects().ApplyEffect(effectID);
-                                            }
-                                        }
-                                        else if (User.Team != TEAM.NONE && User.Team != Item.team)
-                                        {
-                                            t.OnUserLeave(User);
-                                            User.Team = TEAM.NONE;
-                                            User.GetClient().GetHabbo().Effects().ApplyEffect(0);
-                                        }
-                                        else
-                                        {
-                                            t.OnUserLeave(User);
-                                            if (User.GetClient().GetHabbo().Effects().CurrentEffect == effectID)
-                                                User.GetClient().GetHabbo().Effects().ApplyEffect(0);
-                                            User.Team = TEAM.NONE;
-                                        }
-                                    }
-                                    break;
-                                }
+                                if (cyclegameitems) HandleBanzaiGate(User, Item);
+                                break;
                             #endregion
 
                             #region Freeze Gates
@@ -1444,298 +1723,45 @@ namespace Polar.HabboHotel.Rooms
                             case InteractionType.FREEZE_RED_GATE:
                             case InteractionType.FREEZE_GREEN_GATE:
                             case InteractionType.FREEZE_BLUE_GATE:
-                                {
-                                    if (User.IsBot || User.GetClient()?.GetRoleplay() == null)
-                                        break;
-
-                                    if (TexasHoldEmManager.GameList.Count > 0)
-                                    {
-                                        TexasHoldEm Game = TexasHoldEmManager.GameList.Values
-                                            .FirstOrDefault(x => x.JoinGate?.Furni == Item);
-
-                                        if (Game != null)
-                                        {
-                                            if (Game.GameStarted)
-                                                User.GetClient().SendWhisper("Lo siento pero ya hay un juego de Texas Hold 'Em!", 1);
-                                            else
-                                                Game.AddPlayerToGame(User.GetClient().GetHabbo().Id);
-                                            break;
-                                        }
-                                    }
-
-                                    if (cyclegameitems)
-                                    {
-                                        int effectID = Convert.ToInt32(Item.team + 39);
-                                        TeamManager t = User.GetClient().GetHabbo().CurrentRoom.GetTeamManagerForFreeze();
-
-                                        if (User.Team == TEAM.NONE)
-                                        {
-                                            if (t.CanEnterOnTeam(Item.team))
-                                            {
-                                                if (User.Team != TEAM.NONE) t.OnUserLeave(User);
-                                                User.Team = Item.team;
-                                                t.AddUser(User);
-                                                if (User.GetClient().GetHabbo().Effects().CurrentEffect != effectID)
-                                                    User.GetClient().GetHabbo().Effects().ApplyEffect(effectID);
-                                            }
-                                        }
-                                        else if (User.Team != TEAM.NONE && User.Team != Item.team)
-                                        {
-                                            t.OnUserLeave(User);
-                                            User.Team = TEAM.NONE;
-                                            User.GetClient().GetHabbo().Effects().ApplyEffect(0);
-                                        }
-                                        else
-                                        {
-                                            t.OnUserLeave(User);
-                                            if (User.GetClient().GetHabbo().Effects().CurrentEffect == effectID)
-                                                User.GetClient().GetHabbo().Effects().ApplyEffect(0);
-                                            User.Team = TEAM.NONE;
-                                        }
-                                    }
-                                    break;
-                                }
+                                if (cyclegameitems) HandleFreezeGate(User, Item);
+                                break;
                             #endregion
 
                             #region Banzai Teles
                             case InteractionType.banzaitele:
-                                {
-                                    if (User.Statusses.ContainsKey("mv"))
-                                        _room.GetGameItemHandler().onTeleportRoomUserEnter(User, Item);
-                                    break;
-                                }
+                                if (User.Statusses.ContainsKey("mv"))
+                                    _room.GetGameItemHandler().onTeleportRoomUserEnter(User, Item);
+                                break;
                             #endregion
 
                             #region Effects
                             case InteractionType.EFFECT:
+                                if (!User.IsBot && Item?.GetBaseItem() != null &&
+                                    User.GetClient()?.GetHabbo()?.Effects() != null)
                                 {
-                                    if (!User.IsBot && Item?.GetBaseItem() != null &&
-                                        User.GetClient()?.GetHabbo()?.Effects() != null)
-                                    {
-                                        if (Item.GetBaseItem().EffectId == 0 && User.GetClient().GetHabbo().Effects().CurrentEffect == 0)
-                                            return;
-
-                                        User.GetClient().GetHabbo().Effects().ApplyEffect(Item.GetBaseItem().EffectId);
-                                        Item.ExtraData = "1";
-                                        Item.UpdateState(false, true);
-                                        Item.RequestUpdate(2, true);
-                                    }
-                                    break;
+                                    if (Item.GetBaseItem().EffectId == 0 &&
+                                        User.GetClient().GetHabbo().Effects().CurrentEffect == 0)
+                                        return;
+                                    User.GetClient().GetHabbo().Effects().ApplyEffect(Item.GetBaseItem().EffectId);
+                                    Item.ExtraData = "1";
+                                    Item.UpdateState(false, true);
+                                    Item.RequestUpdate(2, true);
                                 }
+                                break;
                             #endregion
 
                             #region Arrows
                             case InteractionType.ARROW:
-                                {
-                                    if (User.GoalX == Item.GetX && User.GoalY == Item.GetY)
-                                    {
-                                        if (User.GetClient()?.GetHabbo() == null || User.GetClient().GetHabbo().IsTeleporting)
-                                            continue;
-
-                                        Room Room = _room;
-
-                                        if (!User.IsBot)
-                                        {
-                                            var rp = User.GetClient().GetRoleplay();
-                                            if (rp.IsJailed && !Room.IsPrison && !Room.IsPrison2 && !rp.Jailbroken)
-                                            {
-                                                User.GetClient().SendWhisper("¡No puedes usar flechas para escapar mientras estás encarcelado!", 1);
-                                                break;
-                                            }
-                                            if (rp.IsDead)
-                                            {
-                                                User.GetClient().SendWhisper("¡No puedes usar flechas mientras estás muerto!", 1);
-                                                break;
-                                            }
-
-                                            // Finalizar captura de banco/turf si usa flechas
-                                            if (rp.BankCapturing || rp.TurfCapturing || rp.ATMRobbery || rp.Robbery)
-                                            {
-                                                if (rp.BankCapturing) { rp.BankCapturing = false; Room.BankCapturing = false; }
-                                                if (rp.TurfCapturing) { rp.TurfCapturing = false; Room.TurfCapturing = false; }
-                                                if (rp.ATMRobbery) rp.ATMRobbery = false;
-                                                if (rp.Robbery) rp.Robbery = false;
-
-                                                rp.BreakGeneralTimer = true;
-                                                rp.TimerManager.EndTimer("bankrob");
-                                                rp.TimerManager.EndTimer("turfcapture");
-                                                rp.TimerManager.EndTimer("atmrob");
-
-                                                User.GetClient().SendWhisper("¡Has abandonado la zona y la acción ha sido cancelada!", 1);
-                                            }
-                                            User.ClearMovement(true);
-                                        }
-
-                                        if (!ItemTeleporterFinder.IsTeleLinked(Item.Id, Room))
-                                        {
-                                            User.UnlockWalking();
-                                        }
-                                        else
-                                        {
-                                            int LinkedTele = ItemTeleporterFinder.GetLinkedTele(Item.Id, Room);
-                                            int TeleRoomId = ItemTeleporterFinder.GetTeleRoomId(LinkedTele, Room);
-
-                                            if (TeleRoomId == Room.RoomId)
-                                            {
-                                                Item TargetItem = Room.GetRoomItemHandler().GetItem(LinkedTele);
-                                                if (TargetItem == null)
-                                                {
-                                                    User.GetClient()?.SendWhisper("¡Eh, esa flecha no está bien!", 1);
-                                                    break;
-                                                }
-
-                                                if (User.GetClient()?.GetRoleplay()?.Chofer == true)
-                                                {
-                                                    foreach (string psjs in User.GetClient().GetRoleplay().Pasajeros
-                                                        .Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries))
-                                                    {
-                                                        GameClient PJ = PolarEnvironment.GetGame().GetClientManager().GetClientByUsername(psjs);
-                                                        if (PJ?.GetRoleplay()?.ChoferName == User.GetClient().GetHabbo().Username)
-                                                        {
-                                                            Room.GetGameMap().TeleportToItem(PJ.GetRoomUser(), TargetItem);
-                                                            PJ.SendMessage(new UserRemoveComposer(PJ.GetRoomUser().VirtualId));
-                                                        }
-                                                    }
-                                                }
-                                                Room.GetGameMap().TeleportToItem(User, TargetItem);
-                                            }
-                                            else
-                                            {
-                                                if (!User.IsBot && User.GetClient()?.GetHabbo() != null)
-                                                {
-                                                    if (User.GetClient().GetRoleplay()?.Chofer == true)
-                                                    {
-                                                        foreach (string psjs in User.GetClient().GetRoleplay().Pasajeros
-                                                            .Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries))
-                                                        {
-                                                            GameClient PJ = PolarEnvironment.GetGame().GetClientManager().GetClientByUsername(psjs);
-                                                            if (PJ?.GetRoleplay()?.ChoferName == User.GetClient().GetHabbo().Username)
-                                                            {
-                                                                PJ.GetHabbo().IsTeleporting = true;
-                                                                PJ.GetHabbo().TeleportingRoomID = TeleRoomId;
-                                                                PJ.GetHabbo().TeleporterId = LinkedTele;
-                                                                PJ.SendMessage(new UserRemoveComposer(PJ.GetRoomUser().VirtualId));
-                                                                RoleplayManager.SendUserNew(PJ, TeleRoomId);
-                                                            }
-                                                        }
-                                                    }
-                                                    User.GetClient().GetHabbo().IsTeleporting = true;
-                                                    User.GetClient().GetHabbo().TeleportingRoomID = TeleRoomId;
-                                                    User.GetClient().GetHabbo().TeleporterId = LinkedTele;
-                                                    RoleplayManager.SendUserNew(User.GetClient(), TeleRoomId);
-                                                }
-                                            }
-                                        }
-                                    }
-                                    break;
-                                }
+                                if (User.GoalX == Item.GetX && User.GoalY == Item.GetY)
+                                    HandleArrow(User, Item, _room, teleportMethod: 1);
+                                break;
                             #endregion
 
                             #region Arrows2
                             case InteractionType.ARROW2:
-                                {
-                                    if (User.GoalX == Item.GetX && User.GoalY == Item.GetY)
-                                    {
-                                        if (User.GetClient()?.GetHabbo() == null || User.GetClient().GetHabbo().IsTeleporting)
-                                            continue;
-
-                                        Room Room = _room;
-
-                                        if (!User.IsBot)
-                                        {
-                                            var rp = User.GetClient().GetRoleplay();
-                                            if (rp.IsJailed && !Room.IsPrison && !Room.IsPrison2 && !rp.Jailbroken)
-                                            {
-                                                User.GetClient().SendWhisper("¡No puedes usar flechas para escapar mientras estás encarcelado!", 1);
-                                                break;
-                                            }
-                                            if (rp.IsDead)
-                                            {
-                                                User.GetClient().SendWhisper("¡No puedes usar flechas mientras estás muerto!", 1);
-                                                break;
-                                            }
-
-                                            // Finalizar captura de banco/turf si usa flechas
-                                            if (rp.BankCapturing || rp.TurfCapturing || rp.ATMRobbery || rp.Robbery)
-                                            {
-                                                if (rp.BankCapturing) { rp.BankCapturing = false; Room.BankCapturing = false; }
-                                                if (rp.TurfCapturing) { rp.TurfCapturing = false; Room.TurfCapturing = false; }
-                                                if (rp.ATMRobbery) rp.ATMRobbery = false;
-                                                if (rp.Robbery) rp.Robbery = false;
-
-                                                rp.BreakGeneralTimer = true;
-                                                rp.TimerManager.EndTimer("bankrob");
-                                                rp.TimerManager.EndTimer("turfcapture");
-                                                rp.TimerManager.EndTimer("atmrob");
-
-                                                User.GetClient().SendWhisper("¡Has abandonado la zona y la acción ha sido cancelada!", 1);
-                                            }
-                                            User.ClearMovement(true);
-                                        }
-
-                                        if (!ItemTeleporterFinder.IsTeleLinked(Item.Id, Room))
-                                        {
-                                            User.UnlockWalking();
-                                        }
-                                        else
-                                        {
-                                            int LinkedTele = ItemTeleporterFinder.GetLinkedTele(Item.Id, Room);
-                                            int TeleRoomId = ItemTeleporterFinder.GetTeleRoomId(LinkedTele, Room);
-
-                                            if (TeleRoomId == Room.RoomId)
-                                            {
-                                                Item TargetItem = Room.GetRoomItemHandler().GetItem(LinkedTele);
-                                                if (TargetItem == null)
-                                                {
-                                                    User.GetClient()?.SendWhisper("¡Eh, esa flecha no está bien!", 1);
-                                                    break;
-                                                }
-
-                                                if (User.GetClient()?.GetRoleplay()?.Chofer == true)
-                                                {
-                                                    foreach (string psjs in User.GetClient().GetRoleplay().Pasajeros
-                                                        .Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries))
-                                                    {
-                                                        GameClient PJ = PolarEnvironment.GetGame().GetClientManager().GetClientByUsername(psjs);
-                                                        if (PJ?.GetRoleplay()?.ChoferName == User.GetClient().GetHabbo().Username)
-                                                        {
-                                                            Room.GetGameMap().TeleportToItem(PJ.GetRoomUser(), TargetItem);
-                                                            PJ.SendMessage(new UserRemoveComposer(PJ.GetRoomUser().VirtualId));
-                                                        }
-                                                    }
-                                                }
-                                                Room.GetGameMap().TeleportToItem(User, TargetItem);
-                                            }
-                                            else
-                                            {
-                                                if (!User.IsBot && User.GetClient()?.GetHabbo() != null)
-                                                {
-                                                    if (User.GetClient().GetRoleplay()?.Chofer == true)
-                                                    {
-                                                        foreach (string psjs in User.GetClient().GetRoleplay().Pasajeros
-                                                            .Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries))
-                                                        {
-                                                            GameClient PJ = PolarEnvironment.GetGame().GetClientManager().GetClientByUsername(psjs);
-                                                            if (PJ?.GetRoleplay()?.ChoferName == User.GetClient().GetHabbo().Username)
-                                                            {
-                                                                PJ.GetHabbo().IsTeleporting = true;
-                                                                PJ.GetHabbo().TeleportingRoomID = TeleRoomId;
-                                                                PJ.GetHabbo().TeleporterId = LinkedTele;
-                                                                PJ.SendMessage(new UserRemoveComposer(PJ.GetRoomUser().VirtualId));
-                                                                RoleplayManager.SendUserNew(PJ, TeleRoomId);
-                                                            }
-                                                        }
-                                                    }
-                                                    User.GetClient().GetHabbo().IsTeleporting = true;
-                                                    User.GetClient().GetHabbo().TeleportingRoomID = TeleRoomId;
-                                                    User.GetClient().GetHabbo().TeleporterId = LinkedTele;
-                                                    RoleplayManager.SendUserNew2(User.GetClient(), TeleRoomId);
-                                                }
-                                            }
-                                        }
-                                    }
-                                    break;
-                                }
+                                if (User.GoalX == Item.GetX && User.GoalY == Item.GetY)
+                                    HandleArrow(User, Item, _room, teleportMethod: 2);
+                                break;
                             #endregion
 
                             default:
@@ -1770,9 +1796,9 @@ namespace Polar.HabboHotel.Rooms
 
                 if (cyclegameitems)
                 {
-                    if (_room.GotSoccer()) _room.GetSoccer().OnUserWalk(User);
-                    if (_room.GotBanzai()) _room.GetBanzai().OnUserWalk(User);
-                    if (_room.GotFreeze()) _room.GetFreeze().OnUserWalk(User);
+                    if (soccer != null) soccer.OnUserWalk(User);
+                    if (banzai != null) banzai.OnUserWalk(User);
+                    if (freeze != null) freeze.OnUserWalk(User);
                 }
             }
             catch (Exception e)

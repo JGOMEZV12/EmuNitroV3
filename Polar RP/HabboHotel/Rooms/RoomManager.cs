@@ -231,16 +231,15 @@ namespace Polar.HabboHotel.Rooms
 
         public Room TryGetRandomLoadedRoom()
         {
-            return (from kvp in _rooms
-                    where kvp.Value.IsValueCreated
-                    let r = TrySafeGetValue(kvp.Value)
-                    where r != null &&
-                          r.RoomData.UsersNow > 0 &&
-                          r.RoomData.State == 0 &&
-                          r.RoomData.UsersNow < r.RoomData.UsersMax
-                    orderby r.RoomData.UsersNow descending
-                    select r).FirstOrDefault();
+            return GetLoadedRooms()
+                .Where(r => r != null &&
+                            r.RoomData.UsersNow > 0 &&
+                            r.RoomData.State == 0 &&
+                            r.RoomData.UsersNow < r.RoomData.UsersMax)
+                .OrderByDescending(r => r.RoomData.UsersNow)
+                .FirstOrDefault();
         }
+
 
         // ══════════════════════════════════════════════════════════════════════════
         //  UNLOAD

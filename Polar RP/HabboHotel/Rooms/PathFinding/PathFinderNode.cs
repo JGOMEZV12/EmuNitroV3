@@ -43,7 +43,10 @@ namespace Polar.HabboHotel.Pathfinding
 
     internal static class PathFinderNodePool
     {
-        private static readonly Stack<PathFinderNode> _pool = new Stack<PathFinderNode>(1024);
+        // FIX: aumentado a 4096 — salas con muchos usuarios calculan paths en paralelo
+        //      y agotan el pool con el límite anterior de 2048.
+        private const int MaxPoolSize = 4096;
+        private static readonly Stack<PathFinderNode> _pool = new Stack<PathFinderNode>(MaxPoolSize);
 
         public static PathFinderNode Get(Vector2D position)
         {
@@ -63,10 +66,8 @@ namespace Polar.HabboHotel.Pathfinding
         {
             lock (_pool)
             {
-                if (_pool.Count < 2048) // Limit pool size
-                {
+                if (_pool.Count < MaxPoolSize)
                     _pool.Push(node);
-                }
             }
         }
     }

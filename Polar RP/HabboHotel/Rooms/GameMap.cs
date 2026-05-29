@@ -16,8 +16,28 @@ namespace Polar.HabboHotel.Rooms
 {
     public sealed class Gamemap : IDisposable
     {
+        // ── Constantes (puerto de Java PathfinderConstants) ───────────────────────
+        private const int DoorDistanceThreshold = 2;
+        private const double MaxStepHeight = 1.5;
+        private const double MaxFallHeight = 1.5; // puede diferenciarse del step si se quiere
+
+        /// <summary>
+        /// FIX: Puerto de isInvalidHeight (Java PathfinderImpl).
+        /// Separa el check de caída (falling) del check de subida (climbing).
+        /// Antes solo se comprobaba Math.Abs(diff) > 1.5 sin distinguir dirección.
+        /// </summary>
+        public bool IsValidHeightTransition(double fromZ, double toZ,
+            bool allowFalling = true,
+            double maxStep = MaxStepHeight,
+            double maxFall = MaxFallHeight)
+        {
+            double diff = toZ - fromZ;
+            if (!allowFalling && diff < -maxFall) return false; // no puede caer
+            if (diff > maxStep) return false; // no puede subir tanto
+            return true;
+        }
         // ── Referencias ───────────────────────────────────────────────────────────
-        private Room _room;
+        public Room _room;
         private RoomModel _staticModel;
         private DynamicRoomModel _dynamicModel;
 
@@ -743,20 +763,58 @@ namespace Polar.HabboHotel.Rooms
             }
             return true;
         }
+        public double GetHeightDifference(Vector2D from, Vector2D to) =>
+            SqAbsoluteHeight(to.X, to.Y) - SqAbsoluteHeight(from.X, from.Y);
 
+        /// <summary>
+        /// FIX: Puerto completo de isBlockedDiagonal (Java AdjacentTileFinder).
+        /// Verifica que al menos uno de los dos flancos ortogonales sea transitable
+        /// antes de permitir el movimiento diagonal — evita "corner cutting".
+        /// El método original solo comprobaba GameMap != 0 en uno de los dos tiles.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private bool IsBlockedDiagonal(int x, int y, int newX, int newY)
+        {
+            bool flankX = ValidTile(newX, y) && GameMap[newX, y] != 0;
+            bool flankY = ValidTile(x, newY) && GameMap[x, newY] != 0;
+            return !flankX && !flankY;
+        }
+
+        /// <summary>
+        /// FIX: Delega en IsBlockedDiagonal para consistencia con PathFinder.cs.
+        /// </summary>
+        private bool IsValidDiagonalMove(Vector2D from, Vector2D to)
+        {
+            int dx = to.X - from.X;
+            int dy = to.Y - from.Y;
+            if (dx == 0 || dy == 0) return true; // no es diagonal
+            return !IsBlockedDiagonal(from.X, from.Y, to.X, to.Y);
+        }
         public bool IsValidStep(RoomUser user, Vector2D from, Vector2D to,
-            bool endOfPath, bool @override,
-            bool roller = false, bool isInvisible = false, bool diagMove = false)
+             bool endOfPath, bool @override,
+             bool roller = false, bool isInvisible = false, bool diagMove = false)
         {
             if (!ValidTile(to.X, to.Y)) return false;
             if (@override) return true;
 
-            // Bloqueo por usuarios (no por uno mismo)
-            if (!_room.RoomBlockingEnabled && SquareHasUsers(to.X, to.Y, true, isInvisible))
+            // FIX #2: Diagonal corner-cutting check (puerto de Java)
+            if (diagMove && IsBlockedDiagonal(from.X, from.Y, to.X, to.Y))
+                return false;
+
+            // Bloqueo por usuarios (excepto el propio usuario)
+            if (!_room.RoomBlockingEnabled)
             {
-                var usersOnTile = GetRoomUsers(new Point(to.X, to.Y));
-                if (!usersOnTile.Any(u => u?.VirtualId == user.VirtualId))
-                    return false;
+                // FIX #3: Puerto de DISTANCE_DOOR_THRESHOLD — cerca de la puerta
+                //         ignoramos el blocking para que nadie tape la entrada.
+                bool nearDoor = Math.Abs(to.X - Model.DoorX) + Math.Abs(to.Y - Model.DoorY)
+                                <= DoorDistanceThreshold;
+
+                if (!nearDoor && SquareHasUsers(to.X, to.Y, true, isInvisible))
+                {
+                    var usersOnTile = GetRoomUsers(new Point(to.X, to.Y));
+                    if (!usersOnTile.Any(u => u?.VirtualId == user.VirtualId))
+                        return false;
+                }
             }
 
             List<Item> items = GetAllRoomItemForSquare(to.X, to.Y);
@@ -787,8 +845,17 @@ namespace Polar.HabboHotel.Rooms
             if (tileState == 2) return false;
             if (tileState == 3 && !isChair) return false;
 
-            if (!roller && GetHeightDifference(from, to) > 1.5) return false;
-            if (diagMove && !IsValidDiagonalMove(from, to)) return false;
+            // FIX #4: Puerto de isInvalidHeight (Java) — distingue subida de bajada.
+            //         allowFalling=true por defecto; puede exponerse por RoomUser si se necesita.
+            if (!roller && !IsValidHeightTransition(
+                    SqAbsoluteHeight(from.X, from.Y),
+                    SqAbsoluteHeight(to.X, to.Y),
+                    allowFalling: true))
+                return false;
+
+            // FIX #2: Diagonal check consistente
+            if (diagMove && !IsValidDiagonalMove(from, to))
+                return false;
 
             if (endOfPath)
             {
@@ -796,19 +863,8 @@ namespace Polar.HabboHotel.Rooms
                 if (other != null && other.VirtualId != user.VirtualId && !other.IsWalking)
                     return false;
             }
+
             return true;
-        }
-
-        public double GetHeightDifference(Vector2D from, Vector2D to) =>
-            SqAbsoluteHeight(to.X, to.Y) - SqAbsoluteHeight(from.X, from.Y);
-
-        private bool IsValidDiagonalMove(Vector2D from, Vector2D to)
-        {
-            int dx = to.X - from.X, dy = to.Y - from.Y;
-            if (dx == 0 || dy == 0) return true;
-            bool adj1 = ValidTile(from.X + dx, from.Y) && GameMap[from.X + dx, from.Y] != 0;
-            bool adj2 = ValidTile(from.X, from.Y + dy) && GameMap[from.X, from.Y + dy] != 0;
-            return adj1 || adj2;
         }
 
         private bool HandleGroupGateAccess(RoomUser user, Item gate)
