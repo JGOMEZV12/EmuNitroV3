@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Linq;
 using System.Threading;
 using System.Collections.Generic;
@@ -11,7 +11,6 @@ using Polar.HabboHotel.Quests;
 using Polar.Communication.Packets.Outgoing.Rooms.Engine;
 using Polar.Communication.Packets.Outgoing.Rooms.Chat;
 using Polar.HabboHotel.Guides;
-
 using Polar.Communication.Packets.Outgoing.Guides;
 using System.Drawing;
 using Polar.HabboRoleplay.Farming;
@@ -21,6 +20,8 @@ using Polar.HabboHotel.Users.Effects;
 using Polar.HabboRoleplay.Turfs;
 using Polar.HabboHotel.GameClients;
 using Polar.HabboRoleplay.Misc;
+using Polar.Communication.Packets.Outgoing.Rooms.Avatar;
+using Polar.Communication.Packets.Outgoing.Rooms.Session;
 
 namespace Polar.Communication.Packets.Incoming.Rooms.Engine
 {
@@ -35,131 +36,221 @@ namespace Polar.Communication.Packets.Incoming.Rooms.Engine
             if (Room == null)
                 return;
 
+            #region 1. Basic State and Room Switching
             Session.GetHabbo().HomeRoom = Room.Id;
-
             Session.GetRoleplay().InState = false;
 
-            if (Session.GetRoleplay().PoliceTrial)
-                Session.GetRoleplay().PoliceTrial = false;
-
-            #region Police Car Enable Check
-            if (Session.GetRoomUser() != null)
+            if (Session.GetHabbo().InRoom)
             {
-                if (Session.GetRoomUser().CurrentEffect == EffectsList.CarPolice)
-                    Session.GetRoomUser().ApplyEffect(EffectsList.None);
-            }
-            #endregion
-
-            #region Spawn/Update Texas Hold 'Em Furni
-            if (TexasHoldEmManager.GetGamesByRoomId(Room.RoomId).Count > 0)
-            {
-                List<TexasHoldEm> Games = TexasHoldEmManager.GetGamesByRoomId(Room.RoomId);
-
-                foreach (TexasHoldEm Game in Games)
+                if (PolarEnvironment.GetGame().GetRoomManager().TryGetRoom(Session.GetHabbo().CurrentRoomId, out Room OldRoom))
                 {
-                    if (Game != null)
-                    {
-                        #region PotSquare Check
-                        if (Game.PotSquare.Furni != null)
-                        {
-                            if (Game.PotSquare.Furni.GetX != Game.PotSquare.X && Game.PotSquare.Furni.GetY != Game.PotSquare.Y && Game.PotSquare.Furni.GetZ != Game.PotSquare.Z && Game.PotSquare.Furni.Rotation != Game.PotSquare.Rotation)
-                            {
-                                if (Room.GetRoomItemHandler().GetFloor.Contains(Game.PotSquare.Furni))
-                                    Room.GetRoomItemHandler().RemoveFurniture(null, Game.PotSquare.Furni.Id);
-                                Game.PotSquare.SpawnDice();
-                            }
-                        }
-                        else
-                            Game.PotSquare.SpawnDice();
-                        #endregion
-
-                        #region JoinGate Check
-                        if (Game.JoinGate.Furni != null)
-                        {
-                            if (Game.JoinGate.Furni.GetX != Game.JoinGate.X && Game.JoinGate.Furni.GetY != Game.JoinGate.Y && Game.JoinGate.Furni.GetZ != Game.JoinGate.Z && Game.JoinGate.Furni.Rotation != Game.JoinGate.Rotation)
-                            {
-                                if (Room.GetRoomItemHandler().GetFloor.Contains(Game.JoinGate.Furni))
-                                    Room.GetRoomItemHandler().RemoveFurniture(null, Game.JoinGate.Furni.Id);
-                                Game.JoinGate.SpawnDice();
-                            }
-                        }
-                        else
-                            Game.JoinGate.SpawnDice();
-                        #endregion
-
-                        #region Player1 Check
-                        foreach (TexasHoldEmItem Item in Game.Player1.Values)
-                        {
-                            if (Item.Furni != null)
-                            {
-                                if (Item.Furni.GetX != Item.X && Item.Furni.GetY != Item.Y && Item.Furni.GetZ != Item.Z && Item.Furni.Rotation != Item.Rotation)
-                                {
-                                    if (Room.GetRoomItemHandler().GetFloor.Contains(Item.Furni))
-                                        Room.GetRoomItemHandler().RemoveFurniture(null, Item.Furni.Id);
-                                    Item.SpawnDice();
-                                }
-                            }
-                            else
-                                Item.SpawnDice();
-                        }
-                        #endregion
-
-                        #region Player2 Check
-                        foreach (TexasHoldEmItem Item in Game.Player2.Values)
-                        {
-                            if (Item.Furni != null)
-                            {
-                                if (Item.Furni.GetX != Item.X && Item.Furni.GetY != Item.Y && Item.Furni.GetZ != Item.Z && Item.Furni.Rotation != Item.Rotation)
-                                {
-                                    if (Room.GetRoomItemHandler().GetFloor.Contains(Item.Furni))
-                                        Room.GetRoomItemHandler().RemoveFurniture(null, Item.Furni.Id);
-                                    Item.SpawnDice();
-                                }
-                            }
-                            else
-                                Item.SpawnDice();
-                        }
-                        #endregion
-
-                        #region Player3 Check
-                        foreach (TexasHoldEmItem Item in Game.Player3.Values)
-                        {
-                            if (Item.Furni != null)
-                            {
-                                if (Item.Furni.GetX != Item.X && Item.Furni.GetY != Item.Y && Item.Furni.GetZ != Item.Z && Item.Furni.Rotation != Item.Rotation)
-                                {
-                                    if (Room.GetRoomItemHandler().GetFloor.Contains(Item.Furni))
-                                        Room.GetRoomItemHandler().RemoveFurniture(null, Item.Furni.Id);
-                                    Item.SpawnDice();
-                                }
-                            }
-                            else
-                                Item.SpawnDice();
-                        }
-                        #endregion
-
-                        #region Banker Check
-                        foreach (TexasHoldEmItem Item in Game.Banker.Values)
-                        {
-                            if (Item.Furni != null)
-                            {
-                                if (Item.Furni.GetX != Item.X && Item.Furni.GetY != Item.Y && Item.Furni.GetZ != Item.Z && Item.Furni.Rotation != Item.Rotation)
-                                {
-                                    if (Room.GetRoomItemHandler().GetFloor.Contains(Item.Furni))
-                                        Room.GetRoomItemHandler().RemoveFurniture(null, Item.Furni.Id);
-                                    Item.SpawnDice();
-                                }
-                            }
-                            else
-                                Item.SpawnDice();
-                        }
-                        #endregion
-                    }
+                    if (OldRoom.Id != Room.Id && OldRoom.GetRoomUserManager() != null)
+                        OldRoom.GetRoomUserManager().RemoveUserFromRoom(Session, false, false);
                 }
             }
             #endregion
 
-            #region Taxi Message
+            #region 2. Join Room & Send Maps/Objects
+            if (!Room.GetRoomUserManager().AddAvatarToRoom(Session))
+            {
+                Room.GetRoomUserManager().RemoveUserFromRoom(Session, false, false);
+                return;
+            }
+
+            // Sends heightmaps, users, and all furniture
+            Room.SendObjects(Session);
+            #endregion
+
+            #region 3. Room Entry Packets
+            Session.SendMessage(new RoomEntryInfoComposer(Room.RoomId, Room.CheckRights(Session, true)));
+            Session.SendMessage(new RoomVisualizationSettingsComposer(Room.WallThickness, Room.FloorThickness, Room.Hidewall));
+            Session.SendMessage(new RoomEventComposer(Room.RoomData, Room.RoomData.Promotion));
+
+            if (Room.HideWired && Room.CheckRights(Session, true, false))
+                Session.SendMessage(new RoomNotificationComposer("furni_placement_error", "message", "Los Wired estan escondidos en esta habitación."));
+
+            RoomUser ThisUser = Room.GetRoomUserManager().GetRoomUserByHabbo(Session.GetHabbo().Id);
+            if (ThisUser != null && Session.GetHabbo().PetId == 0)
+                Room.SendMessage(new UserChangeComposer(ThisUser, false));
+            #endregion
+
+            #region 4. RP Logic & Status Checks (Texas, Taxi, Bus, Jobs, Jail, etc.)
+
+            // Texas Hold 'Em
+            ProcessTexasHoldEm(Room);
+
+            // Stun / Jail / Death Checks
+            if (Session.GetRoleplay().IsStun) HandleStun(Session, Room);
+            if (Session.GetRoleplay().IsDead) HandleDeath(Session, Room);
+            if (Session.GetRoleplay().IsJailed) HandleJail(Session, Room);
+
+            // Taxi / Bus
+            HandleTaxiBus(Session);
+
+            // Job & Probation
+            HandleJobs(Session, Room);
+            if (!Session.GetRoleplay().OnProbation)
+            {
+                if (!Session.GetRoleplay().TimerManager.ActiveTimers.ContainsKey("probation"))
+                    Session.GetRoleplay().TimerManager.CreateTimer("probation", 1000, false);
+            }
+
+            // SendHome
+            if (Session.GetRoleplay().SendHomeTimeLeft > 0)
+            {
+                if (Session.GetRoleplay().SendHomeTimeLeft > 30)
+                    Session.GetRoleplay().SendHomeTimeLeft = 30;
+
+                if (!Session.GetRoleplay().TimerManager.ActiveTimers.ContainsKey("sendhome"))
+                    Session.GetRoleplay().TimerManager.CreateTimer("sendhome", 1000, false);
+            }
+
+            // Cancel active RP processes
+            CancelActiveProcesses(Session);
+
+            // PSV Mode
+            if (Session.GetRoleplay().PassiveMode)
+            {
+                Session.SendMessage(new RoomBubbleNotificationComposer("psv-icon", "Modo Pasivo: Activado", ""));
+                PolarEnvironment.GetGame().GetWebEventManager().SendDataDirect(Session, "compose_psv_mode|active");
+                RoleplayManager.Shout(Session, "((Ha entrado en modo pasivo))", 7);
+
+                Task.Run(async delegate {
+                    await Task.Delay(250);
+                    Session.GetRoomUser()?.ApplyEffect(EffectsList.Passive);
+                });
+            }
+
+            // Bot Interaction
+            foreach (RoomUser Bot in Room.GetRoomUserManager().GetBotList().ToList())
+            {
+                if (Bot?.BotAI != null && Bot.IsRoleplayBot && Bot.GetBotRoleplay().Deployed)
+                    Bot.GetBotRoleplayAI().OnUserEnterRoom(Session);
+            }
+
+            Session.GetRoleplay().ClearWebSocketDialogue();
+            #endregion
+
+            #region 5. Triggers & Finalization
+            if (Room.GetWired() != null)
+                Room.GetWired().TriggerEvent(WiredBoxType.TriggerRoomEnter, Session.GetHabbo());
+
+            if (Session.GetHabbo().GetStats().QuestID > 0)
+                PolarEnvironment.GetGame().GetQuestManager().QuestReminder(Session, Session.GetHabbo().GetStats().QuestID);
+
+            if (PolarEnvironment.GetUnixTimestamp() < Session.GetHabbo().FloodTime && Session.GetHabbo().FloodTime != 0)
+                Session.SendMessage(new FloodControlComposer((int)Session.GetHabbo().FloodTime - (int)PolarEnvironment.GetUnixTimestamp()));
+
+            try
+            {
+                Session.GetHabbo().GetMessenger()?.OnStatusChanged(true);
+            }
+            catch { }
+            #endregion
+        }
+
+        private void ProcessTexasHoldEm(Room Room)
+        {
+            var games = TexasHoldEmManager.GetGamesByRoomId(Room.RoomId);
+            if (games.Count == 0) return;
+
+            foreach (TexasHoldEm Game in games)
+            {
+                if (Game == null) continue;
+
+                CheckTexasItem(Room, Game.PotSquare);
+                CheckTexasItem(Room, Game.JoinGate);
+                foreach (var item in Game.Player1.Values) CheckTexasItem(Room, item);
+                foreach (var item in Game.Player2.Values) CheckTexasItem(Room, item);
+                foreach (var item in Game.Player3.Values) CheckTexasItem(Room, item);
+                foreach (var item in Game.Banker.Values) CheckTexasItem(Room, item);
+            }
+        }
+
+        private void CheckTexasItem(Room room, TexasHoldEmItem item)
+        {
+            if (item.Furni != null)
+            {
+                if (item.Furni.GetX != item.X || item.Furni.GetY != item.Y || item.Furni.GetZ != item.Z || item.Furni.Rotation != item.Rotation)
+                {
+                    if (room.GetRoomItemHandler().GetFloor.Contains(item.Furni))
+                        room.GetRoomItemHandler().RemoveFurniture(null, item.Furni.Id);
+                    item.SpawnDice();
+                }
+            }
+            else item.SpawnDice();
+        }
+
+        private void HandleStun(GameClient Session, Room Room)
+        {
+            if (Session.GetRoleplay().TryGetCooldown("stun"))
+            {
+                Session.GetRoleplay().IsStun = true;
+                Session.GetRoleplay().IsJailed = true;
+                string MyCity = Room.City;
+                int ToRoomId = PolarEnvironment.GetGame().GetRPRoomManager().TryToGetJail(MyCity, out _);
+
+                if (Session.GetHabbo().HomeRoom != ToRoomId)
+                    Session.GetHabbo().HomeRoom = ToRoomId;
+
+                RoleplayManager.SendUserOld2(Session, ToRoomId);
+
+                if (!Session.GetRoleplay().TimerManager.ActiveTimers.ContainsKey("jail"))
+                    Session.GetRoleplay().TimerManager.CreateTimer("jail", 1000, true);
+            }
+        }
+
+        private void HandleDeath(GameClient Session, Room Room)
+        {
+            string MyCity = Room.City;
+            int HospitalRID = PolarEnvironment.GetGame().GetRPRoomManager().TryToGetHospital(MyCity, out _);
+
+            if (Room.Id != HospitalRID)
+                RoleplayManager.SendUser(Session, HospitalRID);
+
+            RoleplayManager.GetLookAndMotto(Session);
+            RoleplayManager.SpawnBeds(Session, "hosptl_bed");
+        }
+
+        private void HandleJail(GameClient Session, Room Room)
+        {
+            if (Session.GetRoleplay().Jailbroken)
+            {
+                RoleplayManager.GetLookAndMotto(Session);
+                return;
+            }
+
+            string MyCity = Room.City;
+            int ToRoomId = PolarEnvironment.GetGame().GetRPRoomManager().TryToGetJail(MyCity, out _);
+            int CourtRID = PolarEnvironment.GetGame().GetRPRoomManager().TryToGetCourt(MyCity, out _);
+
+            if (RoleplayManager.Defendant == Session && Room.Id == CourtRID)
+            {
+                RoleplayManager.GetLookAndMotto(Session);
+                Task.Run(async delegate {
+                    await Task.Delay(500);
+                    RoleplayManager.SpawnChairs(Session, "uni_lectern", null, Room);
+                    if (Session.GetRoomUser() != null)
+                        Session.GetRoomUser().Frozen = true;
+                });
+                return;
+            }
+
+            if (Room.Id != ToRoomId)
+            {
+                RoleplayManager.SendUserOld2(Session, ToRoomId);
+                Session.SendNotification("¡No puedes salir de la cárcel hasta que tu condena haya expirado!");
+            }
+
+            if (Room.Id == ToRoomId)
+            {
+                RoleplayManager.GetLookAndMotto(Session);
+                RoleplayManager.SpawnBeds(Session, "bed_silo_one");
+            }
+        }
+
+        private void HandleTaxiBus(GameClient Session)
+        {
             if (Session.GetRoleplay().AntiArrowCheck)
                 Session.GetRoleplay().AntiArrowCheck = false;
 
@@ -167,497 +258,106 @@ namespace Polar.Communication.Packets.Incoming.Rooms.Engine
             {
                 int Bubble = (Session.GetHabbo().GetPermissions().HasRight("mod_tool") && Session.GetRoleplay().StaffOnDuty) ? 23 : 4;
                 Session.GetRoleplay().InsideTaxi = false;
-
-                Task.Run(async delegate
-                {
+                Task.Run(async delegate {
                     await Task.Delay(500);
                     RoleplayManager.Shout(Session, "*¡Hemos llegado a su destino!*", Bubble);
-                    Session.GetRoomUser().CanWalk = true;
-                    /*Client.GetRoleplay().RoomJoinedInmunity = true;
-                    Client.GetRoleplay().IsNoob = true;*/
                     if (Session.GetRoomUser() != null)
+                    {
+                        Session.GetRoomUser().CanWalk = true;
                         Session.GetRoomUser().ApplyEffect(0);
+                    }
                 });
             }
-            else
-                PolarEnvironment.GetGame().GetQuestManager().ProgressUserQuest(Session, QuestType.SOCIAL_VISIT);
-            #endregion
-
-            #region Bus Message
-            if (Session.GetRoleplay().AntiArrowCheck)
-                Session.GetRoleplay().AntiArrowCheck = false;
-
-            if (Session.GetRoleplay().InsideBus)
+            else if (Session.GetRoleplay().InsideBus)
             {
                 int Bubble = (Session.GetHabbo().GetPermissions().HasRight("mod_tool") && Session.GetRoleplay().StaffOnDuty) ? 23 : 4;
                 Session.GetRoleplay().InsideBus = false;
-
-                Task.Run(async delegate
-                {
+                Task.Run(async delegate {
                     await Task.Delay(500);
                     RoleplayManager.Shout(Session, "*Tenga señor, su pago ¡Muchas gracias!*", Bubble);
-                    /*Client.GetRoleplay().RoomJoinedInmunity = true;
-                    Client.GetRoleplay().IsNoob = true;*/
                 });
             }
             else
                 PolarEnvironment.GetGame().GetQuestManager().ProgressUserQuest(Session, QuestType.SOCIAL_VISIT);
-            #endregion
+        }
 
-            #region Tutorial Step Check
-            if (Session.GetRoleplay().TutorialStep == 13 && Room.WardrobeEnabled && Room.Type.Equals("public"))
-            {
-                PolarEnvironment.GetGame().GetWebEventManager().SendDataDirect(Session, "compose_tutorial|13");
-            }
-            else if (Session.GetRoleplay().TutorialStep == 18 && Room.PhoneStoreEnabled && Room.Type.Equals("public"))
-            {
-                PolarEnvironment.GetGame().GetWebEventManager().SendDataDirect(Session, "compose_tutorial|18");
-            }
-            else if (Session.GetRoleplay().TutorialStep == 23 && Room.BuyCarEnabled && Room.Type.Equals("public"))
-            {
-                PolarEnvironment.GetGame().GetWebEventManager().SendDataDirect(Session, "compose_tutorial|24");
-            }
-            else if (Session.GetRoleplay().TutorialStep == 27 && Room.MallEnabled && Room.Type.Equals("public"))
-            {
-                PolarEnvironment.GetGame().GetWebEventManager().SendDataDirect(Session, "compose_tutorial|28");
-            }
-            #endregion
-
-            #region StunCheck
-            if (Session.GetRoleplay().Paralized == true)
-            {
-
-            }
-            #endregion
-
-            #region StunCheck
-            if (Session.GetRoleplay().IsStun == true)
-            {
-
-                if (Session.GetRoleplay().TryGetCooldown("stun"))
-                {
-                    Session.GetRoleplay().IsStun = true;
-                    Session.GetRoleplay().IsJailed = true;
-
-
-                    string MyCity = Room.City;
-
-                    HabboRoleplay.RPRoom.RPRoom Data;
-                    int ToRoomId = PolarEnvironment.GetGame().GetRPRoomManager().TryToGetJail(MyCity, out Data);
-
-
-                    if (Session.GetHabbo().HomeRoom != ToRoomId)
-                        Session.GetHabbo().HomeRoom = ToRoomId;
-
-
-                    RoleplayManager.SendUserOld2(Session, ToRoomId);
-
-                    if (!Session.GetRoleplay().TimerManager.ActiveTimers.ContainsKey("jail"))
-                        Session.GetRoleplay().TimerManager.CreateTimer("jail", 1000, true);
-                }
-            }
-            #endregion
-
-            #region PSVMode
-            if (Session.GetRoleplay().PassiveMode)
-            {
-                Session.SendMessage(new RoomBubbleNotificationComposer("psv-icon", "Modo Pasivo: Activado", ""));
-                PolarEnvironment.GetGame().GetWebEventManager().SendDataDirect(Session, "compose_psv_mode|active");
-                RoleplayManager.Shout(Session, "((Ha entrado en modo pasivo))", 7);
-                //
-                new Thread(() =>
-                {
-                    Thread.Sleep(250);
-                    if (Session.GetRoomUser() != null)
-                        Session.GetRoomUser().ApplyEffect(EffectsList.Passive);
-                }).Start();
-            }
-            #endregion
-
-            #region DeathCheck
-            if (Session.GetRoleplay().IsDead)
-            {
-
-                string MyCity = Room.City;
-
-                HabboRoleplay.RPRoom.RPRoom Data;
-                int HospitalRID = PolarEnvironment.GetGame().GetRPRoomManager().TryToGetHospital(MyCity, out Data);
-
-                if (Room.Id != HospitalRID)
-                {
-                    RoleplayManager.SendUser(Session, HospitalRID);
-                    //Client.SendNotification("¡No puedes dejar el hospital mientras estás muerto!");
-                }
-                RoleplayManager.GetLookAndMotto(Session);
-                RoleplayManager.SpawnBeds(Session, "hosptl_bed");
-            }
-            #endregion
-
-            #region JailCheck
-            if (Session.GetRoleplay().IsJailed)
-            {
-
-                if (Session.GetRoleplay().Jailbroken)
-                {
-                    RoleplayManager.GetLookAndMotto(Session);
-                    return;
-                }
-
-                string MyCity = Room.City;
-
-                HabboRoleplay.RPRoom.RPRoom Data;
-                int ToRoomId = PolarEnvironment.GetGame().GetRPRoomManager().TryToGetJail(MyCity, out Data);
-                int CourtRID = PolarEnvironment.GetGame().GetRPRoomManager().TryToGetCourt(MyCity, out Data);
-
-                if (RoleplayManager.Defendant == Session && Room.Id == CourtRID)
-                {
-                    RoleplayManager.GetLookAndMotto(Session);
-
-
-                    new Thread(() =>
-                    {
-                        Thread.Sleep(500);
-                        RoleplayManager.SpawnChairs(Session, "uni_lectern", null, Room);
-                        if (Session.GetRoomUser() != null)
-                            Session.GetRoomUser().Frozen = true;
-                    }).Start();
-                    return;
-                }
-
-                if (Room.Id != ToRoomId)
-                {
-                    RoleplayManager.SendUserOld2(Session, ToRoomId);
-                    Session.SendNotification("¡No puedes salir de la cárcel hasta que tu condena haya expirado!");
-                }
-
-                if (Room.Id == ToRoomId)
-                {
-                    RoleplayManager.GetLookAndMotto(Session);
-                    RoleplayManager.SpawnBeds(Session, "bed_silo_one");
-                }
-            }
-            #endregion
-
-            #region JobCheck
-            if (Session.GetHabbo().CurrentRoom == null)
-                Session.GetRoleplay().IsWorking = false;
-
+        private void HandleJobs(GameClient Session, Room Room)
+        {
             if (Session.GetRoleplay().JobId > 1 && Session.GetRoleplay().IsWorking)
             {
-
-                int JobId = Session.GetRoleplay().JobId;
-                int JobRank = Session.GetRoleplay().JobRank;
-
-                if (!GroupManager.GetJobRank(JobId, JobRank).CanWorkHere(Room.Id))
+                if (!GroupManager.GetJobRank(Session.GetRoleplay().JobId, Session.GetRoleplay().JobRank).CanWorkHere(Room.Id))
                 {
                     if (GroupManager.HasJobCommand(Session, "guide"))
                     {
-                        GuideManager guideManager = PolarEnvironment.GetGame().GetGuideManager();
-                        guideManager.RemoveGuide(Session);
-
-                        #region End Existing Calls
-
+                        PolarEnvironment.GetGame().GetGuideManager().RemoveGuide(Session);
                         if (Session.GetRoleplay().GuideOtherUser != null)
                         {
-                            Session.GetRoleplay().GuideOtherUser.SendMessage(new OnGuideSessionDetachedComposer(0));
-                            Session.GetRoleplay().GuideOtherUser.SendMessage(new OnGuideSessionDetachedComposer(1));
-                            if (Session.GetRoleplay().GuideOtherUser.GetRoleplay() != null)
+                            var other = Session.GetRoleplay().GuideOtherUser;
+                            other.SendMessage(new OnGuideSessionDetachedComposer(0));
+                            other.SendMessage(new OnGuideSessionDetachedComposer(1));
+                            if (other.GetRoleplay() != null)
                             {
-                                Session.GetRoleplay().GuideOtherUser.GetRoleplay().Sent911Call = false;
-                                Session.GetRoleplay().GuideOtherUser.GetRoleplay().GuideOtherUser = null;
+                                other.GetRoleplay().Sent911Call = false;
+                                other.GetRoleplay().GuideOtherUser = null;
                             }
-
                             Session.GetRoleplay().GuideOtherUser = null;
                             Session.SendMessage(new OnGuideSessionDetachedComposer(0));
                             Session.SendMessage(new OnGuideSessionDetachedComposer(1));
                         }
-                        #endregion
-                        else
-                            Session.SendMessage(new HelperToolConfigurationComposer(Session));
+                        else Session.SendMessage(new HelperToolConfigurationComposer(Session));
                     }
                     WorkManager.RemoveWorkerFromList(Session);
                     Session.GetRoleplay().IsWorking = false;
                     Session.GetHabbo().Poof();
                 }
             }
+        }
 
-            #endregion
-
-            #region ProbationCheck
-            if (!Session.GetRoleplay().OnProbation)
-            {
-
-                if (!Session.GetRoleplay().TimerManager.ActiveTimers.ContainsKey("probation"))
-                    Session.GetRoleplay().TimerManager.CreateTimer("probation", 1000, false);
-            }
-            #endregion
-
-            #region SendHomeCheck
-            if (Session.GetRoleplay().SendHomeTimeLeft <= 0)
-            {
-               // return;
-            }
-            else { 
-                if (Session.GetRoleplay().SendHomeTimeLeft > 30)
-                    Session.GetRoleplay().SendHomeTimeLeft = 30;
-
-                if (!Session.GetRoleplay().TimerManager.ActiveTimers.ContainsKey("sendhome"))
-                    Session.GetRoleplay().TimerManager.CreateTimer("sendhome", 1000, false);
-            }
-            #endregion
-
-            #region BotInteractionCheck
-            List<RoomUser> Bots = Room.GetRoomUserManager().GetBotList().ToList();
-
-            foreach (RoomUser Bot in Bots)
-            {
-                if (Bot == null)
-                    continue;
-
-                if (!Bot.IsBot)
-                    continue;
-
-                if (!Bot.IsRoleplayBot)
-                    continue;
-
-                if (!Bot.GetBotRoleplay().Deployed)
-                    continue;
-
-                Bot.GetBotRoleplayAI().OnUserEnterRoom(Session);
-            }
-            #endregion
-
-            #region WebSocket Dialogue Check
-            Session.GetRoleplay().ClearWebSocketDialogue();
-            #endregion
-
-            #region Police Car Enable Check
-            if (Session.GetRoomUser() != null)
-            {
-                if (Session.GetRoomUser().CurrentEffect == EffectsList.CarPolice)
-                    Session.GetRoomUser().ApplyEffect(EffectsList.None);
-            }
-            #endregion
-
-            #region Spawn/Update Texas Hold 'Em Furni
-            if (TexasHoldEmManager.GetGamesByRoomId(Room.RoomId).Count > 0)
-            {
-                List<TexasHoldEm> Games = TexasHoldEmManager.GetGamesByRoomId(Room.RoomId);
-
-                foreach (TexasHoldEm Game in Games)
-                {
-                    if (Game != null)
-                    {
-                        #region PotSquare Check
-                        if (Game.PotSquare.Furni != null)
-                        {
-                            if (Game.PotSquare.Furni.GetX != Game.PotSquare.X && Game.PotSquare.Furni.GetY != Game.PotSquare.Y && Game.PotSquare.Furni.GetZ != Game.PotSquare.Z && Game.PotSquare.Furni.Rotation != Game.PotSquare.Rotation)
-                            {
-                                if (Room.GetRoomItemHandler().GetFloor.Contains(Game.PotSquare.Furni))
-                                    Room.GetRoomItemHandler().RemoveFurniture(null, Game.PotSquare.Furni.Id);
-                                Game.PotSquare.SpawnDice();
-                            }
-                        }
-                        else
-                            Game.PotSquare.SpawnDice();
-                        #endregion
-
-                        #region JoinGate Check
-                        if (Game.JoinGate.Furni != null)
-                        {
-                            if (Game.JoinGate.Furni.GetX != Game.JoinGate.X && Game.JoinGate.Furni.GetY != Game.JoinGate.Y && Game.JoinGate.Furni.GetZ != Game.JoinGate.Z && Game.JoinGate.Furni.Rotation != Game.JoinGate.Rotation)
-                            {
-                                if (Room.GetRoomItemHandler().GetFloor.Contains(Game.JoinGate.Furni))
-                                    Room.GetRoomItemHandler().RemoveFurniture(null, Game.JoinGate.Furni.Id);
-                                Game.JoinGate.SpawnDice();
-                            }
-                        }
-                        else
-                            Game.JoinGate.SpawnDice();
-                        #endregion
-
-                        #region Player1 Check
-                        foreach (TexasHoldEmItem Item in Game.Player1.Values)
-                        {
-                            if (Item.Furni != null)
-                            {
-                                if (Item.Furni.GetX != Item.X && Item.Furni.GetY != Item.Y && Item.Furni.GetZ != Item.Z && Item.Furni.Rotation != Item.Rotation)
-                                {
-                                    if (Room.GetRoomItemHandler().GetFloor.Contains(Item.Furni))
-                                        Room.GetRoomItemHandler().RemoveFurniture(null, Item.Furni.Id);
-                                    Item.SpawnDice();
-                                }
-                            }
-                            else
-                                Item.SpawnDice();
-                        }
-                        #endregion
-
-                        #region Player2 Check
-                        foreach (TexasHoldEmItem Item in Game.Player2.Values)
-                        {
-                            if (Item.Furni != null)
-                            {
-                                if (Item.Furni.GetX != Item.X && Item.Furni.GetY != Item.Y && Item.Furni.GetZ != Item.Z && Item.Furni.Rotation != Item.Rotation)
-                                {
-                                    if (Room.GetRoomItemHandler().GetFloor.Contains(Item.Furni))
-                                        Room.GetRoomItemHandler().RemoveFurniture(null, Item.Furni.Id);
-                                    Item.SpawnDice();
-                                }
-                            }
-                            else
-                                Item.SpawnDice();
-                        }
-                        #endregion
-
-                        #region Player3 Check
-                        foreach (TexasHoldEmItem Item in Game.Player3.Values)
-                        {
-                            if (Item.Furni != null)
-                            {
-                                if (Item.Furni.GetX != Item.X && Item.Furni.GetY != Item.Y && Item.Furni.GetZ != Item.Z && Item.Furni.Rotation != Item.Rotation)
-                                {
-                                    if (Room.GetRoomItemHandler().GetFloor.Contains(Item.Furni))
-                                        Room.GetRoomItemHandler().RemoveFurniture(null, Item.Furni.Id);
-                                    Item.SpawnDice();
-                                }
-                            }
-                            else
-                                Item.SpawnDice();
-                        }
-                        #endregion
-
-                        #region Banker Check
-                        foreach (TexasHoldEmItem Item in Game.Banker.Values)
-                        {
-                            if (Item.Furni != null)
-                            {
-                                if (Item.Furni.GetX != Item.X && Item.Furni.GetY != Item.Y && Item.Furni.GetZ != Item.Z && Item.Furni.Rotation != Item.Rotation)
-                                {
-                                    if (Room.GetRoomItemHandler().GetFloor.Contains(Item.Furni))
-                                        Room.GetRoomItemHandler().RemoveFurniture(null, Item.Furni.Id);
-                                    Item.SpawnDice();
-                                }
-                            }
-                            else
-                                Item.SpawnDice();
-                        }
-                        #endregion
-                    }
-                }
-            }
-            #endregion
-
-
-            if (Session.GetHabbo().InRoom)
-            {
-                Room OldRoom;
-
-                if (!PolarEnvironment.GetGame().GetRoomManager().TryGetRoom(Session.GetHabbo().CurrentRoomId, out OldRoom))
-                    return;
-
-                if (OldRoom.GetRoomUserManager() != null)
-                    OldRoom.GetRoomUserManager().RemoveUserFromRoom(Session, false, false);
-            }
-
-            if (!Room.GetRoomUserManager().AddAvatarToRoom(Session))
-            {
-                Room.GetRoomUserManager().RemoveUserFromRoom(Session, false, false);
-                return;//TODO: Remove?
-            }
-
-            Room.SendObjects(Session);
-
-            if (Room.HideWired && Room.CheckRights(Session, true, false))
-                Session.SendMessage(new RoomNotificationComposer("furni_placement_error", "message", "Los Wired estan escondidos en esta habitación."));
-            //Status updating for messenger, do later as buggy.
-
-            try
-            {
-                if (Session.GetHabbo().GetMessenger() != null)
-                    Session.GetHabbo().GetMessenger().OnStatusChanged(true);
-            }
-            catch { }
-
-            if (Session.GetHabbo().GetStats().QuestID > 0)
-                PolarEnvironment.GetGame().GetQuestManager().QuestReminder(Session, Session.GetHabbo().GetStats().QuestID);
-
-            Session.SendMessage(new RoomEntryInfoComposer(Room.RoomId, Room.CheckRights(Session, true)));
-            Session.SendMessage(new RoomVisualizationSettingsComposer(Room.WallThickness, Room.FloorThickness, Room.Hidewall));
-
-            RoomUser ThisUser = Room.GetRoomUserManager().GetRoomUserByHabbo(Session.GetHabbo().Id);
-
-            if (ThisUser != null && Session.GetHabbo().PetId == 0)
-                Room.SendMessage(new UserChangeComposer(ThisUser, false));
-
-            Session.SendMessage(new RoomEventComposer(Room.RoomData, Room.RoomData.Promotion));
-
-
-            if (Room.GetWired() != null)
-                Room.GetWired().TriggerEvent(WiredBoxType.TriggerRoomEnter, Session.GetHabbo());
-
-            if (PolarEnvironment.GetUnixTimestamp() < Session.GetHabbo().FloodTime && Session.GetHabbo().FloodTime != 0)
-                Session.SendMessage(new FloodControlComposer((int)Session.GetHabbo().FloodTime - (int)PolarEnvironment.GetUnixTimestamp()));
-
-            if (Session.GetRoleplay().ATMRobbery == true)
+        private void CancelActiveProcesses(GameClient Session)
+        {
+            if (Session.GetRoleplay().ATMRobbery)
             {
                 Session.SendWhisper("Has salido de sala, por tal motivo el robo fue cancelado.");
                 Session.GetRoleplay().BreakGeneralTimer = true;
                 Session.GetRoleplay().ATMRobbery = false;
             }
-
-            if (Session.GetRoleplay().RobartiendaRobbery == true)
+            if (Session.GetRoleplay().RobartiendaRobbery)
             {
                 Session.SendWhisper("Has salido de sala, por tal motivo el robo de la tienda fue cancelado.");
                 Session.GetRoleplay().BreakGeneralTimer = true;
                 Session.GetRoleplay().RobartiendaRobbery = false;
             }
-
-            if (Session.GetRoleplay().Learning == true)
+            if (Session.GetRoleplay().Learning)
             {
                 Session.SendWhisper("Has salido de sala, por tal motivo la lectura ha sido cancelada.");
                 Session.GetRoleplay().BreakGeneralTimer = true;
                 Session.GetRoleplay().Learning = false;
             }
-
-            if (Session.GetRoleplay().ProcessCocaine == true)
+            if (Session.GetRoleplay().ProcessCocaine)
             {
                 Session.SendWhisper("Has salido de sala, por tal motivo la fabricación de la cocaina se cancelo.");
-                Session.GetRoleplay().HRidItem.ExtraData = "0";
-                Session.GetRoleplay().HRidItem.UpdateState(false, true);
+                if (Session.GetRoleplay().HRidItem != null) { Session.GetRoleplay().HRidItem.ExtraData = "0"; Session.GetRoleplay().HRidItem.UpdateState(false, true); }
                 Session.GetRoleplay().BreakGeneralTimer = true;
                 Session.GetRoleplay().ProcessCocaine = false;
             }
-            if (Session.GetRoleplay().ProcessHeroine == true)
+            if (Session.GetRoleplay().ProcessHeroine)
             {
                 Session.SendWhisper("Has salido de sala, por tal motivo la fabricación de la heroina se cancelo.");
-                Session.GetRoleplay().HRidItem.ExtraData = "0";
-                Session.GetRoleplay().HRidItem.UpdateState(false, true);
+                if (Session.GetRoleplay().HRidItem != null) { Session.GetRoleplay().HRidItem.ExtraData = "0"; Session.GetRoleplay().HRidItem.UpdateState(false, true); }
                 Session.GetRoleplay().BreakGeneralTimer = true;
                 Session.GetRoleplay().ProcessHeroine = false;
             }
-            if (Session.GetRoleplay().ProcessWeed == true)
+            if (Session.GetRoleplay().ProcessWeed)
             {
                 Session.SendWhisper("Has salido de sala, por tal motivo la fabricación de la marihuana se cancelo.");
-                Session.GetRoleplay().HRidItem.ExtraData = "0";
-                Session.GetRoleplay().HRidItem.UpdateState(false, true);
+                if (Session.GetRoleplay().HRidItem != null) { Session.GetRoleplay().HRidItem.ExtraData = "0"; Session.GetRoleplay().HRidItem.UpdateState(false, true); }
                 Session.GetRoleplay().BreakGeneralTimer = true;
                 Session.GetRoleplay().ProcessWeed = false;
             }
-
-            #region Products
             if (Session.GetRoleplay().ViewProducts)
             {
-                // WS Products
                 PolarEnvironment.GetGame().GetWebEventManager().ExecuteWebEvent(Session, "event_products", "close");
                 Session.GetRoleplay().ViewProducts = false;
-            }
-            #endregion
-
-            if (Session.GetHabbo().GetClubManager().HasSubscription("habbo_vip"))
-            {
-                //Session.GetHabbo().GetClubManager().TimeExpired("habbo_vip", Session.GetHabbo().GetClubManager().GetSubscription("habbo_vip").ExpireTime, Session);
-                //Session.SendMessage(new UserNameChangeComposer(Session.GetRoomUser().GetRoom().Id, Session.GetRoomUser().VirtualId, "[VIP] " + Session.GetHabbo().Username));
             }
         }
     }
