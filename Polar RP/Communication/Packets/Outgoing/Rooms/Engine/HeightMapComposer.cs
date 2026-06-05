@@ -36,8 +36,8 @@ namespace Polar.Communication.Packets.Outgoing.Rooms.Engine
                         continue;
                     }
 
-                    // (floorHeight * 256) → cliente decodifica: (value & 16383) / 256
-                    WriteShort((short)(layout.Model.SqFloorHeight[x, y] * 256));
+                    // (absoluteHeight * 256) → cliente decodifica: (value & 16383) / 256
+                    WriteShort((short)(layout.SqAbsoluteHeight(x, y) * 256));
                 }
             }
         }

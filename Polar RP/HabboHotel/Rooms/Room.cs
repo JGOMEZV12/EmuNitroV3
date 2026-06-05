@@ -15,6 +15,7 @@ using Polar.HabboHotel.Items.Data.RentableSpace;
 using Polar.HabboHotel.Items.Data.Toner;
 using Polar.HabboHotel.Rooms.AI;
 using Polar.HabboHotel.Rooms.AI.Speech;
+using Polar.HabboHotel.Rooms.Instance;
 using Polar.HabboHotel.Rooms.Games;
 using Polar.HabboHotel.Rooms.Games.Banzai;
 using Polar.HabboHotel.Rooms.Games.Football;
@@ -55,6 +56,7 @@ namespace Polar.HabboHotel.Rooms
         public Task ProcessTask;
         public List<Trade> ActiveTrades { get; set; }
         private RoomTraxManager _traxManager;
+        private RoomCycleManager _cycleManager;
         public TonerData TonerData;
         public MoodlightData MoodlightData;
         public int wiredInspectMask = WIRED_ACCESS_DEFAULT_INSPECT_MASK;
@@ -207,6 +209,7 @@ namespace Polar.HabboHotel.Rooms
             _wiredComponent = new WiredComponent(this);
             _userVariableManager = new RoomUserVariableManager(this);
             this._traxManager = new RoomTraxManager(this);
+            this._cycleManager = new RoomCycleManager(this);
 
             GetRoomItemHandler().LoadFurniture();
             GetGameMap().GenerateMaps();
@@ -262,11 +265,7 @@ namespace Polar.HabboHotel.Rooms
                         if (sw.ElapsedMilliseconds > 100)
                             Logging.WriteLine($"[Room {RoomId}] Ciclo lento: {sw.ElapsedMilliseconds}ms");
 
-                        // FIX 1: targetCycleMs dinámico basado en usuarios REALES en memoria
-                        // Usar userCount que ya se mantiene actualizado en RoomUserManager
-                        // en lugar de llamar GetRoomUsers().Count (que hace .ToList())
-                        int activeUsers = _roomUserManager?.userCount ?? 0;
-                        int targetCycleMs = activeUsers == 0 ? 2000 : 125;
+                        int targetCycleMs = 500;
                         int wait = Math.Max(0, targetCycleMs - (int)sw.ElapsedMilliseconds);
 
                         await Task.Delay(wait, _mainProcessSource.Token);
@@ -450,6 +449,7 @@ namespace Polar.HabboHotel.Rooms
         }
 
         public RoomUserManager GetRoomUserManager() => _roomUserManager;
+        public RoomCycleManager GetCycleManager() => _cycleManager;
 
         public Soccer GetSoccer()
         {
@@ -799,45 +799,7 @@ namespace Polar.HabboHotel.Rooms
 
             try
             {
-                var timeStarted = DateTime.Now;
-
-                // FIX 2+3: evitar GetRoomUsers().ToList() + GetRoleplayBots().ToList()
-                // userCount se actualiza en OnCycle → O(1) sin allocación
-                // _bots.Count es O(1) en ConcurrentDictionary
-                int activeUsers = _roomUserManager?.userCount ?? 0;
-                int activeBots = _roomUserManager?._bots?.Count ?? 0;
-
-                if (activeUsers == 0 && activeBots == 0)
-                    IdleTime++;
-                else if (IdleTime > 0)
-                    IdleTime = 0;
-
-                if (HasActivePromotion && Promotion.HasExpired) EndPromotion();
-
-                if (IdleTime >= 60 && !HasActivePromotion)
-                {
-                    // FIX 5: await correcto — evita fire-and-forget con posible doble dispose
-                    _ = PolarEnvironment.GetGame().GetRoomManager().UnloadRoom(this);
-                    return;
-                }
-
-                try { GetRoomItemHandler().OnCycle(); }
-                catch (Exception e) { Logging.LogException(e.ToString()); }
-
-                try { GetRoomUserManager().OnCycle(); }
-                catch (Exception e) { Logging.LogException(e.ToString()); }
-
-                try { GetRoomUserManager().SerializeStatusUpdates(); }
-                catch (Exception e) { Logging.LogException(e.ToString()); }
-
-                try { if (_gameItemHandler != null) _gameItemHandler.OnCycle(); }
-                catch (Exception e) { Logging.LogException(e.ToString()); }
-
-                try { GetWired()?.OnCycle(); }
-                catch (Exception e) { Logging.LogException(e.ToString()); }
-
-                try { this._traxManager.OnCycle(); }
-                catch (Exception e) { Logging.LogException(e.ToString()); }
+                await _cycleManager.Cycle();
 
                 // FIX 4: comparar con DateTime.Now al final del procesamiento
                 // para no disparar SaveFurniture dos veces en ticks consecutivos
@@ -918,54 +880,42 @@ namespace Polar.HabboHotel.Rooms
         public void SendObjects(GameClient Session)
         {
             Room room = Session.GetHabbo().CurrentRoom;
+            var userList = _roomUserManager.GetUserList();
 
-            // ── Mapa ──────────────────────────────────────────────────────────────────
+            // 1. Metadata básica para el cliente (Orden Arcturus)
+            Session.SendMessage(new RoomEntryInfoComposer(Id, CheckRights(Session, true)));
+            Session.SendMessage(new RoomVisualizationSettingsComposer(WallThickness, FloorThickness, Hidewall));
+
+            // 2. Mapas (Altura absoluta incluyendo furnis para localización)
             Session.SendMessage(new HeightMapComposer(room));
             Session.SendMessage(new FloorHeightMapComposer(room));
 
-            // ── Usuarios presentes ────────────────────────────────────────────────────
-            var userList = _roomUserManager.GetUserList();
-
-            // FIX 1: Un solo UsersComposer con todos los usuarios en vez de uno por usuario.
-            //        El cliente los procesa igual; un paquete grande es más rápido que N pequeños.
+            // 3. Usuarios presentes
             if (userList.Count > 0)
                 Session.SendMessage(new UsersComposer(userList));
 
-            // FIX 2: Acumular todos los paquetes de estado (dance/sleep/carry/effect) en
-            //        una lista y enviarlos en un solo BroadcastPacket al final.
-            //        Antes: Session.SendMessage() por cada user × 4 posibles mensajes = N×4 writes.
-            //        Ahora: todos en un batch → 1 sola llamada a la capa TCP.
+            // 4. Estados de usuarios (dance/sleep/carry/effect) en un solo batch
             var statePackets = new List<ServerPacket>(userList.Count * 2);
-
             foreach (RoomUser roomUser in userList)
             {
                 if (roomUser == null) continue;
-
-                // Dance
                 if (roomUser.IsBot && roomUser.BotData?.DanceId > 0)
                     statePackets.Add(new DanceComposer(roomUser, roomUser.BotData.DanceId));
                 else if (!roomUser.IsBot && !roomUser.IsPet && roomUser.IsDancing)
                     statePackets.Add(new DanceComposer(roomUser, roomUser.DanceId));
 
-                // Sleep
                 if (roomUser.IsAsleep)
                     statePackets.Add(new SleepComposer(roomUser, true));
 
-                // Carry item
                 if (roomUser.CarryItemID > 0 && roomUser.CarryTimer > 0)
                     statePackets.Add(new CarryObjectComposer(roomUser.VirtualId, roomUser.CarryItemID));
 
-                // Effect
                 if (!roomUser.IsBot && !roomUser.IsPet && roomUser.CurrentEffect > 0)
                     statePackets.Add(new AvatarEffectComposer(roomUser.VirtualId, roomUser.CurrentEffect));
             }
 
-            // FIX 3: Enviar todos los paquetes de estado en un solo write TCP.
-            //        Room.SendMessage(List<ServerPacket>) ya concatena los bytes en un ArrayPool
-            //        y hace una sola llamada SendData — usar eso aquí para la sesión entrante.
             if (statePackets.Count > 0)
             {
-                // Serializar todo en un buffer y enviarlo de una vez
                 int totalLen = 0;
                 var packetBytes = new byte[statePackets.Count][];
                 for (int i = 0; i < statePackets.Count; i++)
@@ -985,18 +935,14 @@ namespace Polar.HabboHotel.Rooms
                 System.Buffers.ArrayPool<byte>.Shared.Return(combined, clearArray: false);
             }
 
-            // ── UserUpdate (posiciones) ───────────────────────────────────────────────
-            Session.SendMessage(new UserUpdateComposer(userList));
-
-            // ── Ítems de suelo y pared ────────────────────────────────────────────────
-            // FIX 4: ToArray() llamado una sola vez — GetFloor es ICollection<Item>,
-            //        llamarlo dos veces puede iterar el ConcurrentDictionary.Values dos veces.
-            //        Una sola snapshot, usada para ObjectsComposer.
+            // 5. Ítems de suelo y pared
             var floorItems = room.GetRoomItemHandler().GetFloor.ToArray();
             var wallItems = room.GetRoomItemHandler().GetWall.ToArray();
-
             Session.SendMessage(new ObjectsComposer(floorItems, room));
             Session.SendMessage(new ItemsComposer(wallItems, room));
+
+            // 6. UserUpdate (posiciones y estados finales - Detona localización de cámara)
+            Session.SendMessage(new UserUpdateComposer(userList));
 
             // FIX 5: Si el cliente necesita los datos de variables wired al entrar,
             //        enviarlos aquí en vez de por separado, para evitar un round-trip extra.
