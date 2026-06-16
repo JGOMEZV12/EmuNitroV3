@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 ﻿using Polar.Communication.Interfaces;
 using Polar.Communication.Packets.Outgoing;
 using Polar.Communication.Packets.Outgoing.QuickPolls;
@@ -83,6 +84,7 @@ namespace Polar.HabboHotel.Rooms
         internal List<int> noPoolAnswers;
         public int IsLagging { get; set; }
         public int IdleTime { get; set; }
+        public ConcurrentDictionary<string, string> WiredVariables;
         private bool _hideWired;
         private bool _gamblingRoom;
         public bool DiscoMode;
@@ -146,6 +148,7 @@ namespace Polar.HabboHotel.Rooms
             this.poolQuestion = string.Empty;
             this.yesPoolAnswers = new List<int>();
             this.noPoolAnswers = new List<int>();
+            this.WiredVariables = new ConcurrentDictionary<string, string>();
             this.WardrobeEnabled = Data.WardrobeEnabled;
             this.PhoneStoreEnabled = Data.PhoneStoreEnabled;
             this.MallEnabled = Data.MallEnabled;

@@ -42,7 +42,7 @@ namespace Polar.Communication.Packets.Outgoing.Rooms.Engine
                 if (Habbo.PetId == 0)
                 {
                     base.WriteInteger(Habbo.Id);
-                    base.WriteString(Habbo.Username);
+                    base.WriteString(Habbo.GetDisplayName());
                     base.WriteString(Habbo.Motto);
                     base.WriteInteger(Habbo.BackgroundId);
                     base.WriteInteger(Habbo.StandId);
@@ -78,7 +78,7 @@ namespace Polar.Communication.Packets.Outgoing.Rooms.Engine
                 else if (Habbo.PetId > 0 && Habbo.PetId != 100)
                 {
                     base.WriteInteger(Habbo.Id);
-                    base.WriteString(Habbo.Username);
+                    base.WriteString(Habbo.GetDisplayName());
                     base.WriteString(Habbo.Motto);
                     base.WriteInteger(0);
                     base.WriteInteger(0);
@@ -94,7 +94,7 @@ namespace Polar.Communication.Packets.Outgoing.Rooms.Engine
 
                     base.WriteInteger(Habbo.PetId);//pet type.
                     base.WriteInteger(Habbo.Id);//UserId of the owner.
-                    base.WriteString(Habbo.Username);//Username of the owner.
+                    base.WriteString(Habbo.GetDisplayName());//Username of the owner.
                     base.WriteInteger(1);
                     base.WriteBoolean(false);//Has saddle.
                     base.WriteBoolean(false);//Is someone riding this horse?
@@ -109,7 +109,7 @@ namespace Polar.Communication.Packets.Outgoing.Rooms.Engine
                 else if (Habbo.PetId > 0 && Habbo.PetId == 100)
                 {
                     base.WriteInteger(Habbo.Id);
-                    base.WriteString(Habbo.Username);
+                    base.WriteString(Habbo.GetDisplayName());
                     base.WriteString(Habbo.Motto);
                     base.WriteInteger(0);
                     base.WriteInteger(0);
@@ -124,7 +124,7 @@ namespace Polar.Communication.Packets.Outgoing.Rooms.Engine
 
                     base.WriteString(Habbo.Gender.ToLower()); // ?
                     base.WriteInteger(Habbo.Id); //Owner Id
-                    base.WriteString(Habbo.Username); // Owner name
+                    base.WriteString(Habbo.GetDisplayName()); // Owner name
                     base.WriteInteger(0);//Action Count
                 }
             }

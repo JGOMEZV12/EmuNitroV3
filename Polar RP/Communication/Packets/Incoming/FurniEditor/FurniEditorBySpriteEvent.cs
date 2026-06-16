@@ -26,7 +26,7 @@ namespace Polar.Communication.Packets.Incoming.FurniEditor
 
             using (IQueryAdapter dbClient = PolarEnvironment.GetDatabaseManager().GetQueryReactor())
             {
-                dbClient.SetQuery("SELECT `id` FROM `items_base` WHERE `sprite_id` = @spriteId LIMIT 1");
+                dbClient.SetQuery($"SELECT `id` FROM `{DatabaseCompatibility.FurnitureTable}` WHERE `{DatabaseCompatibility.FurniSpriteIdColumn}` = @spriteId LIMIT 1");
                 dbClient.AddParameter("spriteId", spriteId);
                 itemId = dbClient.getInteger();
             }

@@ -5,16 +5,8 @@ using Polar.Core;
 
 namespace Polar.Communication.Packets.Incoming.FurniEditor
 {
-    /// <summary>
-    /// Manages reading of FurnitureData.json entries.
-    /// Resolves the file path from emulator config keys.
-    /// </summary>
     public static class FurniDataManager
     {
-        /// <summary>
-        /// Get the JSON string for a specific item from FurnitureData.json.
-        /// Returns "{}" if not found or on error.
-        /// </summary>
         public static string GetItemJson(int itemId)
         {
             try
@@ -47,19 +39,15 @@ namespace Polar.Communication.Packets.Incoming.FurniEditor
             return "{}";
         }
 
-        /// <summary>
-        /// Resolve the path to FurnitureData.json from emulator config.
-        /// </summary>
         private static string ResolveFurniDataPath()
         {
             try
             {
                 string configPath = PolarEnvironment.GetConfig().data["furni.editor.renderer.config.path"];
+                string basePath = PolarEnvironment.GetConfig().data["furni.editor.asset.base.path"];
 
                 if (string.IsNullOrEmpty(configPath))
                 {
-                    // Fallback: try base path
-                    string basePath = PolarEnvironment.GetConfig().data["furni.editor.asset.base.path"];
                     if (!string.IsNullOrEmpty(basePath))
                     {
                         string candidate = Path.Combine(basePath, "FurnitureData.json");
@@ -76,12 +64,22 @@ namespace Polar.Communication.Packets.Incoming.FurniEditor
 
                 if (rendererObj.TryGetProperty("furnidata.url", out JsonElement furniUrlEl))
                 {
-                    string furniUrl = furniUrlEl.GetString() ?? "";
-
-                    // Skip unresolved placeholders like ${gamedata.url}
-                    if (furniUrl.Contains("${"))
+                    string furniUrl = "";
+                    if (furniUrlEl.ValueKind == JsonValueKind.Array)
                     {
-                        string basePath = PolarEnvironment.GetConfig().data["furni.editor.asset.base.path"];
+                        foreach (var el in furniUrlEl.EnumerateArray())
+                        {
+                            furniUrl = el.GetString() ?? "";
+                            if (!string.IsNullOrEmpty(furniUrl)) break;
+                        }
+                    }
+                    else
+                    {
+                        furniUrl = furniUrlEl.GetString() ?? "";
+                    }
+
+                    if (string.IsNullOrEmpty(furniUrl) || furniUrl.Contains("${"))
+                    {
                         if (!string.IsNullOrEmpty(basePath))
                         {
                             string candidate = Path.Combine(basePath, "FurnitureData.json");
@@ -90,21 +88,15 @@ namespace Polar.Communication.Packets.Incoming.FurniEditor
                         return null;
                     }
 
-                    // Strip query string
-                    string cleanUrl = furniUrl.Contains("?")
-                        ? furniUrl.Substring(0, furniUrl.IndexOf('?'))
-                        : furniUrl;
+                    string cleanUrl = furniUrl.Contains("?") ? furniUrl.Substring(0, furniUrl.IndexOf('?')) : furniUrl;
 
-                    // Local path — use directly
                     if (!cleanUrl.StartsWith("http"))
                         return cleanUrl;
 
-                    // HTTP URL — derive local path from base
-                    string basePathHttp = PolarEnvironment.GetConfig().data["furni.editor.asset.base.path"];
-                    if (!string.IsNullOrEmpty(basePathHttp))
+                    if (!string.IsNullOrEmpty(basePath))
                     {
                         string filename = cleanUrl.Substring(cleanUrl.LastIndexOf('/') + 1);
-                        return Path.Combine(basePathHttp, filename);
+                        return Path.Combine(basePath, filename);
                     }
                 }
             }

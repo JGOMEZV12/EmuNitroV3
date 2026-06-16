@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Linq;
 
 namespace Polar.Communication.Packets.Outgoing.Rooms.Engine
@@ -16,22 +16,29 @@ namespace Polar.Communication.Packets.Outgoing.Rooms.Engine
             if (string.IsNullOrWhiteSpace(Map))
                 throw new ArgumentException("El mapa de alturas no puede estar vacío.", nameof(Map));
 
-            // Limpiar y separar filas (asume que las filas terminan con '\r')
-            Map = Map.Replace("\n", "");          // Eliminar saltos de línea sobrantes
-            string[] rows = Map.Split('\r', StringSplitOptions.RemoveEmptyEntries);
+            // Fix for Nitro V3: Use StringSplitOptions.None to keep empty entries if they exist,
+            // but we usually want to trim the trailing one.
+            string[] rows = Map.Replace("\n", "").Split('\r');
+
+            // If the last entry is empty (trailing \r), remove it.
+            if (rows.Length > 0 && string.IsNullOrEmpty(rows[rows.Length - 1]))
+            {
+                Array.Resize(ref rows, rows.Length - 1);
+            }
 
             if (rows.Length == 0)
                 throw new InvalidOperationException("No se encontraron filas en el mapa de alturas.");
 
             int width = rows[0].Length;
-            int totalTiles = width * rows.Length;
+            int height = rows.Length;
+            int totalTiles = width * height;
 
             // Escribir cabeceras del paquete
             base.WriteInteger(width);          // Ancho del mapa
             base.WriteInteger(totalTiles);     // Total de celdas
 
             // Recorrer cada fila y columna
-            for (int y = 0; y < rows.Length; y++)
+            for (int y = 0; y < height; y++)
             {
                 string currentRow = rows[y];
                 // Si la fila actual tiene ancho distinto, se completa con 'x' (tile inválido)
@@ -68,8 +75,7 @@ namespace Polar.Communication.Packets.Outgoing.Rooms.Engine
                 return (short)(value * HEIGHT_MULTIPLIER);
             }
 
-            // Si el carácter no es válido, se considera tile inválido (o se puede loguear)
-            // Podrías lanzar una excepción o simplemente devolver -1.
+            // Si el carácter no es válido, se considera tile inválido
             return INVALID_HEIGHT;
         }
     }

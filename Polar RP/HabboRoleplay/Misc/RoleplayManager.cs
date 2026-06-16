@@ -3803,7 +3803,6 @@ namespace Polar.HabboRoleplay.Misc
                     if (IsFood && Session != null && Session.GetHabbo() != null)
                     {
                         NewItem.InteractingUser = Session.GetHabbo().Id;
-                        // Session = null; ← ELIMINA ESTA LÍNEA
                     }
 
                     // Place the item in the room

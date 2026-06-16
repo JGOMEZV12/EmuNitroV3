@@ -1,15 +1,11 @@
 using Polar.Communication.Packets.Outgoing;
-using System;
-using System.Linq;
-using System.Text;
-using System.Collections;
-using System.Collections.Generic;
 using System.Collections.Concurrent;
-
+using System.Collections.Generic;
+using System.Linq;
 using Polar.Communication.Packets.Incoming;
 using Polar.HabboHotel.Rooms;
-using Polar.HabboHotel.Users;
-using Polar.Communication.Packets.Outgoing.Rooms.Chat;
+using Polar.HabboHotel.Items.Wired;
+using Polar.HabboHotel.Items;
 
 namespace Polar.HabboHotel.Items.Wired.Boxes.Effects
 {
@@ -17,106 +13,73 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Effects
     {
         public Room Instance { get; set; }
         public Item Item { get; set; }
-        public WiredBoxType Type { get { return WiredBoxType.EffectToggleFurniState; } }
+        public WiredBoxType Type => WiredBoxType.EffectToggleFurniState;
         public ConcurrentDictionary<int, Item> SetItems { get; set; }
-        public int TickCount { get; set; }
         public string StringData { get; set; }
         public bool BoolData { get; set; }
-        public int Delay { get { return this._delay; } set { this._delay = value; this.TickCount = value; } }
+        public int TickCount { get; set; }
         public string ItemsData { get; set; }
+        private int _delay;
 
-        private long _next;
-        private int _delay = 0;
-        private bool Requested = false;
+        public int Delay
+        {
+            get => _delay;
+            set { _delay = value; TickCount = value; }
+        }
 
         public ToggleFurniBox(Room instance, Item item)
         {
-            this.Instance = instance;
-            this.Item = item;
-            this.SetItems = new ConcurrentDictionary<int, Item>();
+            Instance = instance;
+            Item = item;
+            SetItems = new ConcurrentDictionary<int, Item>();
         }
 
-        public void HandleSave(ClientPacket Packet)
+                public void HandleSave(ClientPacket packet)
         {
-            this.SetItems.Clear();
-            int Unknown = Packet.PopInt();
-            string Unknown2 = Packet.PopString();
+            int paramsCount = packet.PopInt();
+            for (int i = 0; i < paramsCount; i++) packet.PopInt();
 
-            int FurniCount = Packet.PopInt();
-            for (int i = 0; i < FurniCount; i++)
+            this.StringData = packet.PopString();
+
+            if (this.SetItems != null) this.SetItems.Clear();
+            int itemsCount = packet.PopInt();
+            for (int i = 0; i < itemsCount; i++)
             {
-                Item SelectedItem = Instance.GetRoomItemHandler().GetItem(Packet.PopInt());
-                if (SelectedItem != null)
-                    SetItems.TryAdd(SelectedItem.Id, SelectedItem);
+                Item item = Instance.GetRoomItemHandler().GetItem(packet.PopInt());
+                if (item != null) this.SetItems.TryAdd(item.Id, item);
             }
 
-            int delay = Packet.PopInt();
-            Delay = delay;
+            int delay = packet.PopInt();
+            if (this is IWiredCycle cycle) cycle.Delay = delay;
         }
 
-        
-        public void Serialize(ServerPacket Packet)
+                                public void Serialize(ServerPacket packet)
         {
-            Packet.WriteBoolean(false);
-            Packet.WriteInteger(100);
-            Packet.WriteInteger(SetItems.Count);
-            foreach (Item Item in SetItems.Values.ToList())
-            {
-                Packet.WriteInteger(Item.Id);
-            }
-            Packet.WriteInteger(Item.GetBaseItem().SpriteId);
-            Packet.WriteInteger(Item.Id);
-            Packet.WriteString(StringData);
-            Packet.WriteInteger(0);
-            if (this is IWiredCycle)
-            {
-                Packet.WriteInteger(WiredBoxTypeUtility.GetWiredId(Type));
-                Packet.WriteInteger(0);
-                Packet.WriteInteger(((IWiredCycle)this).Delay);
-            }
-            else
-            {
-                Packet.WriteInteger(0);
-                Packet.WriteInteger(WiredBoxTypeUtility.GetWiredId(Type));
-                Packet.WriteInteger(0);
-            }
+            packet.WriteBoolean(false);
+            packet.WriteInteger(100);
+            packet.WriteInteger(SetItems?.Count ?? 0);
+            foreach (var item in SetItems?.Values.ToList() ?? new List<Item>()) packet.WriteInteger(item.Id);
+            packet.WriteInteger(Item.GetBaseItem().SpriteId);
+            packet.WriteInteger(Item.Id);
+            packet.WriteString(StringData ?? "");
+            packet.WriteInteger(0); // Params count
+            packet.WriteInteger(0); // Categorical
+            packet.WriteInteger(WiredBoxTypeUtility.GetWiredId(Type));
+            packet.WriteInteger(this is IWiredCycle cycle ? cycle.Delay : 0);
         }
-        public bool Execute(params object[] Params)
-        {
-            if (this._next == 0 || this._next < DateTime.UtcNow.Ticks)
-                this._next = DateTime.UtcNow.Ticks + this.Delay;
 
-            this.Requested = true;
-            this.TickCount = Delay;
+        public bool Execute(params object[] @params)
+        {
+            TickCount = Delay;
             return true;
         }
 
         public bool OnCycle()
         {
-            if (this.SetItems.Count == 0 || !Requested)
-                return false;
-
-            var Now = DateTime.UtcNow.Ticks;
-            if (_next < Now)
+            foreach (Item item in SetItems.Values.ToList())
             {
-                foreach (Item Item in this.SetItems.Values.ToList())
-                {
-                    if (Item == null)
-                        continue;
-
-                    if (!Instance.GetRoomItemHandler().GetFloor.Contains(Item))
-                    {
-                        Item n = null;
-                        SetItems.TryRemove(Item.Id, out n);
-                        continue;
-                    }
-
-                    Item.Interactor.OnWiredTrigger(Item);
-                }
-
-                Requested = false;
-                this._next = 0;
-                this.TickCount = Delay;
+                if (item == null || !Instance.GetRoomItemHandler().GetFloor.Contains(item)) continue;
+                item.Interactor.OnTrigger(null, item, 0, true);
             }
             return true;
         }

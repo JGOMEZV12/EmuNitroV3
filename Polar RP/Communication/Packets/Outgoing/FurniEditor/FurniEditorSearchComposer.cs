@@ -1,4 +1,4 @@
-﻿using Polar.Communication.Packets.Outgoing;
+using Polar.Communication.Packets.Outgoing;
 using System;
 using System.Collections.Generic;
 
@@ -9,48 +9,37 @@ namespace Polar.Communication.Packets.Outgoing.FurniEditor
         public FurniEditorSearchComposer(List<Dictionary<string, object>> items, int total, int page)
             : base(ServerPacketHeader.FurniEditorSearchComposer)
         {
+            // Nitro expects [Int: total] [Int: count] -> then items
             WriteInteger(total);
-            WriteInteger(page);
             WriteInteger(items?.Count ?? 0);
 
             if (items != null)
             {
                 foreach (var item in items)
                 {
-                    // 14 campos base (igual que en detail)
+                    // 14 Base Fields (FurniItemData)
                     WriteInteger(GetInt(item, "id"));
-                    WriteInteger(GetInt(item, "sprite_id"));
+                    int offId = GetInt(item, "offer_id", -1);
+                    WriteInteger(offId <= 0 ? GetInt(item, "sprite_id") : offId);
                     WriteString(GetStr(item, "item_name"));
                     WriteString(GetStr(item, "public_name"));
                     WriteString(GetStr(item, "type", "s"));
                     WriteInteger(GetInt(item, "width", 1));
                     WriteInteger(GetInt(item, "length", 1));
-                    WriteFloat64(GetDbl(item, "stack_height", 0.0));      // double binario
-                    WriteBoolean(GetBool(item, "allow_stack", true));      // mismo WriteBoolean que detail
+                    WriteFloat64(GetDbl(item, "stack_height", 0.0));
+                    WriteBoolean(GetBool(item, "allow_stack", true));
                     WriteBoolean(GetBool(item, "allow_walk", false));
                     WriteBoolean(GetBool(item, "allow_sit", false));
                     WriteBoolean(GetBool(item, "allow_lay", false));
                     WriteString(GetStr(item, "interaction_type"));
                     WriteInteger(GetInt(item, "interaction_modes_count"));
 
-                    // 13 campos extendidos
-                    WriteBoolean(GetBool(item, "allow_gift", true));
-                    WriteBoolean(GetBool(item, "allow_trade", true));
-                    WriteBoolean(GetBool(item, "allow_recycle", true));
-                    WriteBoolean(GetBool(item, "allow_marketplace_sell", true));
-                    WriteBoolean(GetBool(item, "allow_inventory_stack", true));
-                    WriteString(GetStr(item, "vending_ids"));
-                    WriteString(GetStr(item, "customparams"));
-                    WriteInteger(GetInt(item, "effect_id_male"));
-                    WriteInteger(GetInt(item, "effect_id_female"));
-                    WriteString(GetStr(item, "clothing_on_walk"));
-                    WriteString(GetStr(item, "multiheight"));
-                    WriteString(GetStr(item, "description"));
+                    // NOTE: Search results in Nitro V3 ONLY include the 14 base fields.
+                    // Extended fields like allow_gift, vending_ids, etc. are part of FurniDetailData
                 }
             }
         }
 
-        // Copia exacta de WriteFloat64 del detail
         private void WriteFloat64(double value)
         {
             long bits = BitConverter.DoubleToInt64Bits(value);
@@ -64,7 +53,6 @@ namespace Polar.Communication.Packets.Outgoing.FurniEditor
             WriteByte((byte)bits);
         }
 
-        // Helpers (iguales a los del detail)
         private static int GetInt(Dictionary<string, object> d, string key, int def = 0)
         {
             if (d == null || !d.TryGetValue(key, out object val) || val == null) return def;

@@ -1,3 +1,4 @@
+using Polar.HabboHotel.Items.Wired;
 using Polar.Communication.Packets.Outgoing;
 using System;
 using System.Linq;
@@ -29,77 +30,37 @@ namespace Polar.HabboHotel.Items.Wired.Boxes.Effects
             this.SetItems = new ConcurrentDictionary<int, Item>();
         }
 
-        public void HandleSave(ClientPacket Packet)
+                public void HandleSave(ClientPacket packet)
         {
-            int IntCount = Packet.PopInt();    // cuántos ints vienen (= 1)
-            int ChatMode = Packet.PopInt();    // 0 = talk, 1 = shout
+            int paramsCount = packet.PopInt();
+            for (int i = 0; i < paramsCount; i++) packet.PopInt();
 
-            // botSource NO viene del cliente en este wired, va siempre en 0
-            int BotSource = 0;
+            this.StringData = packet.PopString();
 
-            string ChatConfig = Packet.PopString(); // "botName\tmessage"
-
-            Console.WriteLine($"[BotTalk] HandleSave recibido:");
-            Console.WriteLine($"  IntCount:   {IntCount}");
-            Console.WriteLine($"  ChatMode:   {ChatMode}");
-            Console.WriteLine($"  ChatConfig: '{ChatConfig}'");
-
-            if (!ChatConfig.Contains("\t"))
+            if (this.SetItems != null) this.SetItems.Clear();
+            int itemsCount = packet.PopInt();
+            for (int i = 0; i < itemsCount; i++)
             {
-                Console.WriteLine($"  [ERROR] ChatConfig no contiene TAB, abortando.");
-                return;
+                Item item = Instance.GetRoomItemHandler().GetItem(packet.PopInt());
+                if (item != null) this.SetItems.TryAdd(item.Id, item);
             }
 
-            string[] parts = ChatConfig.Split('\t');
-            if (parts.Length != 2)
-            {
-                Console.WriteLine($"  [ERROR] Se esperaban 2 partes, se recibieron {parts.Length}");
-                return;
-            }
-
-            Console.WriteLine($"  BotName:  '{parts[0]}'");
-            Console.WriteLine($"  Message:  '{parts[1]}'");
-
-            this.StringData = ChatMode + ";" + BotSource + ";" + parts[0] + ";" + parts[1];
-
-            Console.WriteLine($"  StringData guardado: '{this.StringData}'");
-
-            if (this.SetItems.Count > 0)
-                this.SetItems.Clear();
+            int delay = packet.PopInt();
+            if (this is IWiredCycle cycle) cycle.Delay = delay;
         }
-        public void Serialize(ServerPacket Packet)
+                                public void Serialize(ServerPacket packet)
         {
-            // Parsear StringData para reconstruir lo que el cliente espera
-            string botName = "";
-            string message = "";
-            int mode = 0;
-            int botSource = 0;
-
-            if (!string.IsNullOrEmpty(this.StringData))
-            {
-                string[] parts = this.StringData.Split(';');
-                if (parts.Length == 4)
-                {
-                    mode = int.Parse(parts[0]);
-                    botSource = int.Parse(parts[1]);
-                    botName = parts[2];
-                    message = parts[3];
-                }
-            }
-
-            Packet.WriteBoolean(false);
-            Packet.WriteInteger(5);
-            Packet.WriteInteger(0);
-            Packet.WriteInteger(Item.GetBaseItem().SpriteId);
-            Packet.WriteInteger(Item.Id);
-            Packet.WriteString(botName + "\t" + message);  // formato esperado por el cliente
-            Packet.WriteInteger(2);
-            Packet.WriteInteger(mode);
-            Packet.WriteInteger(botSource);
-            Packet.WriteInteger(0);
-            Packet.WriteInteger(WiredBoxTypeUtility.GetWiredId(Type));
-            Packet.WriteInteger(0); // delay
-            Packet.WriteInteger(0);
+            packet.WriteBoolean(false);
+            packet.WriteInteger(100);
+            packet.WriteInteger(SetItems?.Count ?? 0);
+            foreach (var item in SetItems?.Values.ToList() ?? new List<Item>()) packet.WriteInteger(item.Id);
+            packet.WriteInteger(Item.GetBaseItem().SpriteId);
+            packet.WriteInteger(Item.Id);
+            packet.WriteString(StringData ?? "");
+            packet.WriteInteger(0); // Params count
+            packet.WriteInteger(0); // Categorical
+            packet.WriteInteger(WiredBoxTypeUtility.GetWiredId(Type));
+            packet.WriteInteger(this is IWiredCycle cycle ? cycle.Delay : 0);
         }
         public bool Execute(params object[] Params)
         {

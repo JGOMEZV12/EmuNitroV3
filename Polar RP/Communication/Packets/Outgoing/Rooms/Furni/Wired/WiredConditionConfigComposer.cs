@@ -1,11 +1,4 @@
-using System;
-using System.Linq;
-using System.Text;
-using System.Collections.Generic;
-
-using Polar.HabboHotel.Items;
 using Polar.HabboHotel.Items.Wired;
-
 namespace Polar.Communication.Packets.Outgoing.Rooms.Furni.Wired
 {
     class WiredConditionConfigComposer : ServerPacket
@@ -14,6 +7,7 @@ namespace Polar.Communication.Packets.Outgoing.Rooms.Furni.Wired
             : base(ServerPacketHeader.WiredConditionConfigMessageComposer)
         {
             Box.Serialize(this);
+            WriteInteger(0); // Conflicts
         }
     }
 }

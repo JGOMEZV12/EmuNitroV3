@@ -21,10 +21,10 @@ namespace Polar.Communication.Packets.Incoming.FurniEditor
             }
 
             string query = packet.PopString();
-            string type = packet.PopString();
+            string type = packet.PopString(); // Nitro: "all", "s", "i", "floor", "wall"
             int page = packet.PopInt();
 
-            if (query.Length > 100)
+            if (query != null && query.Length > 100)
                 query = query.Substring(0, 100);
 
             if (page < 1) page = 1;
@@ -52,18 +52,23 @@ namespace Polar.Communication.Packets.Incoming.FurniEditor
                 }
             }
 
-            if (!string.IsNullOrEmpty(type))
+            if (!string.IsNullOrEmpty(type) && type.ToLower() != "all")
             {
+                string filterType = "s";
+                if (type.ToLower().StartsWith("i") || type.ToLower() == "wall")
+                    filterType = "i";
+
                 whereParts.Add("type = @type");
-                paramValues.Add(("@type", type));
+                paramValues.Add(("@type", filterType));
             }
 
             string whereClause = whereParts.Count > 0
                 ? "WHERE " + string.Join(" AND ", whereParts)
                 : "";
 
-            string countSql = $"SELECT COUNT(*) FROM items_base {whereClause}";
-            string dataSql = $"SELECT * FROM items_base {whereClause} ORDER BY id ASC LIMIT @limit OFFSET @offset";
+            // Use string formatting for LIMIT/OFFSET to avoid parameter driver issues in some MySQL clients
+            string countSql = $"SELECT COUNT(*) FROM `{DatabaseCompatibility.FurnitureTable}` {whereClause}";
+            string dataSql = $"SELECT * FROM `{DatabaseCompatibility.FurnitureTable}` {whereClause} ORDER BY id ASC LIMIT {PageSize} OFFSET {offset}";
 
             int total = 0;
             var items = new List<Dictionary<string, object>>();
@@ -76,9 +81,7 @@ namespace Polar.Communication.Packets.Incoming.FurniEditor
                     foreach (var (name, value) in paramValues)
                         dbClient.AddParameter(name, value);
 
-                    DataTable countTable = dbClient.getTable();
-                    if (countTable != null && countTable.Rows.Count > 0)
-                        total = Convert.ToInt32(countTable.Rows[0][0]);
+                    total = dbClient.getInteger();
                 }
 
                 if (total > 0)
@@ -88,14 +91,12 @@ namespace Polar.Communication.Packets.Incoming.FurniEditor
                         dbData.SetQuery(dataSql);
                         foreach (var (name, value) in paramValues)
                             dbData.AddParameter(name, value);
-                        dbData.AddParameter("@limit", PageSize);
-                        dbData.AddParameter("@offset", offset);
 
                         DataTable dt = dbData.getTable();
-                        if (dt != null && dt.Rows.Count > 0)
+                        if (dt != null)
                         {
                             foreach (DataRow row in dt.Rows)
-                                items.Add(FurniEditorHelper.ReadFullItem(row)); // ← usa el helper
+                                items.Add(FurniEditorHelper.ReadFullItem(row));
                         }
                     }
                 }

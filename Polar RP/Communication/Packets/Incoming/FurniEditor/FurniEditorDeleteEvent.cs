@@ -24,8 +24,7 @@ namespace Polar.Communication.Packets.Incoming.FurniEditor
 
             using (IQueryAdapter dbClient = PolarEnvironment.GetDatabaseManager().GetQueryReactor())
             {
-                // Verificar que existe
-                dbClient.SetQuery("SELECT COUNT(*) FROM `items_base` WHERE `id` = @id");
+                dbClient.SetQuery($"SELECT COUNT(*) FROM `{DatabaseCompatibility.FurnitureTable}` WHERE `id` = @id");
                 dbClient.AddParameter("id", id);
                 if (dbClient.getInteger() == 0)
                 {
@@ -33,8 +32,7 @@ namespace Polar.Communication.Packets.Incoming.FurniEditor
                     return;
                 }
 
-                // Verificar instancias colocadas
-                dbClient.SetQuery("SELECT COUNT(*) FROM `items` WHERE `base_item` = @id");
+                dbClient.SetQuery($"SELECT COUNT(*) FROM `items` WHERE `{DatabaseCompatibility.ItemsBaseItemColumn}` = @id");
                 dbClient.AddParameter("id", id);
                 int usageCount = dbClient.getInteger();
                 if (usageCount > 0)
@@ -44,9 +42,9 @@ namespace Polar.Communication.Packets.Incoming.FurniEditor
                     return;
                 }
 
-                // Verificar referencias de catálogo
-                dbClient.SetQuery("SELECT COUNT(*) FROM `catalog_items` WHERE `item_ids` LIKE @pattern");
+                dbClient.SetQuery("SELECT COUNT(*) FROM `catalog_items` WHERE `item_ids` LIKE @pattern OR `item_ids` = @idstr");
                 dbClient.AddParameter("pattern", $"%{id}%");
+                dbClient.AddParameter("idstr", id.ToString());
                 int catalogCount = dbClient.getInteger();
                 if (catalogCount > 0)
                 {
@@ -55,8 +53,7 @@ namespace Polar.Communication.Packets.Incoming.FurniEditor
                     return;
                 }
 
-                // Eliminar
-                dbClient.SetQuery("DELETE FROM `items_base` WHERE `id` = @id");
+                dbClient.SetQuery($"DELETE FROM `{DatabaseCompatibility.FurnitureTable}` WHERE `id` = @id");
                 dbClient.AddParameter("id", id);
                 dbClient.RunQuery();
             }

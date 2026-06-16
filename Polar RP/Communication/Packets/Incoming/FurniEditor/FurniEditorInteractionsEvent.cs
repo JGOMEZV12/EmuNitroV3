@@ -31,15 +31,15 @@ namespace Polar.Communication.Packets.Incoming.FurniEditor
                         using (IQueryAdapter dbClient = PolarEnvironment.GetDatabaseManager().GetQueryReactor())
                         {
                             dbClient.SetQuery(
-                                "SELECT DISTINCT `interaction_type` FROM `items_base` " +
-                                "WHERE `interaction_type` != '' ORDER BY `interaction_type` ASC");
+                                $"SELECT DISTINCT `{DatabaseCompatibility.FurniInteractionTypeColumn}` FROM `{DatabaseCompatibility.FurnitureTable}` " +
+                                $"WHERE `{DatabaseCompatibility.FurniInteractionTypeColumn}` != '' ORDER BY `{DatabaseCompatibility.FurniInteractionTypeColumn}` ASC");
 
                             DataTable table = dbClient.getTable();
 
                             if (table != null)
                             {
                                 foreach (DataRow row in table.Rows)
-                                    list.Add(row["interaction_type"].ToString());
+                                    list.Add(row[DatabaseCompatibility.FurniInteractionTypeColumn].ToString());
                             }
                         }
 
